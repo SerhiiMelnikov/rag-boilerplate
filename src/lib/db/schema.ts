@@ -22,10 +22,10 @@ export const users = pgTable("users", {
 
 export const documents = pgTable("documents", {
   id: uuid("id").primaryKey().defaultRandom(),
-  filename: text("filename").notNull(),
+  filename: text("filename").notNull().unique(),
   status: docStatusEnum("status").notNull().default("pending"),
   error: text("error"),
-  uploadedBy: uuid("uploaded_by").references(() => users.id),
+  uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

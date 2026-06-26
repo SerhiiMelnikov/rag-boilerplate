@@ -25,4 +25,16 @@ describe("updateSettings", () => {
     const next = { ...ROW, topK: 8 };
     expect(await updateSettings({ topK: 8 }, fakeDb({ afterWrite: [next] }))).toEqual(next);
   });
+
+  it("empty patch returns current settings without calling database.update", async () => {
+    const updateSpy = vi.fn();
+    const db = {
+      select: () => ({ from: () => ({ where: () => ({ limit: async () => [ROW] }) }) }),
+      insert: () => ({ values: () => ({ onConflictDoNothing: () => ({ returning: async () => [ROW] }) }) }),
+      update: updateSpy,
+    } as any;
+    const result = await updateSettings({}, db);
+    expect(result).toEqual(ROW);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
 });

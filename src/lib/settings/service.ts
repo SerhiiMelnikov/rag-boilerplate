@@ -50,6 +50,7 @@ export async function getSettings(database = defaultDb): Promise<AppSettings> {
 
 // Apply a partial update to the singleton and return the new values.
 export async function updateSettings(patch: Partial<AppSettings>, database = defaultDb): Promise<AppSettings> {
+  if (Object.keys(patch).length === 0) return getSettings(database);
   const [row] = await database.update(settings).set(patch).where(eq(settings.id, 1)).returning(COLUMNS);
   return row;
 }

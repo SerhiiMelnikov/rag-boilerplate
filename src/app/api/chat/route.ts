@@ -2,7 +2,7 @@ import { streamText } from "ai";
 import { google } from "@ai-sdk/google";
 import { auth } from "@/auth";
 import { requireUser, errorToResponse } from "@/lib/auth/guards";
-import { createConversation, addMessage } from "@/lib/chat/conversations";
+import { createConversation, addMessage, isConversationOwned } from "@/lib/chat/conversations";
 import { getSettings } from "@/lib/settings/service";
 import { prepareContext } from "@/lib/rag/answer";
 
@@ -26,6 +26,7 @@ interface ChatDeps {
   createConversationFn?: typeof createConversation;
   addMessageFn?: typeof addMessage;
   streamTextFn?: StreamTextLike;
+  isOwnedFn?: typeof isConversationOwned;
 }
 
 // Testable core: every collaborator is injectable.
@@ -35,6 +36,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   const createConversationFn = deps.createConversationFn ?? createConversation;
   const addMessageFn = deps.addMessageFn ?? addMessage;
   const streamTextFn = deps.streamTextFn ?? streamText;
+  const isOwnedFn = deps.isOwnedFn ?? isConversationOwned;
 
   let user;
   try {
@@ -55,6 +57,12 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   }
   const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
   if (!content) return Response.json({ error: "content is required" }, { status: 400 });
+
+  // If a conversationId is provided, verify ownership before proceeding.
+  if (parsed.conversationId) {
+    const owned = await isOwnedFn(user.id, parsed.conversationId);
+    if (!owned) return Response.json({ error: "Not found" }, { status: 404 });
+  }
 
   // Reuse an existing conversation id or create one titled from the first message.
   const conversationId =

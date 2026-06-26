@@ -89,6 +89,16 @@ export async function addMessage(
   return row;
 }
 
+// Returns true if the conversation exists AND belongs to userId.
+export async function isConversationOwned(userId: string, id: string, database = defaultDb): Promise<boolean> {
+  const rows = await database
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
 // Update a message's rating only if it belongs to a conversation owned by userId.
 export async function setRating(userId: string, messageId: string, rating: 1 | -1 | null, database = defaultDb) {
   // Step 1: ownership check — ensure the message belongs to a conversation owned by the given user.

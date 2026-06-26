@@ -14,6 +14,7 @@ function baseDeps(over: Partial<any> = {}) {
     prepareContextFn: vi.fn(async () => ({ hasContext: true, context: "ctx", sources: [{ documentId: "d", filename: "f.md", chunkId: "c", score: 0.9 }] })),
     createConversationFn: vi.fn(async () => ({ id: "c1" })),
     addMessageFn: vi.fn(async () => ({ id: "m1" })),
+    isOwnedFn: vi.fn(async () => true),
     // Fake streamText: returns an object exposing toDataStreamResponse + triggers onFinish.
     streamTextFn: vi.fn((args: any) => {
       // simulate completion so persistence runs
@@ -55,5 +56,21 @@ describe("handleChat", () => {
     expect(res.status).toBe(200);
     expect(deps.streamTextFn).not.toHaveBeenCalled();
     expect(deps.addMessageFn).toHaveBeenNthCalledWith(2, expect.objectContaining({ role: "assistant", usage: null }));
+  });
+
+  it("404 when provided conversationId is not owned by the user", async () => {
+    const deps = baseDeps({ isOwnedFn: vi.fn(async () => false) });
+    const res = await handleChat(body({ content: "hi", conversationId: "other-conv" }), deps);
+    expect(res.status).toBe(404);
+    expect(deps.addMessageFn).not.toHaveBeenCalled();
+    expect(deps.streamTextFn).not.toHaveBeenCalled();
+  });
+
+  it("reuses owned conversationId without creating a new conversation", async () => {
+    const deps = baseDeps({ isOwnedFn: vi.fn(async () => true) });
+    const res = await handleChat(body({ content: "hi", conversationId: "existing-conv" }), deps);
+    expect(res.status).toBe(200);
+    expect(deps.createConversationFn).not.toHaveBeenCalled();
+    expect(res.headers.get("X-Conversation-Id")).toBe("existing-conv");
   });
 });

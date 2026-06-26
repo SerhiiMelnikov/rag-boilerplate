@@ -33,6 +33,12 @@ describe("GET /api/admin/documents", () => {
 });
 
 describe("POST /api/admin/documents", () => {
+  it("403 for non-admin", async () => {
+    (requireAdmin as any).mockRejectedValue(new ForbiddenError());
+    const res = await POST(uploadReq());
+    expect(res.status).toBe(403);
+    expect(ingestDocument).not.toHaveBeenCalled();
+  });
   it("400 when no file", async () => {
     (requireAdmin as any).mockResolvedValue({ id: "u1", role: "admin" });
     const res = await POST(new Request("http://localhost/api/admin/documents", { method: "POST", body: new FormData() }));

@@ -7,15 +7,32 @@ export interface EmbedDeps {
   embedBatch?: (texts: string[]) => Promise<number[][]>;
 }
 
-const embeddingModel = () => google.textEmbeddingModel("text-embedding-004");
+// Embedding model: gemini-embedding-2 reduced to 768 dimensions via
+// outputDimensionality, matching the chunks.embedding column. Task types are
+// set per use: documents are embedded for retrieval storage, queries for
+// querying. Cosine similarity is magnitude-invariant, so reduced-dimension
+// vectors need no extra normalization for ranking.
+const EMBEDDING_MODEL = "gemini-embedding-2";
+const OUTPUT_DIMENSIONS = 768;
+
+const documentEmbeddingModel = () =>
+  google.textEmbeddingModel(EMBEDDING_MODEL, {
+    outputDimensionality: OUTPUT_DIMENSIONS,
+    taskType: "RETRIEVAL_DOCUMENT",
+  });
+const queryEmbeddingModel = () =>
+  google.textEmbeddingModel(EMBEDDING_MODEL, {
+    outputDimensionality: OUTPUT_DIMENSIONS,
+    taskType: "RETRIEVAL_QUERY",
+  });
 
 // Real implementations (used when deps are not injected).
 async function defaultEmbedOne(text: string): Promise<number[]> {
-  const { embedding } = await embed({ model: embeddingModel(), value: text });
+  const { embedding } = await embed({ model: queryEmbeddingModel(), value: text });
   return embedding;
 }
 async function defaultEmbedBatch(texts: string[]): Promise<number[][]> {
-  const { embeddings } = await embedMany({ model: embeddingModel(), values: texts });
+  const { embeddings } = await embedMany({ model: documentEmbeddingModel(), values: texts });
   return embeddings;
 }
 

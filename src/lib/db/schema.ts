@@ -2,8 +2,10 @@ import {
   pgTable, uuid, text, timestamp, integer, jsonb, vector, real, pgEnum,
 } from "drizzle-orm/pg-core";
 
-// Embedding dimension is fixed to the embedding model (Gemini text-embedding-004).
-// Changing the provider/model requires re-indexing all chunks.
+// Embedding dimension is fixed to the embedding model. We use gemini-embedding-2
+// with outputDimensionality=768 (it defaults to 3072 but supports reduction),
+// which keeps vectors compact and within pgvector's ANN index limit.
+// Changing the embedding model/dimension requires re-indexing all chunks.
 export const EMBEDDING_DIMENSIONS = 768;
 
 export const roleEnum = pgEnum("role", ["admin", "user"]);
@@ -57,7 +59,7 @@ export const messages = pgTable("messages", {
 export const settings = pgTable("settings", {
   id: integer("id").primaryKey().default(1), // singleton row
   topK: integer("top_k").notNull().default(5),
-  model: text("model").notNull().default("gemini-1.5-flash"),
+  model: text("model").notNull().default("gemma-4-31b-it"),
   temperature: real("temperature").notNull().default(0.2),
   systemPrompt: text("system_prompt").notNull().default("You are a helpful assistant. Answer using only the provided context."),
   minSimilarity: real("min_similarity").notNull().default(0.3),

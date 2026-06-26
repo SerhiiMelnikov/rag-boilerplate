@@ -9,20 +9,13 @@ import type { IngestStore } from "./ingest";
 export function createDrizzleStore(db = defaultDb): IngestStore {
   return {
     async createDocument(filename) {
-      // Find-or-create: filename is the natural key for a document. If a row
-      // with this filename already exists, return its id so that
-      // existingHashes() can look up the prior run's chunk hashes and skip
-      // re-embedding identical content. Only insert a new row when no matching
-      // document is found.
-      const existing = await db
-        .select({ id: documents.id })
-        .from(documents)
-        .where(eq(documents.filename, filename))
-        .limit(1);
-      if (existing.length > 0) {
-        return existing[0].id;
-      }
-      const [row] = await db.insert(documents).values({ filename }).returning({ id: documents.id });
+      // Atomic find-or-create keyed on the unique filename. ON CONFLICT touches the
+      // row so RETURNING yields the existing id under concurrency (no duplicates).
+      const [row] = await db
+        .insert(documents)
+        .values({ filename })
+        .onConflictDoUpdate({ target: documents.filename, set: { filename } })
+        .returning({ id: documents.id });
       return row.id;
     },
     async setStatus(id, status, error) {

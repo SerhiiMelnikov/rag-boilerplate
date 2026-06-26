@@ -1,4 +1,6 @@
 import { sql, cosineDistance, gt, desc, eq } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { chunks, documents } from "@/lib/db/schema";
 import { estimateTokens } from "./tokens";
 
 export interface RetrievedChunk {
@@ -30,10 +32,7 @@ export function trimToBudget(items: RetrievedChunk[], tokenBudget: number): Retr
 
 // Default DB query: cosine similarity search in pgvector, joined to documents
 // for the filename. Injectable via deps.run for unit tests.
-// Imports are lazy so the module can load without DATABASE_URL in test environments.
 async function defaultRun(queryEmbedding: number[], topK: number): Promise<RetrievedChunk[]> {
-  const { db } = await import("@/lib/db/client");
-  const { chunks, documents } = await import("@/lib/db/schema");
   const similarity = sql<number>`1 - (${cosineDistance(chunks.embedding, queryEmbedding)})`;
   const rows = await db
     .select({

@@ -1,3 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Code block theme for react-markdown + rehype-highlight */
+@import "highlight.js/styles/github-dark.css";
+
+:root {
+  color-scheme: light dark;
+}
+body {
+  @apply bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100;
+}

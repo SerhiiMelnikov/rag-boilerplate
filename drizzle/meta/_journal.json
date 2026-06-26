@@ -8,6 +8,13 @@
       "when": 1782455252900,
       "tag": "0000_redundant_shinobi_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782464543636,
+      "tag": "0001_wild_talos",
+      "breakpoints": true
     }
   ]
 }

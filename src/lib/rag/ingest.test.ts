@@ -1,0 +1,51 @@
+import { describe, it, expect, vi } from "vitest";
+import { ingestDocument } from "@/lib/rag/ingest";
+
+function makeStore(existing: string[] = []) {
+  return {
+    createDocument: vi.fn(async () => "doc-1"),
+    setStatus: vi.fn(async () => {}),
+    existingHashes: vi.fn(async () => new Set(existing)),
+    insertChunks: vi.fn(async () => {}),
+  };
+}
+
+describe("ingestDocument", () => {
+  it("parses, chunks, embeds new chunks, stores, marks ready", async () => {
+    const store = makeStore();
+    const embed = vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
+    const result = await ingestDocument(
+      { filename: "a.txt", data: Buffer.from("x") },
+      { parse: async () => "hello world", chunk: () => ["c1", "c2"], embed, store },
+    );
+    expect(result.status).toBe("ready");
+    expect(result.chunkCount).toBe(2);
+    expect(embed).toHaveBeenCalledWith(["c1", "c2"]);
+    expect(store.insertChunks).toHaveBeenCalledOnce();
+    expect(store.setStatus).toHaveBeenLastCalledWith("doc-1", "ready");
+  });
+
+  it("skips chunks whose content hash already exists (no re-embedding)", async () => {
+    const { hashContent } = await import("@/lib/rag/hash");
+    const store = makeStore([hashContent("c1")]);
+    const embed = vi.fn(async (texts: string[]) => texts.map(() => [0, 0, 0]));
+    const result = await ingestDocument(
+      { filename: "a.txt", data: Buffer.from("x") },
+      { parse: async () => "t", chunk: () => ["c1", "c2"], embed, store },
+    );
+    expect(embed).toHaveBeenCalledWith(["c2"]); // only the new chunk
+    expect(result.skipped).toBe(1);
+    expect(result.chunkCount).toBe(1);
+  });
+
+  it("marks the document as error when parsing throws", async () => {
+    const store = makeStore();
+    const result = await ingestDocument(
+      { filename: "a.txt", data: Buffer.from("x") },
+      { parse: async () => { throw new Error("boom"); }, embed: async () => [], store },
+    );
+    expect(result.status).toBe("error");
+    expect(result.error).toContain("boom");
+    expect(store.setStatus).toHaveBeenLastCalledWith("doc-1", "error", expect.stringContaining("boom"));
+  });
+});

@@ -17,6 +17,7 @@ describe("buildContext", () => {
     expect(ctx).toContain("content a");
     expect(ctx).toContain("content b");
     expect(ctx).toContain("a.md");
+    expect(ctx).toContain("b.md");
   });
 });
 
@@ -42,5 +43,6 @@ describe("answerQuery", () => {
     expect(generate).not.toHaveBeenCalled();
     expect(result.sources).toEqual([]);
     expect(result.answer).toMatch(/don't|no relevant|cannot/i);
+    expect(result.usage).toEqual({ promptTokens: 0, completionTokens: 0 });
   });
 });

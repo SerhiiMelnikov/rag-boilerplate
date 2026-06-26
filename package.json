@@ -12,7 +12,8 @@
     "db:up": "docker compose up -d",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/lib/db/migrate.ts",
-    "ingest": "tsx scripts/ingest.ts"
+    "ingest": "tsx scripts/ingest.ts",
+    "test:integration": "RUN_INTEGRATION=1 vitest run --config vitest.integration.config.ts src/lib/rag/ingest.integration.test.ts"
   },
   "dependencies": {
     "next": "^15.0.0",

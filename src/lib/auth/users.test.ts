@@ -21,7 +21,7 @@ describe("createUser", () => {
     const db = fakeDb({ insertResult: [{ id: "u1", email: "a@b.com", role: "user" }] });
     const rec = await createUser({ email: "a@b.com", password: "secret123" }, db);
     expect(rec).toEqual({ id: "u1", email: "a@b.com", role: "user" });
-    expect((rec as Record<string, unknown>).passwordHash).toBeUndefined();
+    expect((rec as unknown as Record<string, unknown>).passwordHash).toBeUndefined();
   });
 
   it("maps a unique-violation to DuplicateEmailError", async () => {

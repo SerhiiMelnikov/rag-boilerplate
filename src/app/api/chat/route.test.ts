@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleChat } from "@/app/api/chat/route";
+import { handleChat } from "@/app/api/chat/handler";
 import { UnauthorizedError } from "@/lib/auth/guards";
 
 const settings = { topK: 5, model: "gemma-4-31b-it", temperature: 0.2, systemPrompt: "sp", minSimilarity: 0.3, contextTokenBudget: 3000 };

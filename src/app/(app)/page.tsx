@@ -1,4 +1,5 @@
-// Temporary placeholder; Task 6 will replace this with <ChatPage />.
+import { ChatPage } from "@/components/chat/chat-page";
+
 export default function Home() {
-  return <div>Chat</div>;
+  return <ChatPage />;
 }

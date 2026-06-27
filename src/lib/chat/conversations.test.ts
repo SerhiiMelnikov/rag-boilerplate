@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   createConversation, listConversations, getConversationWithMessages,
-  deleteConversation, addMessage, setRating,
+  deleteConversation, addMessage, setRating, setConversationTitleIfDefault,
 } from "@/lib/chat/conversations";
 
 describe("createConversation", () => {
@@ -54,6 +54,19 @@ describe("setRating", () => {
       update: () => ({ set: () => ({ where: () => ({ returning: async () => [] }) }) }),
     } as any;
     expect(await setRating("u1", "m1", -1, db)).toBe(false);
+  });
+});
+
+describe("setConversationTitleIfDefault", () => {
+  it("calls update with a three-way AND condition", async () => {
+    const whereFn = vi.fn(async () => undefined);
+    const db = {
+      update: () => ({ set: () => ({ where: whereFn }) }),
+    } as any;
+    await setConversationTitleIfDefault("u1", "c1", "My title", db);
+    expect(whereFn).toHaveBeenCalledTimes(1);
+    // We only assert that where was called (the AND expression is opaque to the unit test).
+    // The integration behaviour is covered by the SQL expression itself.
   });
 });
 

@@ -1,8 +1,8 @@
-import { streamText } from "ai";
+import { streamText, createDataStreamResponse, formatDataStreamPart } from "ai";
 import { google } from "@ai-sdk/google";
 import { auth } from "@/auth";
 import { requireUser, errorToResponse } from "@/lib/auth/guards";
-import { createConversation, addMessage, isConversationOwned } from "@/lib/chat/conversations";
+import { isConversationOwned, addMessage, setConversationTitleIfDefault } from "@/lib/chat/conversations";
 import { getSettings } from "@/lib/settings/service";
 import { prepareContext } from "@/lib/rag/answer";
 
@@ -13,30 +13,27 @@ const NO_CONTEXT_ANSWER =
 // without the full NextAuth Session shape (which requires `expires`).
 type SessionFn = () => Promise<{ user?: { id?: string; role?: string } | null } | null>;
 
-// Narrow streamText type: the injectable seam only needs the minimal contract
-// used in handleChat — accepts the call arguments and returns an object with
-// toDataStreamResponse. This lets vi.fn fakes satisfy the type without providing
-// the full StreamTextResult shape.
-type StreamTextLike = (args: Parameters<typeof streamText>[0]) => { toDataStreamResponse: (opts?: { headers?: Record<string, string> }) => Response };
+// Narrow streamText type: only the minimal contract used in handleChat.
+type StreamTextLike = (args: Parameters<typeof streamText>[0]) => { toDataStreamResponse: () => Response };
 
 interface ChatDeps {
   getSession?: SessionFn;
   getSettingsFn?: typeof getSettings;
   prepareContextFn?: typeof prepareContext;
-  createConversationFn?: typeof createConversation;
-  addMessageFn?: typeof addMessage;
-  streamTextFn?: StreamTextLike;
   isOwnedFn?: typeof isConversationOwned;
+  addMessageFn?: typeof addMessage;
+  setTitleFn?: typeof setConversationTitleIfDefault;
+  streamTextFn?: StreamTextLike;
 }
 
 // Testable core: every collaborator is injectable.
 export async function handleChat(request: Request, deps: ChatDeps = {}) {
   const getSettingsFn = deps.getSettingsFn ?? getSettings;
   const prepareContextFn = deps.prepareContextFn ?? prepareContext;
-  const createConversationFn = deps.createConversationFn ?? createConversation;
-  const addMessageFn = deps.addMessageFn ?? addMessage;
-  const streamTextFn = deps.streamTextFn ?? streamText;
   const isOwnedFn = deps.isOwnedFn ?? isConversationOwned;
+  const addMessageFn = deps.addMessageFn ?? addMessage;
+  const setTitleFn = deps.setTitleFn ?? setConversationTitleIfDefault;
+  const streamTextFn = deps.streamTextFn ?? (streamText as unknown as StreamTextLike);
 
   let user;
   try {
@@ -49,38 +46,42 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
     throw err;
   }
 
-  let parsed: { conversationId?: string; content?: unknown };
+  let parsed: { messages?: Array<{ role?: string; content?: unknown }>; conversationId?: unknown };
   try {
     parsed = await request.json();
   } catch {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
+
+  // Require an explicit conversationId (created via POST /api/conversations before the chat starts).
+  const conversationId = typeof parsed.conversationId === "string" ? parsed.conversationId : "";
+  if (!conversationId) return Response.json({ error: "conversationId is required" }, { status: 400 });
+
+  // Extract the last user message from the useChat messages array.
+  const lastUser = [...(parsed.messages ?? [])].reverse().find((m) => m.role === "user");
+  const content = typeof lastUser?.content === "string" ? lastUser.content.trim() : "";
   if (!content) return Response.json({ error: "content is required" }, { status: 400 });
 
-  // If a conversationId is provided, verify ownership before proceeding.
-  if (parsed.conversationId) {
-    const owned = await isOwnedFn(user.id, parsed.conversationId);
-    if (!owned) return Response.json({ error: "Not found" }, { status: 404 });
+  // Ownership check: 404 if the conversation doesn't belong to this user.
+  if (!(await isOwnedFn(user.id, conversationId))) {
+    return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Reuse an existing conversation id or create one titled from the first message.
-  const conversationId =
-    parsed.conversationId ?? (await createConversationFn(user.id, content.slice(0, 60))).id;
-
+  // Set conversation title from the first user message if it's still the default placeholder.
+  await setTitleFn(user.id, conversationId, content.slice(0, 60));
   await addMessageFn({ conversationId, role: "user", content });
 
   const settings = await getSettingsFn();
   const prepared = await prepareContextFn(content, settings);
-  const headers = {
-    "X-Conversation-Id": conversationId,
-    "X-Sources": JSON.stringify(prepared.sources),
-  };
 
-  // No-context: skip the model (budget efficiency), persist + return the fallback.
+  // No-context: stream fallback text without calling the model (budget efficiency).
   if (!prepared.hasContext) {
     await addMessageFn({ conversationId, role: "assistant", content: NO_CONTEXT_ANSWER, sources: [], usage: null });
-    return new Response(NO_CONTEXT_ANSWER, { status: 200, headers });
+    return createDataStreamResponse({
+      execute: (dataStream) => {
+        dataStream.write(formatDataStreamPart("text", NO_CONTEXT_ANSWER));
+      },
+    });
   }
 
   const result = streamTextFn({
@@ -102,7 +103,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
     },
   });
 
-  return result.toDataStreamResponse({ headers });
+  return result.toDataStreamResponse();
 }
 
 export async function POST(request: Request) {

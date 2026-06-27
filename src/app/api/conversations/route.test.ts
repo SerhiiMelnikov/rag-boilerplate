@@ -3,10 +3,10 @@ vi.mock("@/lib/auth/guards", async () => {
   const actual = await vi.importActual<any>("@/lib/auth/guards");
   return { ...actual, requireUser: vi.fn() };
 });
-vi.mock("@/lib/chat/conversations", () => ({ listConversations: vi.fn() }));
-import { GET } from "@/app/api/conversations/route";
+vi.mock("@/lib/chat/conversations", () => ({ listConversations: vi.fn(), createConversation: vi.fn() }));
+import { GET, POST } from "@/app/api/conversations/route";
 import { requireUser, UnauthorizedError } from "@/lib/auth/guards";
-import { listConversations } from "@/lib/chat/conversations";
+import { listConversations, createConversation } from "@/lib/chat/conversations";
 beforeEach(() => vi.clearAllMocks());
 
 describe("GET /api/conversations", () => {
@@ -21,5 +21,21 @@ describe("GET /api/conversations", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).conversations).toHaveLength(1);
     expect(listConversations).toHaveBeenCalledWith("u1");
+  });
+});
+
+describe("POST /api/conversations", () => {
+  it("401 without a session", async () => {
+    (requireUser as any).mockRejectedValue(new UnauthorizedError());
+    const res = await POST();
+    expect(res.status).toBe(401);
+  });
+  it("creates a conversation for the user", async () => {
+    (requireUser as any).mockResolvedValue({ id: "u1", role: "user" });
+    (createConversation as any).mockResolvedValue({ id: "c1" });
+    const res = await POST();
+    expect(res.status).toBe(201);
+    expect((await res.json()).id).toBe("c1");
+    expect(createConversation).toHaveBeenCalledWith("u1", "New conversation");
   });
 });

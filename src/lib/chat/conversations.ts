@@ -99,6 +99,14 @@ export async function isConversationOwned(userId: string, id: string, database =
   return rows.length > 0;
 }
 
+// Set the conversation title only if it's still the default placeholder and owned by the user.
+export async function setConversationTitleIfDefault(userId: string, id: string, title: string, database = defaultDb) {
+  await database
+    .update(conversations)
+    .set({ title })
+    .where(and(eq(conversations.id, id), eq(conversations.userId, userId), eq(conversations.title, "New conversation")));
+}
+
 // Update a message's rating only if it belongs to a conversation owned by userId.
 export async function setRating(userId: string, messageId: string, rating: 1 | -1 | null, database = defaultDb) {
   // Step 1: ownership check — ensure the message belongs to a conversation owned by the given user.

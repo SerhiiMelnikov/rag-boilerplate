@@ -6,15 +6,15 @@ import userEvent from "@testing-library/user-event";
 
 const setTheme = vi.fn();
 vi.mock("next-themes", () => ({
-  useTheme: () => ({ theme: "dark", setTheme }),
+  useTheme: () => ({ resolvedTheme: "dark", setTheme }),
 }));
 
 import { ThemeToggle } from "@/components/theme-toggle";
 
 describe("ThemeToggle", () => {
-  it("toggles from dark to light on click", async () => {
+  it("toggles from dark to light on click (after mount)", async () => {
     render(<ThemeToggle />);
-    await userEvent.click(screen.getByRole("button", { name: /theme/i }));
+    await userEvent.click(screen.getByRole("button", { name: /toggle theme/i }));
     expect(setTheme).toHaveBeenCalledWith("light");
   });
 });

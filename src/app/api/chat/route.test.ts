@@ -63,6 +63,30 @@ describe("handleChat", () => {
     expect(deps.streamTextFn).toHaveBeenCalled();
   });
 
+  it("passes prior conversation turns to the model and uses a history-aware retrieval query", async () => {
+    const deps = baseDeps();
+    const convo = {
+      messages: [
+        { role: "user", content: "Who is Broderick?" },
+        { role: "assistant", content: "Broderick is a character." },
+        { role: "user", content: "Who is his brother?" },
+      ],
+      conversationId: "c1",
+    };
+    await handleChat(body(convo), deps);
+    const streamArg = (deps.streamTextFn as any).mock.calls[0][0];
+    // Full conversation history is forwarded as messages (context memory).
+    expect(streamArg.messages).toEqual([
+      { role: "user", content: "Who is Broderick?" },
+      { role: "assistant", content: "Broderick is a character." },
+      { role: "user", content: "Who is his brother?" },
+    ]);
+    // Retrieval query carries the prior entity so the pronoun follow-up resolves.
+    const retrievalQuery = (deps.prepareContextFn as any).mock.calls[0][0];
+    expect(retrievalQuery).toContain("Broderick");
+    expect(retrievalQuery).toContain("his brother");
+  });
+
   it("no-context: does not call the model, persists fallback assistant message, returns 200", async () => {
     const deps = baseDeps({ prepareContextFn: vi.fn(async () => ({ hasContext: false, context: "", sources: [] })) });
     const res = await handleChat(body(msg("unknown topic")), deps);

@@ -62,6 +62,19 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   const content = typeof lastUser?.content === "string" ? lastUser.content.trim() : "";
   if (!content) return Response.json({ error: "content is required" }, { status: 400 });
 
+  // Conversation history (useChat sends prior turns) so the model has context
+  // for follow-ups like "who is his brother?". Capped to bound prompt tokens.
+  const MAX_HISTORY_MESSAGES = 10;
+  const history = (parsed.messages ?? [])
+    .filter(
+      (m): m is { role: "user" | "assistant"; content: string } =>
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string" &&
+        m.content.trim().length > 0,
+    )
+    .map((m) => ({ role: m.role, content: m.content.trim() }))
+    .slice(-MAX_HISTORY_MESSAGES);
+
   // Ownership check: 404 if the conversation doesn't belong to this user.
   if (!(await isOwnedFn(user.id, conversationId))) {
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -72,7 +85,15 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   await addMessageFn({ conversationId, role: "user", content });
 
   const settings = await getSettingsFn();
-  const prepared = await prepareContextFn(content, settings);
+  // History-aware retrieval: include the last couple of user turns so a
+  // pronoun-only follow-up still retrieves the entity from the prior question.
+  const retrievalQuery =
+    history
+      .filter((m) => m.role === "user")
+      .slice(-2)
+      .map((m) => m.content)
+      .join("\n") || content;
+  const prepared = await prepareContextFn(retrievalQuery, settings);
 
   // No-context: stream fallback text without calling the model (budget efficiency).
   if (!prepared.hasContext) {
@@ -86,8 +107,10 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
 
   const result = streamTextFn({
     model: google(settings.model),
-    system: settings.systemPrompt,
-    prompt: `Context:\n${prepared.context}\n\nQuestion: ${content}`,
+    // Retrieved context goes in the system prompt; the actual turn-by-turn
+    // conversation is passed as messages so the model keeps context across turns.
+    system: `${settings.systemPrompt}\n\nUse the following context to answer the user's latest question. If the answer is not in the context, say you don't know.\n\nContext:\n${prepared.context}`,
+    messages: history,
     temperature: settings.temperature,
     onFinish: async ({ text, usage }: { text: string; usage?: { promptTokens?: number; completionTokens?: number } }) => {
       await addMessageFn({

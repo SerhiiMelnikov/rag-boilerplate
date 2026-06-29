@@ -27,8 +27,12 @@ export interface IngestResult {
   error?: string;
 }
 
-// Orchestrates parse -> chunk -> hash/dedupe -> embed -> store, tracking status.
-export async function ingestDocument(
+// Processes an already-created document row: parse -> chunk -> hash/dedupe ->
+// embed -> store, tracking status. Split out from createDocument so callers can
+// create the row synchronously (and show it immediately) while running this in
+// the background. Never throws: failures are recorded on the row as "error".
+export async function ingestExistingDocument(
+  documentId: string,
   input: { filename: string; data: Buffer },
   deps: IngestDeps,
 ): Promise<IngestResult> {
@@ -37,7 +41,6 @@ export async function ingestDocument(
   const embed = deps.embed ?? embedDocuments;
   const { store } = deps;
 
-  const documentId = await store.createDocument(input.filename);
   try {
     await store.setStatus(documentId, "processing");
     const text = await parse(input.filename, input.data);
@@ -68,4 +71,15 @@ export async function ingestDocument(
     await store.setStatus(documentId, "error", message);
     return { documentId, chunkCount: 0, skipped: 0, status: "error", error: message };
   }
+}
+
+// Synchronous convenience used by the CLI: create the row, then process it
+// in-line. The web upload path instead creates the row and calls
+// ingestExistingDocument in the background.
+export async function ingestDocument(
+  input: { filename: string; data: Buffer },
+  deps: IngestDeps,
+): Promise<IngestResult> {
+  const documentId = await deps.store.createDocument(input.filename);
+  return ingestExistingDocument(documentId, input, deps);
 }

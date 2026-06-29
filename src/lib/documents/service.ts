@@ -4,7 +4,7 @@ import { documents } from "@/lib/db/schema";
 
 export async function listDocuments(database = defaultDb) {
   return database
-    .select({ id: documents.id, filename: documents.filename, status: documents.status, createdAt: documents.createdAt })
+    .select({ id: documents.id, filename: documents.filename, status: documents.status, error: documents.error, createdAt: documents.createdAt })
     .from(documents)
     .orderBy(desc(documents.createdAt));
 }

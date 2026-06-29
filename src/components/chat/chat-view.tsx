@@ -58,7 +58,16 @@ export function ChatView({ conversationId, onTurnComplete }: { conversationId: s
           return (
             <div key={m.id} className={m.role === "user" ? "text-right" : ""}>
               <div className={`inline-block max-w-[80ch] rounded-lg px-3 py-2 ${m.role === "user" ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-zinc-100 dark:bg-zinc-800"}`}>
-                <MessageContent content={m.content} />
+                {/* While the assistant message exists but no token has arrived yet
+                    (high time-to-first-token on the model), keep showing a
+                    generating indicator instead of an empty bubble. */}
+                {m.role === "assistant" && m.content.length === 0 ? (
+                  <span className="flex items-center gap-2 text-sm text-zinc-500">
+                    <Spinner label="Generating" /> Generating…
+                  </span>
+                ) : (
+                  <MessageContent content={m.content} />
+                )}
                 {m.role === "assistant" && saved && (
                   <>
                     <Sources sources={saved.sources} />

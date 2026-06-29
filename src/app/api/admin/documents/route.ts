@@ -1,5 +1,6 @@
+import { after } from "next/server";
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
-import { ingestDocument } from "@/lib/rag/ingest";
+import { ingestExistingDocument } from "@/lib/rag/ingest";
 import { createDrizzleStore } from "@/lib/rag/store";
 import { listDocuments } from "@/lib/documents/service";
 
@@ -28,11 +29,17 @@ export async function POST(request: Request) {
     return Response.json({ error: "file is required" }, { status: 400 });
   }
   const data = Buffer.from(await file.arrayBuffer());
-  const result = await ingestDocument({ filename: file.name, data }, { store: createDrizzleStore() });
-  return Response.json({
-    documentId: result.documentId,
-    status: result.status,
-    chunkCount: result.chunkCount,
-    skipped: result.skipped,
+
+  // Create the row synchronously so it appears in the list immediately, then run
+  // the (potentially slow, e.g. multimodal PDF) ingestion in the background.
+  // The client polls the list for the status to settle to "ready" / "error".
+  const store = createDrizzleStore();
+  const documentId = await store.createDocument(file.name);
+  await store.setStatus(documentId, "processing");
+
+  after(async () => {
+    await ingestExistingDocument(documentId, { filename: file.name, data }, { store });
   });
+
+  return Response.json({ documentId, status: "processing" });
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { ingestDocument } from "@/lib/rag/ingest";
+import { ingestDocument, ingestExistingDocument } from "@/lib/rag/ingest";
 
 function makeStore(existing: string[] = []) {
   return {
@@ -36,6 +36,19 @@ describe("ingestDocument", () => {
     expect(embed).toHaveBeenCalledWith(["c2"]); // only the new chunk
     expect(result.skipped).toBe(1);
     expect(result.chunkCount).toBe(1);
+  });
+
+  it("ingestExistingDocument processes a pre-created row without creating one", async () => {
+    const store = makeStore();
+    const embed = vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
+    const result = await ingestExistingDocument(
+      "doc-existing",
+      { filename: "a.txt", data: Buffer.from("x") },
+      { parse: async () => "hello world", chunk: () => ["c1"], embed, store },
+    );
+    expect(store.createDocument).not.toHaveBeenCalled();
+    expect(result.documentId).toBe("doc-existing");
+    expect(store.setStatus).toHaveBeenLastCalledWith("doc-existing", "ready");
   });
 
   it("marks the document as error when parsing throws", async () => {

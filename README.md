@@ -130,3 +130,12 @@ stores later.
 - **Embedding dimension is fixed at 768.** Changing the embedding model means
   re-indexing your documents (different models produce incompatible vectors).
 - **`AUTH_SECRET` is required** at runtime for Auth.js to sign sessions.
+- **Layout-heavy PDFs.** Plain PDF text extraction loses 2D structure, so
+  multi-column layouts and tables can come out in the wrong reading order. When
+  such a layout is detected, the parser re-extracts the PDF with a multimodal
+  model (`GOOGLE_PDF_PARSE_MODEL`, default `gemini-2.5-flash`) that preserves
+  reading order; it falls back to flat text if that call fails. This costs one
+  model call per affected document at ingest time (one-time, deduped).
+- **Chat model latency.** The chat model is configurable in **Admin → Settings**.
+  Large models on the free tier can have a high time-to-first-token; a
+  `gemini-*-flash` model streams noticeably faster if responses feel slow.

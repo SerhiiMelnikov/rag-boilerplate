@@ -127,6 +127,10 @@ stores later.
 
 ## Configuration notes
 
+- **Hybrid retrieval.** Search fuses dense vector similarity (pgvector) with
+  Postgres full-text keyword search via Reciprocal Rank Fusion, so named-entity
+  and keyword questions still find the right chunk when dense similarity ranks it
+  too low. The keyword branch uses a GIN index (migration `0003`).
 - **Embedding dimension is fixed at 768.** Changing the embedding model means
   re-indexing your documents (different models produce incompatible vectors).
 - **`AUTH_SECRET` is required** at runtime for Auth.js to sign sessions.

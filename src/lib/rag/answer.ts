@@ -25,7 +25,7 @@ export async function prepareContext(
   const embed = deps.embed ?? embedQuery;
   const retrieve = deps.retrieve ?? searchChunks;
   const queryEmbedding = await embed(question);
-  const chunks: RetrievedChunk[] = await retrieve(queryEmbedding, {
+  const chunks: RetrievedChunk[] = await retrieve(question, queryEmbedding, {
     topK: settings.topK,
     minSimilarity: settings.minSimilarity,
     tokenBudget: settings.contextTokenBudget,

@@ -28,8 +28,9 @@ export function ChatView({ conversationId, onTurnComplete }: { conversationId: s
     const res = await fetch(`/api/conversations/${conversationId}`);
     if (!res.ok) return;
     const data = await res.json();
-    setPersisted(data.messages);
-    setMessages(data.messages.map((m: PersistedMessage) => ({ id: m.id, role: m.role, content: m.content })));
+    const msgs = data.messages ?? [];
+    setPersisted(msgs);
+    setMessages(msgs.map((m: PersistedMessage) => ({ id: m.id, role: m.role, content: m.content })));
   }, [conversationId, setMessages]);
 
   // Load existing history when the conversation changes.

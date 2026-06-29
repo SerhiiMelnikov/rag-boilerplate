@@ -113,9 +113,10 @@ describe.runIf(process.env.RUN_INTEGRATION === "1")("ingestDocument — real DB 
     };
 
     const results = await searchChunks(
+      "test query",
       FAKE_VECTOR,
       { topK: 5, minSimilarity: 0.1, tokenBudget: 10000 },
-      { run: realRun },
+      { vectorRun: realRun, keywordRun: async () => [] },
     );
 
     expect(results.length).toBeGreaterThan(0);

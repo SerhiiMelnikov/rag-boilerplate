@@ -16,7 +16,7 @@ describe("prepareContext", () => {
   it("builds context and maps sources when chunks are retrieved", async () => {
     const retrieve = vi.fn(async () => [chunk("a", 0.9)]);
     const out = await prepareContext("q", settings, { embed: async () => [0.1, 0.2], retrieve });
-    expect(retrieve).toHaveBeenCalledWith([0.1, 0.2], { topK: 5, minSimilarity: 0.3, tokenBudget: 3000 });
+    expect(retrieve).toHaveBeenCalledWith("q", [0.1, 0.2], { topK: 5, minSimilarity: 0.3, tokenBudget: 3000 });
     expect(out.hasContext).toBe(true);
     expect(out.context).toContain("content a");
     expect(out.sources).toEqual([{ documentId: "da", filename: "a.md", chunkId: "a", score: 0.9 }]);

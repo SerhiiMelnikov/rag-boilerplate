@@ -21,6 +21,7 @@ export interface QueryResult {
 export interface QueryDeps {
   embed?: (q: string) => Promise<number[]>;
   retrieve?: (
+    query: string,
     emb: number[],
     opts: { topK: number; minSimilarity: number; tokenBudget: number },
   ) => Promise<RetrievedChunk[]>;
@@ -73,7 +74,7 @@ export async function answerQuery(
   const generate = deps.generate ?? defaultGenerate;
 
   const queryEmbedding = await embed(question);
-  const chunks = await retrieve(queryEmbedding, {
+  const chunks = await retrieve(question, queryEmbedding, {
     topK: settings.topK,
     minSimilarity: settings.minSimilarity,
     tokenBudget: settings.contextTokenBudget,

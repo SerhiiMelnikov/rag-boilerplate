@@ -29,7 +29,7 @@ describe("answerQuery", () => {
     const result = await answerQuery("why?", settings, { embed, retrieve, generate });
 
     expect(embed).toHaveBeenCalledWith("why?");
-    expect(retrieve).toHaveBeenCalledWith([0.1, 0.2], { topK: 5, minSimilarity: 0.3, tokenBudget: 3000 });
+    expect(retrieve).toHaveBeenCalledWith("why?", [0.1, 0.2], { topK: 5, minSimilarity: 0.3, tokenBudget: 3000 });
     expect(result.answer).toBe("Blue.");
     expect(result.sources).toEqual([{ documentId: "da", filename: "a.md", chunkId: "a", score: 0.9 }]);
     expect(result.usage).toEqual({ promptTokens: 10, completionTokens: 2 });

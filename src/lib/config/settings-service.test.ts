@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { encryptSecret } from "@/lib/config/crypto";
+import { describe, it, expect } from "vitest";
+import { encryptSecret, decryptSecret } from "@/lib/config/crypto";
 import { getRuntimeSettings, getAdminSettings, updateSettings, settingsPatchSchema } from "@/lib/config/settings-service";
 
 // Minimal fake Drizzle: a single settings row we can read/update.
@@ -44,6 +44,7 @@ describe("settings service", () => {
     await updateSettings({ openaiKey: "o-key-9999" }, db);
     expect(db.state.openaiKey).not.toBe("o-key-9999"); // stored encrypted
     expect(db.state.googleKey).not.toBeNull(); // untouched
+    expect(decryptSecret(db.state.googleKey as string)).toBe("old-google");
   });
 
   it("updateSettings clears a key on explicit null", async () => {

@@ -11,6 +11,7 @@ export default defineConfig({
     env: {
       DATABASE_URL: "postgres://stub:stub@localhost:5432/stub",
       AUTH_SECRET: "test-secret-stub-for-vitest-do-not-use-in-production",
+      SETTINGS_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
     },
     // Force next-auth (and its deps) through Vite's transform pipeline so that
     // resolve.alias entries (including "next/server") are applied to imports

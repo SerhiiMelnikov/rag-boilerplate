@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { handleChat } from "@/app/api/chat/handler";
 import { UnauthorizedError } from "@/lib/auth/guards";
 
-const settings = { topK: 5, model: "gemma-4-31b-it", temperature: 0.2, systemPrompt: "sp", minSimilarity: 0.3, contextTokenBudget: 3000 };
+const settings = { topK: 5, chatModel: "gemma-4-31b-it", temperature: 0.2, systemPrompt: "sp", minSimilarity: 0.3, contextTokenBudget: 3000 };
 
 // Build a POST request body using the useChat payload shape.
 const body = (b: unknown) => new Request("http://localhost/api/chat", {
@@ -14,7 +14,8 @@ const msg = (content: string) => ({ messages: [{ role: "user", content }], conve
 function baseDeps(over: Partial<any> = {}) {
   return {
     getSession: vi.fn(async () => ({ user: { id: "u1", role: "user" } })),
-    getSettingsFn: vi.fn(async () => settings),
+    // Cast to any: test fixture returns only the fields used by handler; full RuntimeSettings not needed.
+    getSettingsFn: vi.fn(async () => settings) as any,
     prepareContextFn: vi.fn(async () => ({ hasContext: true, context: "ctx", sources: [{ documentId: "d", filename: "f.md", chunkId: "c", score: 0.9 }] })),
     addMessageFn: vi.fn(async () => ({ id: "m1" })),
     isOwnedFn: vi.fn(async () => true),

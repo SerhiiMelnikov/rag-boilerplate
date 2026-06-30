@@ -1,5 +1,5 @@
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
-import { getSettings, updateSettings, settingsPatchSchema } from "@/lib/settings/service";
+import { getAdminSettings, updateSettings, settingsPatchSchema } from "@/lib/config/settings-service";
 
 export async function GET() {
   try {
@@ -9,7 +9,7 @@ export async function GET() {
     if (res) return res;
     throw err;
   }
-  return Response.json(await getSettings());
+  return Response.json(await getAdminSettings());
 }
 
 export async function PUT(request: Request) {

@@ -2,7 +2,7 @@ import { streamText, createDataStreamResponse, formatDataStreamPart } from "ai";
 import { google } from "@ai-sdk/google";
 import { requireUser, errorToResponse } from "@/lib/auth/guards";
 import { isConversationOwned, addMessage, setConversationTitleIfDefault } from "@/lib/chat/conversations";
-import { getSettings } from "@/lib/settings/service";
+import { getRuntimeSettings } from "@/lib/config/settings-service";
 import { prepareContext } from "@/lib/rag/answer";
 
 const NO_CONTEXT_ANSWER =
@@ -17,7 +17,7 @@ type StreamTextLike = (args: Parameters<typeof streamText>[0]) => { toDataStream
 
 export interface ChatDeps {
   getSession?: SessionFn;
-  getSettingsFn?: typeof getSettings;
+  getSettingsFn?: typeof getRuntimeSettings;
   prepareContextFn?: typeof prepareContext;
   isOwnedFn?: typeof isConversationOwned;
   addMessageFn?: typeof addMessage;
@@ -28,7 +28,7 @@ export interface ChatDeps {
 // Testable core: every collaborator is injectable.
 // Exported from handler.ts (not route.ts) so Next.js does not reject it as an invalid route export.
 export async function handleChat(request: Request, deps: ChatDeps = {}) {
-  const getSettingsFn = deps.getSettingsFn ?? getSettings;
+  const getSettingsFn = deps.getSettingsFn ?? getRuntimeSettings;
   const prepareContextFn = deps.prepareContextFn ?? prepareContext;
   const isOwnedFn = deps.isOwnedFn ?? isConversationOwned;
   const addMessageFn = deps.addMessageFn ?? addMessage;
@@ -106,7 +106,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   }
 
   const result = streamTextFn({
-    model: google(settings.model),
+    model: google(settings.chatModel),
     // Retrieved context goes in the system prompt; the actual turn-by-turn
     // conversation is passed as messages so the model keeps context across turns.
     system: `${settings.systemPrompt}\n\nUse the following context to answer the user's latest question. If the answer is not in the context, say you don't know.\n\nContext:\n${prepared.context}`,

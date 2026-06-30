@@ -4,17 +4,24 @@ vi.mock("@/lib/auth/guards", async () => {
   const actual = await vi.importActual<any>("@/lib/auth/guards");
   return { ...actual, requireAdmin: vi.fn() };
 });
-vi.mock("@/lib/settings/service", () => ({
-  getSettings: vi.fn(),
+vi.mock("@/lib/config/settings-service", () => ({
+  getAdminSettings: vi.fn(),
   updateSettings: vi.fn(),
   settingsPatchSchema: { safeParse: (v: any) => ({ success: true, data: v }) },
 }));
 
 import { GET, PUT } from "@/app/api/admin/settings/route";
 import { requireAdmin, ForbiddenError } from "@/lib/auth/guards";
-import { getSettings, updateSettings } from "@/lib/settings/service";
+import { getAdminSettings, updateSettings } from "@/lib/config/settings-service";
 
-const ROW = { topK: 5, model: "gemma-4-31b-it", temperature: 0.2, systemPrompt: "sp", minSimilarity: 0.3, contextTokenBudget: 3000 };
+const MASKED = {
+  chatProvider: "google", chatModel: "gemma-4-31b-it",
+  embeddingProvider: "google", embeddingModel: "gemini-embedding-2",
+  parserProvider: "google", parserModel: "gemini-2.5-flash",
+  temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
+  systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
+  keys: { google: { set: false, last4: null }, openai: { set: false, last4: null }, anthropic: { set: false, last4: null } },
+};
 beforeEach(() => vi.clearAllMocks());
 
 describe("GET /api/admin/settings", () => {
@@ -22,19 +29,30 @@ describe("GET /api/admin/settings", () => {
     (requireAdmin as any).mockRejectedValue(new ForbiddenError());
     expect((await GET()).status).toBe(403);
   });
-  it("returns settings for an admin", async () => {
+  it("returns masked settings for an admin", async () => {
     (requireAdmin as any).mockResolvedValue({ id: "u1", role: "admin" });
-    (getSettings as any).mockResolvedValue(ROW);
+    (getAdminSettings as any).mockResolvedValue(MASKED);
     const res = await GET();
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(ROW);
+    const body = await res.json();
+    expect(body.keys.google).toEqual({ set: false, last4: null });
+    expect(JSON.stringify(body)).not.toContain("AIza"); // no plaintext key shapes
   });
 });
 
 describe("PUT /api/admin/settings", () => {
-  it("updates and returns settings for an admin", async () => {
+  it("403 for a non-admin", async () => {
+    (requireAdmin as any).mockRejectedValue(new ForbiddenError());
+    const req = new Request("http://localhost/api/admin/settings", {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ topK: 9 }),
+    });
+    const res = await PUT(req);
+    expect(res.status).toBe(403);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+  it("updates and returns masked settings for an admin", async () => {
     (requireAdmin as any).mockResolvedValue({ id: "u1", role: "admin" });
-    (updateSettings as any).mockResolvedValue({ ...ROW, topK: 9 });
+    (updateSettings as any).mockResolvedValue({ ...MASKED, topK: 9 });
     const req = new Request("http://localhost/api/admin/settings", {
       method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ topK: 9 }),
     });

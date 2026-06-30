@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { prepareContext } from "@/lib/rag/answer";
 import type { RetrievedChunk } from "@/lib/rag/retrieve";
 
-const settings = { topK: 5, model: "gemma-4-31b-it", temperature: 0.2, systemPrompt: "sp", minSimilarity: 0.3, contextTokenBudget: 3000 };
+const settings = { topK: 5, chatModel: "gemma-4-31b-it", temperature: 0.2, systemPrompt: "sp", minSimilarity: 0.3, contextTokenBudget: 3000 };
 const chunk = (id: string, score: number): RetrievedChunk => ({ chunkId: id, documentId: "d" + id, filename: id + ".md", content: "content " + id, score });
 
 describe("prepareContext", () => {

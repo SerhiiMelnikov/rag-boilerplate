@@ -143,3 +143,10 @@ stores later.
 - **Chat model latency.** The chat model is configurable in **Admin → Settings**.
   Large models on the free tier can have a high time-to-first-token; a
   `gemini-*-flash` model streams noticeably faster if responses feel slow.
+- **Provider API keys are managed in Admin → Settings (encrypted at rest).** Set
+  them in **Admin → Settings → Provider keys**; they are encrypted with
+  `SETTINGS_ENCRYPTION_KEY` (AES-256-GCM), which is required before saving any
+  key. Per-task model selection (chat / embedding / document parser) lives there
+  too. Key *storage and management* land here now; the providers begin consuming
+  these stored keys in a later step — until then the app uses
+  `GOOGLE_GENERATIVE_AI_API_KEY` from env.

@@ -58,10 +58,23 @@ export const messages = pgTable("messages", {
 
 export const settings = pgTable("settings", {
   id: integer("id").primaryKey().default(1), // singleton row
-  topK: integer("top_k").notNull().default(5),
-  model: text("model").notNull().default("gemma-4-31b-it"),
+  // Per-task provider + model (provider is text + zod-validated, not a pg enum,
+  // so new providers need no migration).
+  chatProvider: text("chat_provider").notNull().default("google"),
+  chatModel: text("chat_model").notNull().default("gemma-4-31b-it"),
+  embeddingProvider: text("embedding_provider").notNull().default("google"),
+  embeddingModel: text("embedding_model").notNull().default("gemini-embedding-2"),
+  parserProvider: text("parser_provider").notNull().default("google"),
+  parserModel: text("parser_model").notNull().default("gemini-2.5-flash"),
+  // Behavior (sampling = temperature only).
   temperature: real("temperature").notNull().default(0.2),
-  systemPrompt: text("system_prompt").notNull().default("You are a helpful assistant. Answer using only the provided context."),
+  topK: integer("top_k").notNull().default(5), // retrieval chunk count
   minSimilarity: real("min_similarity").notNull().default(0.3),
   contextTokenBudget: integer("context_token_budget").notNull().default(3000),
+  systemPrompt: text("system_prompt").notNull().default("You are a helpful assistant. Answer using only the provided context."),
+  // Provider API keys, encrypted at rest (nullable until an admin sets them).
+  googleKey: text("google_key"),
+  openaiKey: text("openai_key"),
+  anthropicKey: text("anthropic_key"),
+  ollamaBaseUrl: text("ollama_base_url").notNull().default("http://localhost:11434"),
 });

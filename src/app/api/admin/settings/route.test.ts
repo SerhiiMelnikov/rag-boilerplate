@@ -41,6 +41,15 @@ describe("GET /api/admin/settings", () => {
 });
 
 describe("PUT /api/admin/settings", () => {
+  it("403 for a non-admin", async () => {
+    (requireAdmin as any).mockRejectedValue(new ForbiddenError());
+    const req = new Request("http://localhost/api/admin/settings", {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ topK: 9 }),
+    });
+    const res = await PUT(req);
+    expect(res.status).toBe(403);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
   it("updates and returns masked settings for an admin", async () => {
     (requireAdmin as any).mockResolvedValue({ id: "u1", role: "admin" });
     (updateSettings as any).mockResolvedValue({ ...MASKED, topK: 9 });

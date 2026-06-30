@@ -3,7 +3,7 @@ import { answerQuery, buildContext } from "@/lib/rag/query";
 import type { RetrievedChunk } from "@/lib/rag/retrieve";
 
 const settings = {
-  topK: 5, model: "gemini-1.5-flash", temperature: 0.2,
+  topK: 5, chatModel: "gemini-1.5-flash", temperature: 0.2,
   systemPrompt: "Use only the context.", minSimilarity: 0.3, contextTokenBudget: 3000,
 };
 

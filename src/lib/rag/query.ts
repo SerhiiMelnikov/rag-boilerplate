@@ -5,7 +5,7 @@ import { searchChunks, type RetrievedChunk } from "./retrieve";
 
 export interface QuerySettings {
   topK: number;
-  model: string;
+  chatModel: string;
   temperature: number;
   systemPrompt: string;
   minSimilarity: number;
@@ -89,7 +89,7 @@ export async function answerQuery(
   const { text, usage } = await generate({
     system: settings.systemPrompt,
     prompt,
-    model: settings.model,
+    model: settings.chatModel,
     temperature: settings.temperature,
   });
 

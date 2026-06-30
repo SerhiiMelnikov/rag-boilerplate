@@ -143,3 +143,8 @@ stores later.
 - **Chat model latency.** The chat model is configurable in **Admin → Settings**.
   Large models on the free tier can have a high time-to-first-token; a
   `gemini-*-flash` model streams noticeably faster if responses feel slow.
+- **Provider API keys live in the admin Settings (encrypted), not in env.** Set
+  them in **Admin → Settings → Provider keys**; they are encrypted at rest with
+  `SETTINGS_ENCRYPTION_KEY` (AES-256-GCM). Per-task model selection (chat /
+  embedding / document parser) lives there too. `SETTINGS_ENCRYPTION_KEY` is
+  required before saving any key.

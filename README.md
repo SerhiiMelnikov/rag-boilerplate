@@ -12,7 +12,9 @@ hand-rolled RAG engine — all on one configuration: **Google Gemini + Postgres/
 
 - **Web:** Next.js 15 (App Router), TypeScript, Tailwind CSS, Headless UI (minimal, dark-mode-first — easy to restyle)
 - **Auth:** Auth.js v5 (credentials) with JWT sessions and admin/user roles
-- **Database:** Postgres + the `pgvector` extension, via Drizzle ORM
+- **Database:** Postgres (documents, users, chat history, settings — always here) plus
+  chunks + vector search, stored in either Postgres/`pgvector` (default) or Qdrant,
+  selected by `VECTOR_STORE`; both are wired through Drizzle ORM / a shared `VectorStore` interface
 - **AI (Google Gemini):** chat model `gemma-4-31b-it`, embeddings `gemini-embedding-2` at 768 dimensions (Vercel AI SDK)
 - **Docs ingestion:** PDF, DOCX, Markdown, plain text
 
@@ -50,6 +52,23 @@ npm run db:migrate
 
 # 5. Create the admin user from ADMIN_EMAIL / ADMIN_PASSWORD
 npm run seed:admin
+```
+
+### Using Qdrant instead of pgvector
+
+By default chunks are stored in Postgres/`pgvector`. To use Qdrant instead:
+
+```bash
+# In .env: set VECTOR_STORE=qdrant and QDRANT_URL (defaults shown in .env.example)
+
+# Start Qdrant
+docker compose up -d qdrant
+
+# Postgres is still required (documents/users/chat history/settings live there)
+npm run db:up
+
+# Create the Qdrant collection
+npm run vectorstore:init
 ```
 
 ## Run
@@ -100,6 +119,7 @@ Before the assistant can answer from your knowledge base, index some documents:
 | `npm run db:migrate` | Apply migrations |
 | `npm run ingest -- <path>` | Bulk-ingest a file or folder |
 | `npm run seed:admin` | Create the admin user from env |
+| `npm run vectorstore:init` | Create the Qdrant collection (only needed when `VECTOR_STORE=qdrant`) |
 
 ## Testing
 
@@ -155,3 +175,8 @@ stores later.
   failure.
 - Embedding dimension is set by `EMBEDDING_DIMENSIONS` (default 768); switching
   embedding provider/model to a different width requires re-indexing.
+- **Vector store backend is set by `VECTOR_STORE`** (`pgvector` default, or
+  `qdrant`). Switching stores requires re-indexing — vectors are not shared
+  between backends. Qdrant's keyword search is a pragmatic `MatchText`
+  approximation (Qdrant has no `ts_rank`/BM25), so hybrid ranking there is
+  slightly weaker than pgvector's Postgres full-text search.

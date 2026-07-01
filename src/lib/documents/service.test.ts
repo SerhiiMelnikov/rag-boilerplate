@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { listDocuments, deleteDocument } from "@/lib/documents/service";
 
 describe("listDocuments", () => {
@@ -10,12 +10,15 @@ describe("listDocuments", () => {
 });
 
 describe("deleteDocument", () => {
-  it("true when a row was deleted", async () => {
-    const db = { delete: () => ({ where: () => ({ returning: async () => [{ id: "d1" }] }) }) } as any;
-    expect(await deleteDocument("d1", db)).toBe(true);
+  it("true when a row was deleted, and clears vectors first", async () => {
+    const database = { delete: () => ({ where: () => ({ returning: async () => [{ id: "d1" }] }) }) } as any;
+    const vectorStore = { deleteByDocument: vi.fn(async () => {}) } as any;
+    expect(await deleteDocument("d1", { database, vectorStore })).toBe(true);
+    expect(vectorStore.deleteByDocument).toHaveBeenCalledWith("d1");
   });
   it("false when nothing deleted", async () => {
-    const db = { delete: () => ({ where: () => ({ returning: async () => [] }) }) } as any;
-    expect(await deleteDocument("d1", db)).toBe(false);
+    const database = { delete: () => ({ where: () => ({ returning: async () => [] }) }) } as any;
+    const vectorStore = { deleteByDocument: vi.fn(async () => {}) } as any;
+    expect(await deleteDocument("d1", { database, vectorStore })).toBe(false);
   });
 });

@@ -4,8 +4,20 @@ import { db } from "@/lib/db/client";
 import { documents } from "@/lib/db/schema";
 import { ingestDocument } from "@/lib/rag/ingest";
 import { createDrizzleStore } from "@/lib/rag/store";
+import type { RuntimeSettings } from "@/lib/config/settings-service";
 
 const PREFIX = "__itest_upload__";
+
+// Unused at runtime (embed is injected via fakeEmbed below) but required to
+// satisfy IngestDeps' type.
+const settings = {
+  chatProvider: "google", chatModel: "gemma-4-31b-it",
+  embeddingProvider: "google", embeddingModel: "gemini-embedding-2",
+  parserProvider: "google", parserModel: "gemini-2.5-flash",
+  temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
+  systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
+  keys: { google: "gk", openai: null, anthropic: null },
+} satisfies RuntimeSettings;
 
 describe.runIf(process.env.RUN_INTEGRATION === "1")("admin document upload (real DB)", () => {
   afterAll(async () => {
@@ -21,14 +33,14 @@ describe.runIf(process.env.RUN_INTEGRATION === "1")("admin document upload (real
     const fakeEmbed = async (texts: string[]) => texts.map(() => Array(768).fill(0.02));
     const first = await ingestDocument(
       { filename, data: Buffer.from("Hello world. This is a test document about scattering.") },
-      { store: createDrizzleStore(), embed: fakeEmbed },
+      { store: createDrizzleStore(), embed: fakeEmbed, settings },
     );
     expect(first.status).toBe("ready");
     expect(first.chunkCount).toBeGreaterThan(0);
 
     const second = await ingestDocument(
       { filename, data: Buffer.from("Hello world. This is a test document about scattering.") },
-      { store: createDrizzleStore(), embed: fakeEmbed },
+      { store: createDrizzleStore(), embed: fakeEmbed, settings },
     );
     expect(second.chunkCount).toBe(0);
     expect(second.skipped).toBe(first.chunkCount);

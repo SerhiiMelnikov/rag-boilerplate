@@ -1,6 +1,7 @@
 import { embedQuery } from "./embeddings";
 import { searchChunks, type RetrievedChunk } from "./retrieve";
-import { buildContext, type QuerySettings } from "./query";
+import { buildContext } from "./query";
+import type { RuntimeSettings } from "@/lib/config/settings-service";
 
 export interface SourceRef {
   documentId: string;
@@ -19,10 +20,10 @@ export interface PreparedContext {
 // is found, so callers can skip the generation model entirely.
 export async function prepareContext(
   question: string,
-  settings: QuerySettings,
+  settings: RuntimeSettings,
   deps: { embed?: (q: string) => Promise<number[]>; retrieve?: typeof searchChunks } = {},
 ): Promise<PreparedContext> {
-  const embed = deps.embed ?? embedQuery;
+  const embed = deps.embed ?? ((q: string) => embedQuery(q, settings));
   const retrieve = deps.retrieve ?? searchChunks;
   const queryEmbedding = await embed(question);
   const chunks: RetrievedChunk[] = await retrieve(question, queryEmbedding, {

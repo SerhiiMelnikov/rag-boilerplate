@@ -3,6 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { ingestDocument } from "@/lib/rag/ingest";
 import { createDrizzleStore } from "@/lib/rag/store";
+import { getRuntimeSettings } from "@/lib/config/settings-service";
 
 const SUPPORTED = [".pdf", ".docx", ".md", ".markdown", ".txt"];
 
@@ -41,11 +42,12 @@ async function main() {
     process.exit(1);
   }
   const store = createDrizzleStore();
+  const settings = await getRuntimeSettings();
   const files = (await collect(target)).filter((f) => SUPPORTED.some((ext) => f.toLowerCase().endsWith(ext)));
   console.log(`Found ${files.length} supported file(s).`);
   for (const file of files) {
     const data = await readFile(file);
-    const result = await ingestDocument({ filename: basename(file), data }, { store });
+    const result = await ingestDocument({ filename: basename(file), data }, { store, settings });
     console.log(`${file}: ${result.status} (${result.chunkCount} new, ${result.skipped} skipped)${result.error ? " - " + String(result.error) : ""}`);
   }
   process.exit(0);

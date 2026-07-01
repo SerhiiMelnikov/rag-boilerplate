@@ -20,7 +20,7 @@ hand-rolled RAG engine — all on one configuration: **Google Gemini + Postgres/
 
 - **Node.js 20+**
 - **Docker** (runs the bundled Postgres + pgvector)
-- A **Google AI Studio API key** (free tier works) — https://aistudio.google.com/apikey
+- A provider API key (e.g. a free Google AI Studio key — https://aistudio.google.com/apikey) — entered in the app at Admin → Provider keys after first run, NOT in .env
 
 ## Setup
 
@@ -37,8 +37,8 @@ Edit `.env`:
 | Variable | What to put |
 | --- | --- |
 | `DATABASE_URL` | Leave the default — it matches the bundled Docker database (`postgres://rag:rag@localhost:5432/rag`) |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Your Google AI Studio key |
 | `AUTH_SECRET` | A random secret — generate with `openssl rand -base64 32` |
+| `SETTINGS_ENCRYPTION_KEY` | 32-byte base64 — generate with `openssl rand -base64 32` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credentials for the first admin account |
 
 ```bash
@@ -61,6 +61,10 @@ npm run dev
 Open http://localhost:3000. Sign in with your admin credentials, or register a
 regular account at `/register` (self-registration always creates a normal user;
 admins are created only via `npm run seed:admin`).
+
+Then open Admin → Provider keys and paste at least one provider API key; until
+a key is set for the configured chat/embedding provider, chat and ingestion
+report a clear "not configured" message.
 
 ## Add documents (ingestion)
 
@@ -131,15 +135,13 @@ stores later.
   Postgres full-text keyword search via Reciprocal Rank Fusion, so named-entity
   and keyword questions still find the right chunk when dense similarity ranks it
   too low. The keyword branch uses a GIN index (migration `0003`).
-- **Embedding dimension is fixed at 768.** Changing the embedding model means
-  re-indexing your documents (different models produce incompatible vectors).
 - **`AUTH_SECRET` is required** at runtime for Auth.js to sign sessions.
 - **Layout-heavy PDFs.** Plain PDF text extraction loses 2D structure, so
   multi-column layouts and tables can come out in the wrong reading order. When
-  such a layout is detected, the parser re-extracts the PDF with a multimodal
-  model (`GOOGLE_PDF_PARSE_MODEL`, default `gemini-2.5-flash`) that preserves
-  reading order; it falls back to flat text if that call fails. This costs one
-  model call per affected document at ingest time (one-time, deduped).
+  such a layout is detected, the parser re-extracts the PDF with the
+  admin-configured document-parser model that preserves reading order; it
+  falls back to flat text if that call fails. This costs one model call per
+  affected document at ingest time (one-time, deduped).
 - **Chat model latency.** The chat model is configurable in **Admin → Settings**.
   Large models on the free tier can have a high time-to-first-token; a
   `gemini-*-flash` model streams noticeably faster if responses feel slow.
@@ -147,6 +149,9 @@ stores later.
   them in **Admin → Settings → Provider keys**; they are encrypted with
   `SETTINGS_ENCRYPTION_KEY` (AES-256-GCM), which is required before saving any
   key. Per-task model selection (chat / embedding / document parser) lives there
-  too. Key *storage and management* land here now; the providers begin consuming
-  these stored keys in a later step — until then the app uses
-  `GOOGLE_GENERATIVE_AI_API_KEY` from env.
+  too. All model calls (chat, embeddings, document parser) use these DB-stored
+  keys; there is no environment fallback. A missing or invalid key surfaces as
+  a clear message in chat and on the document's status — never a silent
+  failure.
+- Embedding dimension is set by `EMBEDDING_DIMENSIONS` (default 768); switching
+  embedding provider/model to a different width requires re-indexing.

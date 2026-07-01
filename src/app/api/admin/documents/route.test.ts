@@ -9,6 +9,7 @@ vi.mock("@/lib/rag/store", () => ({ createDrizzleStore: vi.fn(() => store) }));
 vi.mock("@/lib/documents/service", () => ({ listDocuments: vi.fn() }));
 // Run the scheduled background work synchronously so we can assert on it.
 vi.mock("next/server", () => ({ after: (fn: any) => void fn() }));
+vi.mock("@/lib/config/settings-service", () => ({ getRuntimeSettings: vi.fn(async () => ({})) }));
 import { GET, POST } from "@/app/api/admin/documents/route";
 import { requireAdmin, ForbiddenError } from "@/lib/auth/guards";
 import { ingestExistingDocument } from "@/lib/rag/ingest";

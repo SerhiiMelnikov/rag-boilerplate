@@ -19,6 +19,18 @@ import { documents, chunks } from "@/lib/db/schema";
 import { createDrizzleStore } from "./store";
 import { ingestDocument } from "./ingest";
 import { searchChunks, type RetrievedChunk } from "./retrieve";
+import type { RuntimeSettings } from "@/lib/config/settings-service";
+
+// Unused at runtime (embed is injected via fakeEmbedder below) but required to
+// satisfy IngestDeps' type.
+const settings = {
+  chatProvider: "google", chatModel: "gemma-4-31b-it",
+  embeddingProvider: "google", embeddingModel: "gemini-embedding-2",
+  parserProvider: "google", parserModel: "gemini-2.5-flash",
+  temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
+  systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
+  keys: { google: "gk", openai: null, anthropic: null },
+} satisfies RuntimeSettings;
 
 // Fixed 768-dimension vector used for all fake embeddings so cosine similarity
 // between any two embedded texts is 1 (identical vectors).
@@ -63,7 +75,7 @@ describe.runIf(process.env.RUN_INTEGRATION === "1")("ingestDocument — real DB 
     const store = createDrizzleStore(testDb);
     const result = await ingestDocument(
       { filename: testFilename, data: Buffer.from(testContent, "utf-8") },
-      { store, embed: fakeEmbedder },
+      { store, embed: fakeEmbedder, settings },
     );
 
     expect(result.status).toBe("ready");
@@ -76,7 +88,7 @@ describe.runIf(process.env.RUN_INTEGRATION === "1")("ingestDocument — real DB 
     const store = createDrizzleStore(testDb);
     const result = await ingestDocument(
       { filename: testFilename, data: Buffer.from(testContent, "utf-8") },
-      { store, embed: fakeEmbedder },
+      { store, embed: fakeEmbedder, settings },
     );
 
     expect(result.status).toBe("ready");

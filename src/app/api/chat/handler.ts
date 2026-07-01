@@ -1,9 +1,10 @@
 import { streamText, createDataStreamResponse, formatDataStreamPart } from "ai";
-import { google } from "@ai-sdk/google";
 import { requireUser, errorToResponse } from "@/lib/auth/guards";
 import { isConversationOwned, addMessage, setConversationTitleIfDefault } from "@/lib/chat/conversations";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
 import { prepareContext } from "@/lib/rag/answer";
+import { getChatModel } from "@/lib/providers";
+import { isProviderError } from "@/lib/providers/types";
 
 const NO_CONTEXT_ANSWER =
   "I don't have any relevant information in the knowledge base to answer that.";
@@ -19,6 +20,7 @@ export interface ChatDeps {
   getSession?: SessionFn;
   getSettingsFn?: typeof getRuntimeSettings;
   prepareContextFn?: typeof prepareContext;
+  getChatModelFn?: typeof getChatModel;
   isOwnedFn?: typeof isConversationOwned;
   addMessageFn?: typeof addMessage;
   setTitleFn?: typeof setConversationTitleIfDefault;
@@ -30,6 +32,7 @@ export interface ChatDeps {
 export async function handleChat(request: Request, deps: ChatDeps = {}) {
   const getSettingsFn = deps.getSettingsFn ?? getRuntimeSettings;
   const prepareContextFn = deps.prepareContextFn ?? prepareContext;
+  const getChatModelFn = deps.getChatModelFn ?? getChatModel;
   const isOwnedFn = deps.isOwnedFn ?? isConversationOwned;
   const addMessageFn = deps.addMessageFn ?? addMessage;
   const setTitleFn = deps.setTitleFn ?? setConversationTitleIfDefault;
@@ -93,20 +96,39 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
       .slice(-2)
       .map((m) => m.content)
       .join("\n") || content;
-  const prepared = await prepareContextFn(retrievalQuery, settings);
+  // Persist an assistant message and stream it verbatim (no model call).
+  const replyWithMessage = async (textOut: string) => {
+    await addMessageFn({ conversationId, role: "assistant", content: textOut, sources: [], usage: null });
+    return createDataStreamResponse({
+      execute: (dataStream) => {
+        dataStream.write(formatDataStreamPart("text", textOut));
+      },
+    });
+  };
+
+  let prepared;
+  try {
+    prepared = await prepareContextFn(retrievalQuery, settings);
+  } catch (err) {
+    if (isProviderError(err)) return replyWithMessage((err as Error).message);
+    throw err;
+  }
 
   // No-context: stream fallback text without calling the model (budget efficiency).
   if (!prepared.hasContext) {
-    await addMessageFn({ conversationId, role: "assistant", content: NO_CONTEXT_ANSWER, sources: [], usage: null });
-    return createDataStreamResponse({
-      execute: (dataStream) => {
-        dataStream.write(formatDataStreamPart("text", NO_CONTEXT_ANSWER));
-      },
-    });
+    return replyWithMessage(NO_CONTEXT_ANSWER);
+  }
+
+  let chatModel;
+  try {
+    chatModel = getChatModelFn(settings);
+  } catch (err) {
+    if (isProviderError(err)) return replyWithMessage((err as Error).message);
+    throw err;
   }
 
   const result = streamTextFn({
-    model: google(settings.chatModel),
+    model: chatModel,
     // Retrieved context goes in the system prompt; the actual turn-by-turn
     // conversation is passed as messages so the model keeps context across turns.
     system: `${settings.systemPrompt}\n\nUse the following context to answer the user's latest question. If the answer is not in the context, say you don't know.\n\nContext:\n${prepared.context}`,

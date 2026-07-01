@@ -3,6 +3,7 @@ import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
 import { ingestExistingDocument } from "@/lib/rag/ingest";
 import { createDrizzleStore } from "@/lib/rag/store";
 import { listDocuments } from "@/lib/documents/service";
+import { getRuntimeSettings } from "@/lib/config/settings-service";
 
 export async function GET() {
   try {
@@ -37,8 +38,9 @@ export async function POST(request: Request) {
   const documentId = await store.createDocument(file.name);
   await store.setStatus(documentId, "processing");
 
+  const settings = await getRuntimeSettings();
   after(async () => {
-    await ingestExistingDocument(documentId, { filename: file.name, data }, { store });
+    await ingestExistingDocument(documentId, { filename: file.name, data }, { store, settings });
   });
 
   return Response.json({ documentId, status: "processing" });

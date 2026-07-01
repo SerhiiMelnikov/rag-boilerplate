@@ -36,6 +36,13 @@
       "when": 1782900000001,
       "tag": "0004_modular_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782903681952,
+      "tag": "0005_next_ravenous",
+      "breakpoints": true
     }
   ]
 }

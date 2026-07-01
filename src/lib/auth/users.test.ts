@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { createUser, getUserByEmail, DuplicateEmailError } from "@/lib/auth/users";
+import { createUser, getUserByEmail, getAuthUserById, DuplicateEmailError } from "@/lib/auth/users";
 
 // Minimal fake matching the Drizzle calls used by the service.
 function fakeDb(opts: { existing?: any[]; insertResult?: any[]; insertThrows?: unknown } = {}) {
@@ -38,5 +38,18 @@ describe("getUserByEmail", () => {
   it("returns the row including passwordHash when found", async () => {
     const db = fakeDb({ existing: [{ id: "u1", email: "a@b.com", role: "admin", passwordHash: "h" }] });
     expect(await getUserByEmail("a@b.com", db)).toMatchObject({ id: "u1", role: "admin", passwordHash: "h" });
+  });
+});
+
+describe("getAuthUserById", () => {
+  it("returns role, super-admin flag, and blocked timestamp", async () => {
+    const row = { id: "u1", role: "admin", isSuperAdmin: true, blockedAt: null };
+    const db = fakeDb({ existing: [row] });
+    expect(await getAuthUserById("u1", db)).toEqual(row);
+  });
+
+  it("returns null when the user is absent", async () => {
+    const db = fakeDb({ existing: [] });
+    expect(await getAuthUserById("missing", db)).toBeNull();
   });
 });

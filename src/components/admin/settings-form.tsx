@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Select } from "@/components/ui/select";
 
 type KeyStatus = { set: boolean; last4: string | null };
 interface AdminSettings {
@@ -39,9 +40,7 @@ function ModelRow({ label, provider, model, providers, onProvider, onModel, miss
     <div className="flex flex-col gap-1 text-sm">
       <span>{label}</span>
       <div className="flex gap-2">
-        <select aria-label={`${label} provider`} value={provider} onChange={(e) => onProvider(e.target.value)} className={inputCls}>
-          {providers.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
+        <Select ariaLabel={`${label} provider`} value={provider} onChange={onProvider} options={providers} className="min-w-32" />
         <input aria-label={`${label} model`} value={model} onChange={(e) => onModel(e.target.value)} className={`${inputCls} flex-1`} />
       </div>
       {missingKey && (

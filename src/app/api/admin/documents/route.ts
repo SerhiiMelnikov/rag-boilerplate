@@ -1,9 +1,9 @@
 import { after } from "next/server";
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
 import { ingestExistingDocument } from "@/lib/rag/ingest";
-import { createDrizzleStore } from "@/lib/rag/store";
-import { listDocuments } from "@/lib/documents/service";
+import { getVectorStore, getDocumentRepo } from "@/lib/vectorstore";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
+import { listDocuments } from "@/lib/documents/service";
 
 export async function GET() {
   try {
@@ -34,13 +34,14 @@ export async function POST(request: Request) {
   // Create the row synchronously so it appears in the list immediately, then run
   // the (potentially slow, e.g. multimodal PDF) ingestion in the background.
   // The client polls the list for the status to settle to "ready" / "error".
-  const store = createDrizzleStore();
-  const documentId = await store.createDocument(file.name);
-  await store.setStatus(documentId, "processing");
+  const documentRepo = getDocumentRepo();
+  const vectorStore = getVectorStore();
+  const documentId = await documentRepo.createDocument(file.name);
+  await documentRepo.setStatus(documentId, "processing");
 
   const settings = await getRuntimeSettings();
   after(async () => {
-    await ingestExistingDocument(documentId, { filename: file.name, data }, { store, settings });
+    await ingestExistingDocument(documentId, { filename: file.name, data }, { documentRepo, vectorStore, settings });
   });
 
   return Response.json({ documentId, status: "processing" });

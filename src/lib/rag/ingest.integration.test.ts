@@ -16,9 +16,9 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "@/lib/db/schema";
 import { documents, chunks } from "@/lib/db/schema";
-import { createDrizzleStore } from "./store";
 import { ingestDocument } from "./ingest";
 import { searchChunks } from "./retrieve";
+import { createDocumentRepo } from "@/lib/vectorstore/document-repo";
 import { createPgVectorStore } from "@/lib/vectorstore/pgvector/store";
 import type { RuntimeSettings } from "@/lib/config/settings-service";
 
@@ -73,10 +73,11 @@ describe.runIf(process.env.RUN_INTEGRATION === "1")("ingestDocument — real DB 
   it("first ingest: status ready, chunkCount > 0, skipped 0", async () => {
     // Inject testDb so the store uses the real DB connection, not the stub
     // singleton from @/lib/db/client that vitest config overwrites.
-    const store = createDrizzleStore(testDb);
+    const documentRepo = createDocumentRepo(testDb);
+    const vectorStore = createPgVectorStore(testDb);
     const result = await ingestDocument(
       { filename: testFilename, data: Buffer.from(testContent, "utf-8") },
-      { store, embed: fakeEmbedder, settings },
+      { documentRepo, vectorStore, embed: fakeEmbedder, settings },
     );
 
     expect(result.status).toBe("ready");
@@ -86,10 +87,11 @@ describe.runIf(process.env.RUN_INTEGRATION === "1")("ingestDocument — real DB 
   });
 
   it("re-ingest identical file: chunkCount 0, skipped == prior count, exactly one document row", async () => {
-    const store = createDrizzleStore(testDb);
+    const documentRepo = createDocumentRepo(testDb);
+    const vectorStore = createPgVectorStore(testDb);
     const result = await ingestDocument(
       { filename: testFilename, data: Buffer.from(testContent, "utf-8") },
-      { store, embed: fakeEmbedder, settings },
+      { documentRepo, vectorStore, embed: fakeEmbedder, settings },
     );
 
     expect(result.status).toBe("ready");

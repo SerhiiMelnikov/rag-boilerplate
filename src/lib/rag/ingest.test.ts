@@ -11,37 +11,51 @@ const settings = {
   keys: { google: "gk", openai: null, anthropic: null },
 } satisfies RuntimeSettings;
 
-function makeStore(existing: string[] = []) {
+function makeDocumentRepo() {
   return {
     createDocument: vi.fn(async () => "doc-1"),
     setStatus: vi.fn(async () => {}),
+  };
+}
+
+function makeVectorStore(existing: string[] = []) {
+  return {
     existingHashes: vi.fn(async () => new Set(existing)),
-    insertChunks: vi.fn(async () => {}),
+    upsertChunks: vi.fn(async () => {}),
+    deleteByDocument: vi.fn(async () => {}),
+    searchVector: vi.fn(async () => []),
+    searchKeyword: vi.fn(async () => []),
   };
 }
 
 describe("ingestDocument", () => {
   it("parses, chunks, embeds new chunks, stores, marks ready", async () => {
-    const store = makeStore();
+    const documentRepo = makeDocumentRepo();
+    const vectorStore = makeVectorStore();
     const embed = vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
     const result = await ingestDocument(
       { filename: "a.txt", data: Buffer.from("x") },
-      { parse: async () => "hello world", chunk: () => ["c1", "c2"], embed, store, settings },
+      { parse: async () => "hello world", chunk: () => ["c1", "c2"], embed, documentRepo, vectorStore, settings },
     );
     expect(result.status).toBe("ready");
     expect(result.chunkCount).toBe(2);
     expect(embed).toHaveBeenCalledWith(["c1", "c2"]);
-    expect(store.insertChunks).toHaveBeenCalledOnce();
-    expect(store.setStatus).toHaveBeenLastCalledWith("doc-1", "ready");
+    expect(vectorStore.upsertChunks).toHaveBeenCalledOnce();
+    expect(vectorStore.upsertChunks).toHaveBeenCalledWith([
+      expect.objectContaining({ documentId: "doc-1", filename: "a.txt", content: "c1" }),
+      expect.objectContaining({ documentId: "doc-1", filename: "a.txt", content: "c2" }),
+    ]);
+    expect(documentRepo.setStatus).toHaveBeenLastCalledWith("doc-1", "ready");
   });
 
   it("skips chunks whose content hash already exists (no re-embedding)", async () => {
     const { hashContent } = await import("@/lib/rag/hash");
-    const store = makeStore([hashContent("c1")]);
+    const documentRepo = makeDocumentRepo();
+    const vectorStore = makeVectorStore([hashContent("c1")]);
     const embed = vi.fn(async (texts: string[]) => texts.map(() => [0, 0, 0]));
     const result = await ingestDocument(
       { filename: "a.txt", data: Buffer.from("x") },
-      { parse: async () => "t", chunk: () => ["c1", "c2"], embed, store, settings },
+      { parse: async () => "t", chunk: () => ["c1", "c2"], embed, documentRepo, vectorStore, settings },
     );
     expect(embed).toHaveBeenCalledWith(["c2"]); // only the new chunk
     expect(result.skipped).toBe(1);
@@ -49,26 +63,28 @@ describe("ingestDocument", () => {
   });
 
   it("ingestExistingDocument processes a pre-created row without creating one", async () => {
-    const store = makeStore();
+    const documentRepo = makeDocumentRepo();
+    const vectorStore = makeVectorStore();
     const embed = vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
     const result = await ingestExistingDocument(
       "doc-existing",
       { filename: "a.txt", data: Buffer.from("x") },
-      { parse: async () => "hello world", chunk: () => ["c1"], embed, store, settings },
+      { parse: async () => "hello world", chunk: () => ["c1"], embed, documentRepo, vectorStore, settings },
     );
-    expect(store.createDocument).not.toHaveBeenCalled();
+    expect(documentRepo.createDocument).not.toHaveBeenCalled();
     expect(result.documentId).toBe("doc-existing");
-    expect(store.setStatus).toHaveBeenLastCalledWith("doc-existing", "ready");
+    expect(documentRepo.setStatus).toHaveBeenLastCalledWith("doc-existing", "ready");
   });
 
   it("marks the document as error when parsing throws", async () => {
-    const store = makeStore();
+    const documentRepo = makeDocumentRepo();
+    const vectorStore = makeVectorStore();
     const result = await ingestDocument(
       { filename: "a.txt", data: Buffer.from("x") },
-      { parse: async () => { throw new Error("boom"); }, embed: async () => [], store, settings },
+      { parse: async () => { throw new Error("boom"); }, embed: async () => [], documentRepo, vectorStore, settings },
     );
     expect(result.status).toBe("error");
     expect(result.error).toContain("boom");
-    expect(store.setStatus).toHaveBeenLastCalledWith("doc-1", "error", expect.stringContaining("boom"));
+    expect(documentRepo.setStatus).toHaveBeenLastCalledWith("doc-1", "error", expect.stringContaining("boom"));
   });
 });

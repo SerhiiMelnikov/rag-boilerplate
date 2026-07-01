@@ -4,8 +4,9 @@ vi.mock("@/lib/auth/guards", async () => {
   return { ...actual, requireAdmin: vi.fn() };
 });
 vi.mock("@/lib/rag/ingest", () => ({ ingestExistingDocument: vi.fn() }));
-const store = { createDocument: vi.fn(async () => "d1"), setStatus: vi.fn(async () => {}) };
-vi.mock("@/lib/rag/store", () => ({ createDrizzleStore: vi.fn(() => store) }));
+const documentRepo = { createDocument: vi.fn(async () => "d1"), setStatus: vi.fn(async () => {}) };
+const vectorStore = { existingHashes: vi.fn(), upsertChunks: vi.fn(), deleteByDocument: vi.fn(), searchVector: vi.fn(), searchKeyword: vi.fn() };
+vi.mock("@/lib/vectorstore", () => ({ getDocumentRepo: vi.fn(() => documentRepo), getVectorStore: vi.fn(() => vectorStore) }));
 vi.mock("@/lib/documents/service", () => ({ listDocuments: vi.fn() }));
 // Run the scheduled background work synchronously so we can assert on it.
 vi.mock("next/server", () => ({ after: (fn: any) => void fn() }));
@@ -16,7 +17,7 @@ import { ingestExistingDocument } from "@/lib/rag/ingest";
 import { listDocuments } from "@/lib/documents/service";
 beforeEach(() => {
   vi.clearAllMocks();
-  store.createDocument.mockResolvedValue("d1");
+  documentRepo.createDocument.mockResolvedValue("d1");
 });
 
 function uploadReq(filename = "a.md", content = "hello") {
@@ -57,12 +58,12 @@ describe("POST /api/admin/documents", () => {
     const res = await POST(uploadReq());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ documentId: "d1", status: "processing" });
-    expect(store.createDocument).toHaveBeenCalledWith("a.md");
-    expect(store.setStatus).toHaveBeenCalledWith("d1", "processing");
+    expect(documentRepo.createDocument).toHaveBeenCalledWith("a.md");
+    expect(documentRepo.setStatus).toHaveBeenCalledWith("d1", "processing");
     expect(ingestExistingDocument).toHaveBeenCalledWith(
       "d1",
       expect.objectContaining({ filename: "a.md" }),
-      expect.objectContaining({ store: expect.anything() }),
+      expect.objectContaining({ documentRepo: expect.anything(), vectorStore: expect.anything() }),
     );
   });
 });

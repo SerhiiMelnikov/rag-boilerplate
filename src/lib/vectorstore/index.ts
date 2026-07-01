@@ -1,5 +1,6 @@
 import type { VectorStore, DocumentRepo } from "./types";
 import { createPgVectorStore } from "./pgvector/store";
+import { createQdrantStore } from "./qdrant/store";
 import { createDocumentRepo } from "./document-repo";
 
 let store: VectorStore | null = null;
@@ -10,7 +11,8 @@ function build(): VectorStore {
   switch (kind) {
     case "pgvector":
       return createPgVectorStore();
-    // "qdrant" is wired in Task 6.
+    case "qdrant":
+      return createQdrantStore();
     default:
       throw new Error(`unknown VECTOR_STORE "${kind}" — expected "pgvector" or "qdrant".`);
   }

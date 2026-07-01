@@ -17,15 +17,16 @@ beforeEach(() => {
 });
 
 describe("SettingsForm", () => {
-  it("shows a masked placeholder for a set key", async () => {
-    render(<SettingsForm />);
-    await waitFor(() => expect(screen.getByLabelText("Google API key")).toBeTruthy());
-    expect((screen.getByLabelText("Google API key") as HTMLInputElement).placeholder).toContain("1234");
-  });
-
   it("warns when the chat provider has no key", async () => {
     render(<SettingsForm />);
-    // chatProvider is openai, whose key is not set -> a warning is shown.
+    // chatProvider is openai, whose key is not set -> a warning is shown pointing
+    // to the separate Provider keys page.
     await waitFor(() => expect(screen.getByText(/No key set for openai/i)).toBeTruthy());
+  });
+
+  it("does not render provider key inputs (they live on the Provider keys page)", async () => {
+    render(<SettingsForm />);
+    await waitFor(() => expect(screen.getByLabelText("Chat model")).toBeTruthy());
+    expect(screen.queryByLabelText("Google API key")).toBeNull();
   });
 });

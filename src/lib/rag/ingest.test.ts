@@ -1,5 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
 import { ingestDocument, ingestExistingDocument } from "@/lib/rag/ingest";
+import type { RuntimeSettings } from "@/lib/config/settings-service";
+
+const settings = {
+  chatProvider: "google", chatModel: "gemma-4-31b-it",
+  embeddingProvider: "google", embeddingModel: "gemini-embedding-2",
+  parserProvider: "google", parserModel: "gemini-2.5-flash",
+  temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
+  systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
+  keys: { google: "gk", openai: null, anthropic: null },
+} satisfies RuntimeSettings;
 
 function makeStore(existing: string[] = []) {
   return {
@@ -16,7 +26,7 @@ describe("ingestDocument", () => {
     const embed = vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
     const result = await ingestDocument(
       { filename: "a.txt", data: Buffer.from("x") },
-      { parse: async () => "hello world", chunk: () => ["c1", "c2"], embed, store },
+      { parse: async () => "hello world", chunk: () => ["c1", "c2"], embed, store, settings },
     );
     expect(result.status).toBe("ready");
     expect(result.chunkCount).toBe(2);
@@ -31,7 +41,7 @@ describe("ingestDocument", () => {
     const embed = vi.fn(async (texts: string[]) => texts.map(() => [0, 0, 0]));
     const result = await ingestDocument(
       { filename: "a.txt", data: Buffer.from("x") },
-      { parse: async () => "t", chunk: () => ["c1", "c2"], embed, store },
+      { parse: async () => "t", chunk: () => ["c1", "c2"], embed, store, settings },
     );
     expect(embed).toHaveBeenCalledWith(["c2"]); // only the new chunk
     expect(result.skipped).toBe(1);
@@ -44,7 +54,7 @@ describe("ingestDocument", () => {
     const result = await ingestExistingDocument(
       "doc-existing",
       { filename: "a.txt", data: Buffer.from("x") },
-      { parse: async () => "hello world", chunk: () => ["c1"], embed, store },
+      { parse: async () => "hello world", chunk: () => ["c1"], embed, store, settings },
     );
     expect(store.createDocument).not.toHaveBeenCalled();
     expect(result.documentId).toBe("doc-existing");
@@ -55,7 +65,7 @@ describe("ingestDocument", () => {
     const store = makeStore();
     const result = await ingestDocument(
       { filename: "a.txt", data: Buffer.from("x") },
-      { parse: async () => { throw new Error("boom"); }, embed: async () => [], store },
+      { parse: async () => { throw new Error("boom"); }, embed: async () => [], store, settings },
     );
     expect(result.status).toBe("error");
     expect(result.error).toContain("boom");

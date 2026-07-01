@@ -2,6 +2,7 @@ import { parseDocument } from "./parse";
 import { chunkText } from "./chunk";
 import { hashContent } from "./hash";
 import { embedDocuments } from "./embeddings";
+import type { RuntimeSettings } from "@/lib/config/settings-service";
 
 export interface IngestStore {
   createDocument(filename: string): Promise<string>;
@@ -17,6 +18,7 @@ export interface IngestDeps {
   chunk?: typeof chunkText;
   embed?: (texts: string[]) => Promise<number[][]>;
   store: IngestStore;
+  settings: RuntimeSettings;
 }
 
 export interface IngestResult {
@@ -36,9 +38,10 @@ export async function ingestExistingDocument(
   input: { filename: string; data: Buffer },
   deps: IngestDeps,
 ): Promise<IngestResult> {
-  const parse = deps.parse ?? parseDocument;
+  const parseFn = deps.parse ?? parseDocument;
+  const parse = (filename: string, data: Buffer) => parseFn(filename, data, deps.settings);
   const chunk = deps.chunk ?? chunkText;
-  const embed = deps.embed ?? embedDocuments;
+  const embed = deps.embed ?? ((texts: string[]) => embedDocuments(texts, deps.settings));
   const { store } = deps;
 
   try {

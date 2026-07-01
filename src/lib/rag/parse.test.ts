@@ -1,40 +1,50 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parseDocument, isColumnar, UnsupportedFileTypeError } from "@/lib/rag/parse";
+import type { RuntimeSettings } from "@/lib/config/settings-service";
 
 const fixture = (name: string) =>
   readFile(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)));
 
+const settings = {
+  chatProvider: "google", chatModel: "gemma-4-31b-it",
+  embeddingProvider: "google", embeddingModel: "gemini-embedding-2",
+  parserProvider: "google", parserModel: "gemini-2.5-flash",
+  temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
+  systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
+  keys: { google: "gk", openai: null, anthropic: null },
+} satisfies RuntimeSettings;
+
 describe("parseDocument", () => {
   it("parses markdown", async () => {
-    const text = await parseDocument("sample.md", await fixture("sample.md"));
+    const text = await parseDocument("sample.md", await fixture("sample.md"), settings);
     expect(text).toContain("Hello world from markdown");
   });
 
   it("parses plain text", async () => {
-    const text = await parseDocument("sample.txt", await fixture("sample.txt"));
+    const text = await parseDocument("sample.txt", await fixture("sample.txt"), settings);
     expect(text).toContain("Hello world from text");
   });
 
   it("parses pdf", async () => {
-    const text = await parseDocument("sample.pdf", await fixture("sample.pdf"));
+    const text = await parseDocument("sample.pdf", await fixture("sample.pdf"), settings);
     expect(text).toContain("Hello");
   });
 
   it("parses docx", async () => {
-    const text = await parseDocument("sample.docx", await fixture("sample.docx"));
+    const text = await parseDocument("sample.docx", await fixture("sample.docx"), settings);
     expect(text).toContain("Hello");
   });
 
   it("throws on unsupported type", async () => {
-    await expect(parseDocument("a.xyz", Buffer.from("x"))).rejects.toBeInstanceOf(
-      UnsupportedFileTypeError,
-    );
+    await expect(
+      parseDocument("a.xyz", Buffer.from("x"), settings),
+    ).rejects.toBeInstanceOf(UnsupportedFileTypeError);
   });
 
   it("uses multimodal extraction for a complex (multi-column) pdf", async () => {
-    const text = await parseDocument("sample.pdf", await fixture("sample.pdf"), {
+    const text = await parseDocument("sample.pdf", await fixture("sample.pdf"), settings, {
       detectComplex: async () => true,
       extractMultimodal: async () => "# Faithful Markdown\n\n| God | Role |",
     });
@@ -42,7 +52,7 @@ describe("parseDocument", () => {
   });
 
   it("falls back to flat text when multimodal extraction fails", async () => {
-    const text = await parseDocument("sample.pdf", await fixture("sample.pdf"), {
+    const text = await parseDocument("sample.pdf", await fixture("sample.pdf"), settings, {
       detectComplex: async () => true,
       extractMultimodal: async () => {
         throw new Error("model unavailable");
@@ -53,7 +63,7 @@ describe("parseDocument", () => {
 
   it("keeps flat text for a simple (single-column) pdf", async () => {
     let multimodalCalled = false;
-    const text = await parseDocument("sample.pdf", await fixture("sample.pdf"), {
+    const text = await parseDocument("sample.pdf", await fixture("sample.pdf"), settings, {
       detectComplex: async () => false,
       extractMultimodal: async () => {
         multimodalCalled = true;
@@ -62,6 +72,25 @@ describe("parseDocument", () => {
     });
     expect(text).toContain("Hello");
     expect(multimodalCalled).toBe(false);
+  });
+
+  it("falls back to flat text (with a warning) when the parser provider has no key", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const noKey = {
+      ...settings,
+      parserProvider: "openai",
+      parserModel: "gpt-4o",
+      keys: { google: null, openai: null, anthropic: null },
+    };
+    const pdfBuffer = await fixture("sample.pdf");
+    // detectComplex forces the multimodal branch; extractMultimodal is left to the
+    // default, which must skip cleanly on the missing key.
+    const text = await parseDocument("poster.pdf", pdfBuffer, noKey, {
+      detectComplex: async () => true,
+    });
+    expect(typeof text).toBe("string"); // flat text, no throw
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 

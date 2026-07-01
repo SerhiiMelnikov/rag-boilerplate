@@ -1,7 +1,10 @@
 import mammoth from "mammoth";
 import { extractText, getDocumentProxy } from "unpdf";
 import { generateText } from "ai";
-import { google } from "@ai-sdk/google";
+import type { LanguageModel } from "ai";
+import type { RuntimeSettings } from "@/lib/config/settings-service";
+import { getVisionModel } from "@/lib/providers";
+import { MissingProviderKeyError } from "@/lib/providers/types";
 
 export class UnsupportedFileTypeError extends Error {
   constructor(ext: string) {
@@ -10,9 +13,6 @@ export class UnsupportedFileTypeError extends Error {
   }
 }
 
-// Vision-capable model used to re-extract layout-heavy PDFs (multi-column,
-// tables). Overridable via env so the boilerplate stays configurable.
-const PDF_VISION_MODEL = process.env.GOOGLE_PDF_PARSE_MODEL || "gemini-2.5-flash";
 // Safety net only: layout-heavy PDFs can legitimately take minutes to parse, so
 // this is a last-resort guard against a truly stalled generation (which would
 // otherwise leave ingestion hanging forever). On timeout the call aborts and the
@@ -118,9 +118,9 @@ async function detectComplexPdf(pdf: Awaited<ReturnType<typeof getDocumentProxy>
 
 // Re-extract a layout-heavy PDF with a multimodal model that respects 2D
 // structure. Gemini accepts the PDF bytes directly (no rasterization).
-async function extractPdfMultimodal(data: Buffer, model: string): Promise<string> {
+async function extractPdfMultimodal(data: Buffer, model: LanguageModel): Promise<string> {
   const { text } = await generateText({
-    model: google(model),
+    model,
     abortSignal: AbortSignal.timeout(PDF_VISION_TIMEOUT_MS),
     messages: [
       {
@@ -148,6 +148,7 @@ export interface ParseDeps {
 export async function parseDocument(
   filename: string,
   data: Buffer,
+  settings: RuntimeSettings,
   deps: ParseDeps = {},
 ): Promise<string> {
   const ext = extOf(filename);
@@ -169,7 +170,23 @@ export async function parseDocument(
       }
       if (!complex) return text;
 
-      const extractMM = deps.extractMultimodal ?? ((d: Buffer) => extractPdfMultimodal(d, PDF_VISION_MODEL));
+      const extractMM =
+        deps.extractMultimodal ??
+        (async (d: Buffer) => {
+          let model: LanguageModel;
+          try {
+            model = getVisionModel(settings);
+          } catch (err) {
+            if (err instanceof MissingProviderKeyError) {
+              // Not silent: warn on the server; the Admin UI flags the missing
+              // key at config time. Ingest proceeds with flat text.
+              console.warn(`PDF layout parse skipped — ${err.message}`);
+              return "";
+            }
+            throw err;
+          }
+          return extractPdfMultimodal(d, model);
+        });
       try {
         const md = await extractMM(data);
         return md && md.trim().length > 0 ? md : text;

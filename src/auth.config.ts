@@ -6,11 +6,12 @@ export const authConfig = {
   pages: { signIn: "/login" },
   session: { strategy: "jwt" },
   callbacks: {
-    // Persist id and role into the JWT, then expose them on the session.
+    // Persist id, role, and isSuperAdmin into the JWT, then expose them on the session.
     jwt({ token, user }) {
       if (user) {
         token.id = (user as { id: string }).id;
         token.role = (user as { role: "admin" | "user" }).role;
+        token.isSuperAdmin = (user as { isSuperAdmin?: boolean }).isSuperAdmin ?? false;
       }
       return token;
     },
@@ -18,6 +19,7 @@ export const authConfig = {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as "admin" | "user";
+        session.user.isSuperAdmin = (token.isSuperAdmin as boolean) ?? false;
       }
       return session;
     },

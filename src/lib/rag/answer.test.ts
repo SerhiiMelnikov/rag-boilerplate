@@ -1,8 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
 import { prepareContext } from "@/lib/rag/answer";
 import type { RetrievedChunk } from "@/lib/rag/retrieve";
+import type { RuntimeSettings } from "@/lib/config/settings-service";
 
-const settings = { topK: 5, chatModel: "gemma-4-31b-it", temperature: 0.2, systemPrompt: "sp", minSimilarity: 0.3, contextTokenBudget: 3000 };
+const settings: RuntimeSettings = {
+  chatProvider: "google", chatModel: "gemma-4-31b-it",
+  embeddingProvider: "google", embeddingModel: "text-embedding-004",
+  parserProvider: "google", parserModel: "gemini-1.5-flash",
+  temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
+  systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
+  keys: { google: null, openai: null, anthropic: null },
+};
 const chunk = (id: string, score: number): RetrievedChunk => ({ chunkId: id, documentId: "d" + id, filename: id + ".md", content: "content " + id, score });
 
 describe("prepareContext", () => {

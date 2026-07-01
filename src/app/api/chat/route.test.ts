@@ -1,8 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
 import { handleChat } from "@/app/api/chat/handler";
 import { UnauthorizedError } from "@/lib/auth/guards";
+import { MissingProviderKeyError } from "@/lib/providers/types";
 
-const settings = { topK: 5, chatModel: "gemma-4-31b-it", temperature: 0.2, systemPrompt: "sp", minSimilarity: 0.3, contextTokenBudget: 3000 };
+const settings = {
+  chatProvider: "google", chatModel: "gemma-4-31b-it",
+  embeddingProvider: "google", embeddingModel: "gemini-embedding-2",
+  parserProvider: "google", parserModel: "gemini-2.5-flash",
+  temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
+  systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
+  keys: { google: "gk", openai: null, anthropic: null },
+};
 
 // Build a POST request body using the useChat payload shape.
 const body = (b: unknown) => new Request("http://localhost/api/chat", {
@@ -17,6 +25,7 @@ function baseDeps(over: Partial<any> = {}) {
     // Cast to any: test fixture returns only the fields used by handler; full RuntimeSettings not needed.
     getSettingsFn: vi.fn(async () => settings) as any,
     prepareContextFn: vi.fn(async () => ({ hasContext: true, context: "ctx", sources: [{ documentId: "d", filename: "f.md", chunkId: "c", score: 0.9 }] })),
+    getChatModelFn: vi.fn(() => ({})) as any,
     addMessageFn: vi.fn(async () => ({ id: "m1" })),
     isOwnedFn: vi.fn(async () => true),
     setTitleFn: vi.fn(async () => undefined),
@@ -95,5 +104,20 @@ describe("handleChat", () => {
     expect(deps.streamTextFn).not.toHaveBeenCalled();
     // User message persisted first, fallback assistant second with usage: null
     expect(deps.addMessageFn).toHaveBeenNthCalledWith(2, expect.objectContaining({ role: "assistant", usage: null }));
+  });
+
+  it("provider key missing: streams the error as the assistant message, no model call, 200", async () => {
+    const deps = baseDeps({
+      getChatModelFn: vi.fn(() => { throw new MissingProviderKeyError("Chat", "openai"); }),
+    });
+    const res = await handleChat(body(msg("hi")), deps);
+    expect(res.status).toBe(200);
+    expect(deps.streamTextFn).not.toHaveBeenCalled();
+    // Assistant message persisted with the provider-error text + usage null.
+    expect(deps.addMessageFn).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      role: "assistant",
+      content: expect.stringMatching(/no API key for provider "openai"/),
+      usage: null,
+    }));
   });
 });

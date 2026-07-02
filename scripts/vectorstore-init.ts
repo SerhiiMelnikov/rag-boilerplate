@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { ensureQdrantCollection } from "@/lib/vectorstore/qdrant/init";
 import { ensureChromaCollection } from "@/lib/vectorstore/chroma/init";
+import { ensureWeaviateCollection } from "@/lib/vectorstore/weaviate/init";
 
 async function main() {
   const kind = process.env.VECTOR_STORE ?? "pgvector";
@@ -12,6 +13,10 @@ async function main() {
     case "chroma":
       await ensureChromaCollection();
       console.log("Chroma collection ready.");
+      break;
+    case "weaviate":
+      await ensureWeaviateCollection();
+      console.log("Weaviate collection ready.");
       break;
     default:
       console.log(`VECTOR_STORE="${kind}" needs no initialization.`);

@@ -2,6 +2,7 @@ import type { VectorStore, DocumentRepo } from "./types";
 import { createPgVectorStore } from "./pgvector/store";
 import { createQdrantStore } from "./qdrant/store";
 import { createChromaStore } from "./chroma/store";
+import { createWeaviateStore } from "./weaviate/store";
 import { createDocumentRepo } from "./document-repo";
 
 let store: VectorStore | null = null;
@@ -16,8 +17,10 @@ function build(): VectorStore {
       return createQdrantStore();
     case "chroma":
       return createChromaStore();
+    case "weaviate":
+      return createWeaviateStore();
     default:
-      throw new Error(`unknown VECTOR_STORE "${kind}" — expected "pgvector", "qdrant", or "chroma".`);
+      throw new Error(`unknown VECTOR_STORE "${kind}" — expected "pgvector", "qdrant", "chroma", or "weaviate".`);
   }
 }
 

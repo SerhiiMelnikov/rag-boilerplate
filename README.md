@@ -13,8 +13,8 @@ hand-rolled RAG engine — all on one configuration: **Google Gemini + Postgres/
 - **Web:** Next.js 15 (App Router), TypeScript, Tailwind CSS, Headless UI (minimal, dark-mode-first — easy to restyle)
 - **Auth:** Auth.js v5 (credentials) with JWT sessions and admin/user roles
 - **Database:** Postgres (documents, users, chat history, settings — always here) plus
-  chunks + vector search, stored in either Postgres/`pgvector` (default) or Qdrant,
-  selected by `VECTOR_STORE`; both are wired through Drizzle ORM / a shared `VectorStore` interface
+  chunks + vector search, stored in Postgres/`pgvector` (default), Qdrant, or Chroma,
+  selected by `VECTOR_STORE`; all are wired through Drizzle ORM / a shared `VectorStore` interface
 - **AI (Google Gemini):** chat model `gemma-4-31b-it`, embeddings `gemini-embedding-2` at 768 dimensions (Vercel AI SDK)
 - **Docs ingestion:** PDF, DOCX, Markdown, plain text
 
@@ -71,6 +71,10 @@ npm run db:up
 npm run vectorstore:init
 ```
 
+### Using Chroma instead of pgvector
+
+Set `VECTOR_STORE=chroma` and `CHROMA_URL` in `.env`, then `docker compose up -d chroma` followed by `npm run vectorstore:init` to create the collection.
+
 ## Run
 
 ```bash
@@ -124,7 +128,7 @@ Before the assistant can answer from your knowledge base, index some documents:
 | `npm run db:migrate` | Apply migrations |
 | `npm run ingest -- <path>` | Bulk-ingest a file or folder |
 | `npm run seed:admin` | Create the admin user from env |
-| `npm run vectorstore:init` | Create the Qdrant collection (only needed when `VECTOR_STORE=qdrant`) |
+| `npm run vectorstore:init` | Create the Qdrant/Chroma collection (only needed when `VECTOR_STORE=qdrant` or `chroma`) |
 
 ## Testing
 
@@ -180,8 +184,9 @@ stores later.
   failure.
 - Embedding dimension is set by `EMBEDDING_DIMENSIONS` (default 768); switching
   embedding provider/model to a different width requires re-indexing.
-- **Vector store backend is set by `VECTOR_STORE`** (`pgvector` default, or
-  `qdrant`). Switching stores requires re-indexing — vectors are not shared
-  between backends. Qdrant's keyword search is a pragmatic `MatchText`
-  approximation (Qdrant has no `ts_rank`/BM25), so hybrid ranking there is
+- **Vector store backend is set by `VECTOR_STORE`** (`pgvector` default,
+  `qdrant`, or `chroma`). Switching stores requires re-indexing — vectors are
+  not shared between backends. Qdrant's keyword search is a pragmatic
+  `MatchText` approximation (Qdrant has no `ts_rank`/BM25), and Chroma's is a
+  `whereDocument $contains` substring filter ranked by vector score — both are
   slightly weaker than pgvector's Postgres full-text search.

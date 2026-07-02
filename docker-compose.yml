@@ -15,6 +15,13 @@ services:
       - "6333:6333"
     volumes:
       - rag_qdrant:/qdrant/storage
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - rag_chroma:/data
 volumes:
   rag_pgdata:
   rag_qdrant:
+  rag_chroma:

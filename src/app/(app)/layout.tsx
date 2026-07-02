@@ -8,7 +8,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session?.user) redirect("/login");
   return (
     <div className="flex h-screen flex-col">
-      <AppBar email={session.user.email ?? ""} role={session.user.role} />
+      <AppBar email={session.user.email ?? ""} role={session.user.role} isSuperAdmin={session.user.isSuperAdmin} />
       <div className="min-h-0 flex-1">{children}</div>
     </div>
   );

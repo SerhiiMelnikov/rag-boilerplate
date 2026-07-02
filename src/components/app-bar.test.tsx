@@ -24,4 +24,16 @@ describe("AppBar / ProfileMenu", () => {
     await userEvent.click(screen.getByRole("button", { name: /profile/i }));
     expect(screen.queryByRole("menuitem", { name: /documents/i })).not.toBeInTheDocument();
   });
+
+  it("shows the Users link for super-admins", async () => {
+    render(<AppBar email="a@b.com" role="admin" isSuperAdmin />);
+    await userEvent.click(screen.getByRole("button", { name: /profile/i }));
+    expect(screen.getByRole("menuitem", { name: /users/i })).toBeInTheDocument();
+  });
+
+  it("hides the Users link for non-super-admins", async () => {
+    render(<AppBar email="a@b.com" role="admin" isSuperAdmin={false} />);
+    await userEvent.click(screen.getByRole("button", { name: /profile/i }));
+    expect(screen.queryByRole("menuitem", { name: /users/i })).not.toBeInTheDocument();
+  });
 });

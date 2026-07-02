@@ -1,5 +1,6 @@
 import { streamText, createDataStreamResponse, formatDataStreamPart } from "ai";
 import { requireUser, errorToResponse } from "@/lib/auth/guards";
+import { getAuthUserById } from "@/lib/auth/users";
 import { isConversationOwned, addMessage, setConversationTitleIfDefault } from "@/lib/chat/conversations";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
 import { prepareContext } from "@/lib/rag/answer";
@@ -18,6 +19,7 @@ type StreamTextLike = (args: Parameters<typeof streamText>[0]) => { toDataStream
 
 export interface ChatDeps {
   getSession?: SessionFn;
+  getAuthUser?: typeof getAuthUserById;
   getSettingsFn?: typeof getRuntimeSettings;
   prepareContextFn?: typeof prepareContext;
   getChatModelFn?: typeof getChatModel;
@@ -42,7 +44,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   try {
     // Cast to any: our SessionFn is narrower than typeof auth but satisfies
     // the runtime contract (returns { user } or null).
-    user = await requireUser({ getSession: deps.getSession as any });
+    user = await requireUser({ getSession: deps.getSession as any, getAuthUser: deps.getAuthUser });
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

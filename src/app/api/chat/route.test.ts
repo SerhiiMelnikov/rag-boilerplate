@@ -22,6 +22,7 @@ const msg = (content: string) => ({ messages: [{ role: "user", content }], conve
 function baseDeps(over: Partial<any> = {}) {
   return {
     getSession: vi.fn(async () => ({ user: { id: "u1", role: "user" } })),
+    getAuthUser: vi.fn(async () => ({ id: "u1", role: "user", isSuperAdmin: false, blockedAt: null })) as any,
     // Cast to any: test fixture returns only the fields used by handler; full RuntimeSettings not needed.
     getSettingsFn: vi.fn(async () => settings) as any,
     prepareContextFn: vi.fn(async () => ({ hasContext: true, context: "ctx", sources: [{ documentId: "d", filename: "f.md", chunkId: "c", score: 0.9 }] })),

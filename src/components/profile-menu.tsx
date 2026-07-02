@@ -2,13 +2,21 @@
 
 import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/react";
 import { signOut } from "next-auth/react";
-import { UserCircle, FileText, Settings, KeyRound, LogOut } from "lucide-react";
+import { UserCircle, FileText, Settings, KeyRound, Users, LogOut } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 
 // Single header dropdown ("Profile") consolidating account info, admin links,
 // theme control, and sign out. Headless UI Menu provides keyboard + a11y;
 // the transition prop animates the panel.
-export function ProfileMenu({ email, role }: { email: string; role: "admin" | "user" }) {
+export function ProfileMenu({
+  email,
+  role,
+  isSuperAdmin,
+}: {
+  email: string;
+  role: "admin" | "user";
+  isSuperAdmin?: boolean;
+}) {
   const itemClass =
     "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm data-[focus]:bg-zinc-100 dark:data-[focus]:bg-zinc-800";
   return (
@@ -40,6 +48,13 @@ export function ProfileMenu({ email, role }: { email: string; role: "admin" | "u
                 <KeyRound className="h-4 w-4" /> Provider keys
               </a>
             </MenuItem>
+            {isSuperAdmin && (
+              <MenuItem>
+                <a href="/admin/users" className={itemClass}>
+                  <Users className="h-4 w-4" /> Users
+                </a>
+              </MenuItem>
+            )}
           </>
         )}
         <MenuItem>

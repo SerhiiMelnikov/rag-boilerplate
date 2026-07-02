@@ -42,9 +42,19 @@ export async function createUser(input: NewUser, database = defaultDb): Promise<
 // Fetch a user by email, including the password hash (for credential verification).
 export async function getUserByEmail(email: string, database = defaultDb) {
   const rows = await database
-    .select({ id: users.id, email: users.email, role: users.role, passwordHash: users.passwordHash })
+    .select({ id: users.id, email: users.email, role: users.role, passwordHash: users.passwordHash, blockedAt: users.blockedAt, isSuperAdmin: users.isSuperAdmin })
     .from(users)
     .where(eq(users.email, email))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+// One indexed lookup used by the guards (exists + not blocked + role + super-admin).
+export async function getAuthUserById(id: string, database = defaultDb) {
+  const rows = await database
+    .select({ id: users.id, role: users.role, isSuperAdmin: users.isSuperAdmin, blockedAt: users.blockedAt })
+    .from(users)
+    .where(eq(users.id, id))
     .limit(1);
   return rows[0] ?? null;
 }

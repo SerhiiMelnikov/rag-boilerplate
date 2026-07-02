@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, timestamp, integer, jsonb, vector, real, pgEnum,
+  pgTable, uuid, text, timestamp, integer, jsonb, vector, real, pgEnum, boolean,
 } from "drizzle-orm/pg-core";
 
 // Embedding dimension is fixed to the embedding model. We use gemini-embedding-2
@@ -17,6 +17,8 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   role: roleEnum("role").notNull().default("user"),
+  isSuperAdmin: boolean("is_super_admin").notNull().default(false),
+  blockedAt: timestamp("blocked_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

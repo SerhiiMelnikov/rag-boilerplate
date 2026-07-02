@@ -104,6 +104,11 @@ Before the assistant can answer from your knowledge base, index some documents:
 - **Admin → Documents:** upload / view status / delete indexed documents.
 - **Admin → Settings:** tune retrieval — `topK`, model, temperature, system prompt,
   minimum similarity, and the context token budget.
+- **Admin → Users (super-admin only):** the env-seeded `ADMIN_EMAIL` account is
+  the **super-admin** — the only account that can manage users (block/unblock,
+  change roles) here. Regular admins cannot. Blocking takes effect immediately:
+  a blocked user is logged out on their next request and cannot sign in. The
+  super-admin itself can never be blocked or demoted.
 
 ## Scripts
 

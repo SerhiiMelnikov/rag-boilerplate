@@ -105,33 +105,50 @@ export async function getRecentNegative(limit = 20, database = defaultDb): Promi
   });
 }
 
-// Per-document quality: a document inherits the rating of every rated answer in
-// whose sources it appears. Worst (most downvoted) first.
+// Per-document quality: a document inherits the rating of every rated ANSWER in
+// whose sources it appears (not every chunk). We fetch one row per
+// (answer × cited chunk), then dedupe by (messageId, documentId) and aggregate
+// in JS so a document a single answer cites via several chunks counts once.
+// Worst (most downvoted) documents first.
 export async function getDocumentQuality(database = defaultDb): Promise<DocumentQuality[]> {
   const rows = (await database.execute(sql`
     select
+      m.id as "messageId",
+      m.rating as rating,
+      m.created_at as "createdAt",
       src->>'documentId' as "documentId",
-      (array_agg(src->>'filename' order by m.created_at desc))[1] as filename,
-      count(*)::int as appearances,
-      count(*) filter (where m.rating = 1)::int as up,
-      count(*) filter (where m.rating = -1)::int as down
+      src->>'filename' as filename
     from messages m, jsonb_array_elements(m.sources) as src
     where m.role = 'assistant' and m.rating is not null
-    group by src->>'documentId'
-    order by down desc, appearances desc
   `)) as unknown as Row[];
-  return rows.map((r) => {
-    const up = num(r.up);
-    const down = num(r.down);
-    return {
-      documentId: String(r.documentId ?? ""),
-      filename: String(r.filename ?? ""),
-      appearances: num(r.appearances),
-      up,
-      down,
-      satisfaction: satisfaction(up, down),
-    };
-  });
+
+  const seen = new Set<string>();
+  const perDoc = new Map<string, { filename: string; createdAt: number; up: number; down: number; appearances: number }>();
+  for (const r of rows) {
+    const documentId = String(r.documentId ?? "");
+    if (!documentId) continue;
+    const key = `${String(r.messageId)}::${documentId}`;
+    if (seen.has(key)) continue; // count each document once per answer
+    seen.add(key);
+    const rating = num(r.rating);
+    const createdAt = new Date(r.createdAt as string | Date).getTime();
+    const e = perDoc.get(documentId) ?? { filename: "", createdAt: -Infinity, up: 0, down: 0, appearances: 0 };
+    e.appearances += 1;
+    if (rating === 1) e.up += 1;
+    else if (rating === -1) e.down += 1;
+    if (createdAt >= e.createdAt) { e.createdAt = createdAt; e.filename = String(r.filename ?? ""); } // keep most recent filename
+    perDoc.set(documentId, e);
+  }
+  return [...perDoc.entries()]
+    .map(([documentId, e]) => ({
+      documentId,
+      filename: e.filename,
+      appearances: e.appearances,
+      up: e.up,
+      down: e.down,
+      satisfaction: satisfaction(e.up, e.down),
+    }))
+    .sort((a, b) => b.down - a.down || b.appearances - a.appearances);
 }
 
 // Daily up/down and satisfaction over the last 30 days of rated answers.

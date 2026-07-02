@@ -44,9 +44,22 @@ describe("getRecentNegative", () => {
 });
 
 describe("getDocumentQuality", () => {
-  it("maps aggregation and computes satisfaction", async () => {
-    const db = dbWith([{ documentId: "d1", filename: "a.md", appearances: 4, up: 1, down: 3 }]);
-    expect(await getDocumentQuality(db)).toEqual([{ documentId: "d1", filename: "a.md", appearances: 4, up: 1, down: 3, satisfaction: 0.25 }]);
+  it("counts a document once per answer even when cited via multiple chunks", async () => {
+    const db = dbWith([
+      // one downvoted answer (m1) citing d1 via TWO chunks + d2 via one chunk
+      { messageId: "m1", rating: -1, createdAt: "2026-07-02T00:00:00Z", documentId: "d1", filename: "a.md" },
+      { messageId: "m1", rating: -1, createdAt: "2026-07-02T00:00:00Z", documentId: "d1", filename: "a.md" },
+      { messageId: "m1", rating: -1, createdAt: "2026-07-02T00:00:00Z", documentId: "d2", filename: "b.md" },
+      // one upvoted answer (m2) citing d1 once
+      { messageId: "m2", rating: 1, createdAt: "2026-07-01T00:00:00Z", documentId: "d1", filename: "a.md" },
+    ]);
+    const out = await getDocumentQuality(db);
+    const d1 = out.find((r) => r.documentId === "d1")!;
+    expect(d1).toMatchObject({ appearances: 2, up: 1, down: 1, satisfaction: 0.5, filename: "a.md" });
+    const d2 = out.find((r) => r.documentId === "d2")!;
+    expect(d2).toMatchObject({ appearances: 1, up: 0, down: 1, satisfaction: 0 });
+    // down ties (1 vs 1) → break by appearances desc → d1 first
+    expect(out[0].documentId).toBe("d1");
   });
   it("returns [] when there is no data", async () => {
     expect(await getDocumentQuality(dbWith([]))).toEqual([]);

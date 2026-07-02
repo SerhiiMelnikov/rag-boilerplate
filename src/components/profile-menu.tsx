@@ -2,7 +2,7 @@
 
 import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/react";
 import { signOut } from "next-auth/react";
-import { UserCircle, FileText, Settings, KeyRound, Users, LogOut } from "lucide-react";
+import { UserCircle, FileText, Settings, KeyRound, Users, LogOut, BarChart3 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 
 // Single header dropdown ("Profile") consolidating account info, admin links,
@@ -46,6 +46,11 @@ export function ProfileMenu({
             <MenuItem>
               <a href="/admin/keys" className={itemClass}>
                 <KeyRound className="h-4 w-4" /> Provider keys
+              </a>
+            </MenuItem>
+            <MenuItem>
+              <a href="/admin/analytics" className={itemClass}>
+                <BarChart3 className="h-4 w-4" /> Analytics
               </a>
             </MenuItem>
             {isSuperAdmin && (

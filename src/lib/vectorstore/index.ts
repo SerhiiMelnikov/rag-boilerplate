@@ -3,6 +3,7 @@ import { createPgVectorStore } from "./pgvector/store";
 import { createQdrantStore } from "./qdrant/store";
 import { createChromaStore } from "./chroma/store";
 import { createWeaviateStore } from "./weaviate/store";
+import { createPineconeStore } from "./pinecone/store";
 import { createDocumentRepo } from "./document-repo";
 
 let store: VectorStore | null = null;
@@ -19,8 +20,10 @@ function build(): VectorStore {
       return createChromaStore();
     case "weaviate":
       return createWeaviateStore();
+    case "pinecone":
+      return createPineconeStore();
     default:
-      throw new Error(`unknown VECTOR_STORE "${kind}" — expected "pgvector", "qdrant", "chroma", or "weaviate".`);
+      throw new Error(`unknown VECTOR_STORE "${kind}" — expected "pgvector", "qdrant", "chroma", "weaviate", or "pinecone".`);
   }
 }
 

@@ -44,13 +44,20 @@ async function idsForDocument(dense: PineconeDenseLike, documentId: string): Pro
 // sparse index holds text embedded by Pinecone's hosted sparse model for keyword
 // search. searchKeyword returns cosine scores (recomputed from fetched dense
 // vectors) so the fusion contract (score = cosine) holds.
+//
+// The index handles are built lazily (denseFn/sparseFn are called inside each
+// method, not at construction) so that selecting VECTOR_STORE=pinecone does not
+// require PINECONE_API_KEY until a store method actually runs — matching the
+// "construct without connecting" behavior of the other adapters.
 export function createPineconeStore(
-  dense: PineconeDenseLike = denseIndex() as never,
-  sparse: PineconeSparseLike = sparseIndex() as never,
+  denseFn: () => PineconeDenseLike = () => denseIndex(),
+  sparseFn: () => PineconeSparseLike = () => sparseIndex(),
 ): VectorStore {
   return {
     async upsertChunks(rows: ChunkInput[]) {
       if (rows.length === 0) return;
+      const dense = denseFn();
+      const sparse = sparseFn();
       const withIds = rows.map((r) => ({ id: `${r.documentId}#${randomUUID()}`, row: r }));
       await dense.upsert(
         withIds.map(({ id, row }) => ({
@@ -63,6 +70,7 @@ export function createPineconeStore(
     },
 
     async existingHashes(documentId: string) {
+      const dense = denseFn();
       const ids = await idsForDocument(dense, documentId);
       const hashes = new Set<string>();
       if (ids.length === 0) return hashes;
@@ -75,6 +83,8 @@ export function createPineconeStore(
     },
 
     async deleteByDocument(documentId: string) {
+      const dense = denseFn();
+      const sparse = sparseFn();
       const ids = await idsForDocument(dense, documentId);
       if (ids.length === 0) return;
       await dense.deleteMany(ids);
@@ -82,6 +92,7 @@ export function createPineconeStore(
     },
 
     async searchVector(embedding: number[], limit: number): Promise<RetrievedChunk[]> {
+      const dense = denseFn();
       const res = await dense.query({ vector: embedding, topK: limit, includeMetadata: true });
       return (res.matches ?? []).map((m) => metaToChunk(m.id, m.metadata ?? {}, typeof m.score === "number" ? m.score : 0));
     },
@@ -89,6 +100,8 @@ export function createPineconeStore(
     async searchKeyword(query: string, embedding: number[], limit: number): Promise<RetrievedChunk[]> {
       const text = query.trim();
       if (text.length < 2) return [];
+      const dense = denseFn();
+      const sparse = sparseFn();
       const hits = await sparse.searchRecords({ query: { topK: limit, inputs: { text } } });
       const ids = hits.result.hits.map((h) => h._id);
       if (ids.length === 0) return [];

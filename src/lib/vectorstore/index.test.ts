@@ -19,8 +19,16 @@ describe("vector store selection", () => {
   });
 
   it("throws a clear error for an unknown store", () => {
-    process.env.VECTOR_STORE = "pinecone";
+    process.env.VECTOR_STORE = "milvus";
     expect(() => getVectorStore()).toThrow(/unknown VECTOR_STORE/i);
+  });
+
+  it("selects pinecone without requiring PINECONE_API_KEY until a call is made", () => {
+    const key = process.env.PINECONE_API_KEY;
+    delete process.env.PINECONE_API_KEY;
+    process.env.VECTOR_STORE = "pinecone";
+    expect(() => getVectorStore()).not.toThrow();
+    if (key) process.env.PINECONE_API_KEY = key;
   });
 
   it("getDocumentRepo returns a memoized repo", () => {

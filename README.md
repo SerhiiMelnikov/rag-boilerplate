@@ -13,9 +13,9 @@ hand-rolled RAG engine — all on one configuration: **Google Gemini + Postgres/
 - **Web:** Next.js 15 (App Router), TypeScript, Tailwind CSS, Headless UI (minimal, dark-mode-first — easy to restyle)
 - **Auth:** Auth.js v5 (credentials) with JWT sessions and admin/user roles
 - **Database:** Postgres (documents, users, chat history, settings — always here) plus
-  chunks + vector search, stored in Postgres/`pgvector` (default), Qdrant, Chroma, or
-  Weaviate, selected by `VECTOR_STORE`; all are wired through Drizzle ORM / a shared
-  `VectorStore` interface
+  chunks + vector search, stored in Postgres/`pgvector` (default), Qdrant, Chroma,
+  Weaviate, or Pinecone, selected by `VECTOR_STORE`; all are wired through Drizzle ORM / a
+  shared `VectorStore` interface
 - **AI (Google Gemini):** chat model `gemma-4-31b-it`, embeddings `gemini-embedding-2` at 768 dimensions (Vercel AI SDK)
 - **Docs ingestion:** PDF, DOCX, Markdown, plain text
 
@@ -80,6 +80,10 @@ Set `VECTOR_STORE=chroma` and `CHROMA_URL` in `.env`, then `docker compose up -d
 
 Set `VECTOR_STORE=weaviate` and `WEAVIATE_URL` in `.env`, then `docker compose up -d weaviate` followed by `npm run vectorstore:init` to create the collection (no vectorizer — embeddings are app-supplied — cosine distance).
 
+### Using Pinecone instead of pgvector
+
+Pinecone is managed/cloud — no docker service. Set `VECTOR_STORE=pinecone` and `PINECONE_API_KEY` (from your Pinecone account) in `.env`, then run `npm run vectorstore:init` to create the dense + sparse serverless indexes.
+
 ## Run
 
 ```bash
@@ -133,7 +137,7 @@ Before the assistant can answer from your knowledge base, index some documents:
 | `npm run db:migrate` | Apply migrations |
 | `npm run ingest -- <path>` | Bulk-ingest a file or folder |
 | `npm run seed:admin` | Create the admin user from env |
-| `npm run vectorstore:init` | Create the Qdrant/Chroma/Weaviate collection (only needed when `VECTOR_STORE=qdrant`, `chroma`, or `weaviate`) |
+| `npm run vectorstore:init` | Create the Qdrant/Chroma/Weaviate collection or the Pinecone indexes (only needed when `VECTOR_STORE=qdrant`, `chroma`, `weaviate`, or `pinecone`) |
 
 ## Testing
 
@@ -190,12 +194,17 @@ stores later.
 - Embedding dimension is set by `EMBEDDING_DIMENSIONS` (default 768); switching
   embedding provider/model to a different width requires re-indexing.
 - **Vector store backend is set by `VECTOR_STORE`** (`pgvector` default,
-  `qdrant`, `chroma`, or `weaviate`). Switching stores requires re-indexing —
-  vectors are not shared between backends. Qdrant's keyword search is a
-  pragmatic `MatchText` approximation (Qdrant has no `ts_rank`/BM25), and
-  Chroma's is a `whereDocument $contains` substring filter ranked by vector
-  score — both are slightly weaker than pgvector's Postgres full-text search.
-  Weaviate uses native BM25 for keyword search; since BM25 returns a relevance
-  score rather than cosine, the returned `score` is recomputed as cosine
-  similarity from the object's stored vector so it stays comparable across
-  backends.
+  `qdrant`, `chroma`, `weaviate`, or `pinecone`). Switching stores requires
+  re-indexing — vectors are not shared between backends. Qdrant's keyword
+  search is a pragmatic `MatchText` approximation (Qdrant has no
+  `ts_rank`/BM25), and Chroma's is a `whereDocument $contains` substring
+  filter ranked by vector score — both are slightly weaker than pgvector's
+  Postgres full-text search. Weaviate uses native BM25 for keyword search;
+  since BM25 returns a relevance score rather than cosine, the returned
+  `score` is recomputed as cosine similarity from the object's stored vector
+  so it stays comparable across backends. Pinecone is sparse-dense: a dense
+  index holds app-supplied vectors and a sparse index (Pinecone's hosted
+  sparse model) handles keyword search; as with Weaviate, the returned
+  `score` is recomputed as cosine similarity from the fetched dense vector,
+  and it is the only backend that needs no docker service (managed/cloud,
+  just an API key).

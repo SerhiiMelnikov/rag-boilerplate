@@ -2,6 +2,7 @@ import "dotenv/config";
 import { ensureQdrantCollection } from "@/lib/vectorstore/qdrant/init";
 import { ensureChromaCollection } from "@/lib/vectorstore/chroma/init";
 import { ensureWeaviateCollection } from "@/lib/vectorstore/weaviate/init";
+import { ensurePineconeIndexes } from "@/lib/vectorstore/pinecone/init";
 
 async function main() {
   const kind = process.env.VECTOR_STORE ?? "pgvector";
@@ -17,6 +18,10 @@ async function main() {
     case "weaviate":
       await ensureWeaviateCollection();
       console.log("Weaviate collection ready.");
+      break;
+    case "pinecone":
+      await ensurePineconeIndexes();
+      console.log("Pinecone indexes ready.");
       break;
     default:
       console.log(`VECTOR_STORE="${kind}" needs no initialization.`);

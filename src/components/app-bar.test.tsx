@@ -16,6 +16,7 @@ describe("AppBar / ProfileMenu", () => {
     expect(screen.getByText("a@b.com")).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /documents/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /settings/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /analytics/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
   });
 

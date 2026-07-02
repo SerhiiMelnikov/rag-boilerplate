@@ -41,11 +41,21 @@ describe.runIf(RUN)("Pinecone adapter (live)", () => {
     await waitFor(async () => (await store.existingHashes(docId)).size === 2);
     expect([...(await store.existingHashes(docId))].sort()).toEqual(["h-alpha", "h-beta"]);
 
-    const byVector = await store.searchVector(oneHot(0), 5);
-    expect(byVector[0].content).toContain("quick brown fox");
+    // Serverless query freshness lags behind the list/fetch used by existingHashes,
+    // so poll the query itself until the just-written vectors are searchable rather
+    // than asserting on the first (possibly stale) response.
+    let byVector = await store.searchVector(oneHot(0), 5);
+    await waitFor(async () => {
+      byVector = await store.searchVector(oneHot(0), 5);
+      return byVector[0]?.content?.includes("quick brown fox") ?? false;
+    });
     expect(byVector[0].score).toBeGreaterThan(0.9);
 
-    const byKeyword = await store.searchKeyword("dog", oneHot(0), 5);
+    let byKeyword = await store.searchKeyword("dog", oneHot(0), 5);
+    await waitFor(async () => {
+      byKeyword = await store.searchKeyword("dog", oneHot(0), 5);
+      return byKeyword.some((c) => c.content.includes("lazy dog"));
+    });
     expect(byKeyword.some((c) => c.content.includes("lazy dog"))).toBe(true);
 
     await store.deleteByDocument(docId);

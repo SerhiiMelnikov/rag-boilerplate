@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { installCommand, nextSteps, runPostInstall } from "./postinstall";
-import type { InstallOptions } from "./options";
+import { installCommand, nextSteps, runPostInstall } from "./postinstall.js";
+import type { InstallOptions } from "./options.js";
 
 const o = (over: Partial<InstallOptions> = {}): InstallOptions => ({
   projectName: "app", providers: ["google"], defaultProvider: "google", vectorStore: "qdrant",

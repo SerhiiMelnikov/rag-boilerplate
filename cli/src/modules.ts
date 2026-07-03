@@ -1,4 +1,4 @@
-import type { ProviderId, VectorStoreId } from "./options";
+import type { ProviderId, VectorStoreId } from "./options.js";
 
 export interface ProviderModule {
   id: ProviderId;

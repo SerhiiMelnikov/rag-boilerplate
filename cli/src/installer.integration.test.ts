@@ -9,8 +9,8 @@ import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { scaffold } from "./scaffold";
-import type { InstallOptions } from "./options";
+import { scaffold } from "./scaffold.js";
+import type { InstallOptions } from "./options.js";
 
 const RUN = process.env.RUN_INTEGRATION === "1";
 const templateDir = resolve(import.meta.dirname, "..", "template");

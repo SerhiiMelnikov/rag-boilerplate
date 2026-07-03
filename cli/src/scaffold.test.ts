@@ -3,8 +3,8 @@ import { mkdtemp, rm, mkdir, writeFile, readFile, cp } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { scaffold, settingsDefaultsFor } from "./scaffold";
-import type { InstallOptions } from "./options";
+import { scaffold, settingsDefaultsFor } from "./scaffold.js";
+import type { InstallOptions } from "./options.js";
 
 let templateDir: string;
 let targetParent: string;

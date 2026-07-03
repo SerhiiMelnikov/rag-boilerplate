@@ -7,7 +7,7 @@
   "files": ["dist", "template"],
   "engines": { "node": ">=18" },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "build:template": "tsx scripts/build-template.ts",
     "test": "vitest run",
     "prepack": "npm run build:template && npm run build"

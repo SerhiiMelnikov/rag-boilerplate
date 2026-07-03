@@ -1,5 +1,5 @@
-import type { InstallOptions, ProviderId, VectorStoreId, PackageManager } from "./options";
-import { validateSelection, detectPackageManager } from "./options";
+import type { InstallOptions, ProviderId, VectorStoreId, PackageManager } from "./options.js";
+import { validateSelection, detectPackageManager } from "./options.js";
 
 export interface Prompter {
   askProjectName(): Promise<string>;

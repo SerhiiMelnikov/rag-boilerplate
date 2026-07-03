@@ -51,6 +51,11 @@ export function pruneVectorFactory(project: Project, removed: VectorStoreId[]): 
   removeSwitchCasesByLiteral(project, "src/lib/vectorstore/index.ts", removed);
 }
 
+// scripts/vectorstore-init.ts: remove the removed stores' ensure* imports + cases.
+export function pruneVectorInitScript(project: Project, removed: VectorStoreId[]): void {
+  removeSwitchCasesByLiteral(project, "scripts/vectorstore-init.ts", removed);
+}
+
 // types.ts: narrow the ProviderId / EmbeddingProviderId unions to the kept set.
 export function narrowProviderUnions(project: Project, kept: ProviderId[]): void {
   const sf = resolveSourceFile(project, "src/lib/providers/types.ts");
@@ -179,6 +184,7 @@ export async function applySourceTransforms(
   for (const rel of [
     "src/lib/providers/index.ts", "src/lib/providers/types.ts", "src/lib/vectorstore/index.ts",
     "src/lib/db/schema.ts", "src/components/admin/settings-form.tsx", "src/components/admin/provider-keys-form.tsx",
+    "scripts/vectorstore-init.ts",
   ]) {
     project.addSourceFileAtPath(`${root}/${rel}`);
   }
@@ -188,7 +194,10 @@ export async function applySourceTransforms(
     narrowProviderUnions(project, o.keptProviders);
     pruneAdminProviderLists(project, o.keptProviders);
   }
-  if (removedStores.length) pruneVectorFactory(project, removedStores);
+  if (removedStores.length) {
+    pruneVectorFactory(project, removedStores);
+    pruneVectorInitScript(project, removedStores);
+  }
   rewriteSettingsDefaults(project, o.settingsDefaults);
   await project.save();
 }

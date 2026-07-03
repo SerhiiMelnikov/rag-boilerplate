@@ -3,7 +3,7 @@ import { Project } from "ts-morph";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneAdminProviderLists, rewriteSettingsDefaults } from "./source";
+import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneAdminProviderLists, rewriteSettingsDefaults } from "./source";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "test-fixtures");
 const read = (p: string) => readFileSync(join(FIX, p), "utf8");
@@ -48,6 +48,22 @@ describe("pruneVectorFactory", () => {
     expect(text).not.toContain("createChromaStore");
     expect(text).not.toContain('case "weaviate"');
     expect(text).toContain('case "pgvector"');
+    expect(text).toContain('case "qdrant"');
+  });
+});
+
+describe("pruneVectorInitScript", () => {
+  it("removes pruned stores' ensure* imports and switch cases", () => {
+    const project = projectWith("scripts/vectorstore-init.ts", read("vectorstore-init.ts"));
+    pruneVectorInitScript(project, ["chroma", "weaviate", "pinecone"]);
+    const text = project.getSourceFileOrThrow("scripts/vectorstore-init.ts").getFullText();
+    expect(text).not.toContain("ensureChromaCollection");
+    expect(text).not.toContain("ensureWeaviateCollection");
+    expect(text).not.toContain("ensurePineconeIndexes");
+    expect(text).not.toContain('case "chroma"');
+    expect(text).not.toContain('case "weaviate"');
+    expect(text).not.toContain('case "pinecone"');
+    expect(text).toContain("ensureQdrantCollection");
     expect(text).toContain('case "qdrant"');
   });
 });

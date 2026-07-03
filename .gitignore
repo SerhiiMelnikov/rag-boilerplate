@@ -6,3 +6,5 @@ docs/superpowers/
 .superpowers/
 *.tsbuildinfo
 next-env.d.ts
+cli/template/
+cli/dist/

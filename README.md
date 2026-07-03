@@ -1,210 +1,76 @@
-# RAG Boilerplate
+# rag-boilerplate
 
-A production-ready **Retrieval-Augmented Generation (RAG) chat** starter built with
-Next.js (App Router) + TypeScript. It ships a headless, restyleable chat UI, an
-admin panel for documents and retrieval settings, role-based auth, and a clean,
-hand-rolled RAG engine — all on one configuration: **Google Gemini + Postgres/pgvector**.
+An `npx` scaffolder that generates a full-stack, production-ready
+**Retrieval-Augmented Generation (RAG) chat app** — Next.js (App Router) +
+TypeScript, with a headless/restyleable chat UI, an admin panel, role-based
+auth, and a hand-rolled RAG engine — configured for the AI providers and
+vector store **you** pick.
 
-> This is the "golden path" configuration (Subproject 1). Future work makes the
-> providers/vector-stores swappable and wraps everything in an `npx` installer.
+This repository *is* the installer. The app it generates lives as a template
+snapshot under `cli/template/` (built from this repo's own source by
+`cli/scripts/build-template.ts`) and is pruned down to your selection at
+scaffold time — it is not meant to be run directly out of this repo.
 
-## Stack
-
-- **Web:** Next.js 15 (App Router), TypeScript, Tailwind CSS, Headless UI (minimal, dark-mode-first — easy to restyle)
-- **Auth:** Auth.js v5 (credentials) with JWT sessions and admin/user roles
-- **Database:** Postgres (documents, users, chat history, settings — always here) plus
-  chunks + vector search, stored in Postgres/`pgvector` (default), Qdrant, Chroma,
-  Weaviate, or Pinecone, selected by `VECTOR_STORE`; all are wired through Drizzle ORM / a
-  shared `VectorStore` interface
-- **AI (Google Gemini):** chat model `gemma-4-31b-it`, embeddings `gemini-embedding-2` at 768 dimensions (Vercel AI SDK)
-- **Docs ingestion:** PDF, DOCX, Markdown, plain text
-
-## Prerequisites
-
-- **Node.js 20+**
-- **Docker** (runs the bundled Postgres + pgvector)
-- A provider API key (e.g. a free Google AI Studio key — https://aistudio.google.com/apikey) — entered in the app at Admin → Provider keys after first run, NOT in .env
-
-## Setup
+## Quick start
 
 ```bash
-# 1. Install dependencies
-npm install
-
-# 2. Create your env file and fill it in
-cp .env.example .env
+npx rag-boilerplate my-app
 ```
 
-Edit `.env`:
+Run without a project name and you'll be prompted for one, along with:
 
-| Variable | What to put |
+- **AI providers** (multi-select) — which providers to include
+- **Default provider** — which of the selected providers chat + document
+  parsing use by default (changeable later in Admin → Settings)
+- **Vector store** — where document chunks + embeddings are stored
+- Whether to run `git init` and install dependencies afterwards
+
+### Non-interactive flags
+
+| Flag | Description |
 | --- | --- |
-| `DATABASE_URL` | Leave the default — it matches the bundled Docker database (`postgres://rag:rag@localhost:5432/rag`) |
-| `AUTH_SECRET` | A random secret — generate with `openssl rand -base64 32` |
-| `SETTINGS_ENCRYPTION_KEY` | 32-byte base64 — generate with `openssl rand -base64 32` |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credentials for the first admin account |
+| `<project-name>` (positional) | Directory to create. Prompted for if omitted. |
+| `--providers <list>` | Comma-separated AI providers: `google`, `openai`, `anthropic`, `ollama`. |
+| `--default-provider <id>` | Which selected provider is used by default. |
+| `--vector-store <id>` | `pgvector`, `qdrant`, `chroma`, `weaviate`, or `pinecone`. |
+| `--no-install` | Skip the package-manager install step. |
+| `--no-git` | Skip `git init`. |
+| `-y`, `--yes` | Accept defaults for anything not passed on the command line (no prompts). |
 
-```bash
-# 3. Start the database (Postgres + pgvector in Docker)
-npm run db:up
+At least one selected provider must support embeddings (`google`, `openai`,
+or `ollama` — `anthropic` cannot embed on its own), and the default provider
+must be one of the selected providers.
 
-# 4. Apply the schema
-npm run db:migrate
+## Module options
 
-# 5. Create the admin user from ADMIN_EMAIL / ADMIN_PASSWORD
-npm run seed:admin
-```
+- **Providers:** Google Gemini, OpenAI, Anthropic Claude, Ollama (local)
+- **Vector stores:** pgvector (Postgres, default), Qdrant, Chroma, Weaviate,
+  Pinecone (managed)
 
-### Using Qdrant instead of pgvector
+## What you get
 
-By default chunks are stored in Postgres/`pgvector`. To use Qdrant instead:
+The generated app includes:
 
-```bash
-# In .env: set VECTOR_STORE=qdrant and QDRANT_URL (defaults shown in .env.example)
+- A chat UI with streaming answers, source citations, and 👍/👎 rating
+- An admin panel: document upload/management, provider API keys (encrypted
+  at rest), retrieval settings, user management, rating analytics
+- A hand-rolled RAG engine: chunking, parsing (PDF/DOCX/Markdown/text),
+  embeddings, hybrid (vector + keyword) retrieval, ingestion
+- Auth.js-based authentication with admin/user roles
+- Drizzle ORM + Postgres for documents, users, chat history, and settings
+- A `.env` pre-populated with fresh secrets, and a `README.md` tailored to
+  your selection
 
-# Start Qdrant
-docker compose up -d qdrant
+Unselected providers/vector-store adapters, their dependencies, and related
+`docker-compose.yml` services are pruned from the generated app — it only
+ever references what you picked.
 
-# Postgres is still required (documents/users/chat history/settings live there)
-npm run db:up
+## Development
 
-# Create the Qdrant collection
-npm run vectorstore:init
-```
+This repo's root (outside `cli/`) is the source the template snapshot is
+built from — it's a normal Next.js app you can run directly for developing
+the installer itself, but it is not the product `npx rag-boilerplate`
+installs.
 
-### Using Chroma instead of pgvector
-
-Set `VECTOR_STORE=chroma` and `CHROMA_URL` in `.env`, then `docker compose up -d chroma` followed by `npm run vectorstore:init` to create the collection.
-
-### Using Weaviate instead of pgvector
-
-Set `VECTOR_STORE=weaviate` and `WEAVIATE_URL` in `.env`, then `docker compose up -d weaviate` followed by `npm run vectorstore:init` to create the collection (no vectorizer — embeddings are app-supplied — cosine distance).
-
-### Using Pinecone instead of pgvector
-
-Pinecone is managed/cloud — no docker service. Set `VECTOR_STORE=pinecone` and `PINECONE_API_KEY` (from your Pinecone account) in `.env`, then run `npm run vectorstore:init` to create the dense + sparse serverless indexes.
-
-## Run
-
-```bash
-npm run dev
-```
-
-Open http://localhost:3000. Sign in with your admin credentials, or register a
-regular account at `/register` (self-registration always creates a normal user;
-admins are created only via `npm run seed:admin`).
-
-Then open Admin → Provider keys and paste at least one provider API key; until
-a key is set for the configured chat/embedding provider, chat and ingestion
-report a clear "not configured" message.
-
-## Add documents (ingestion)
-
-Before the assistant can answer from your knowledge base, index some documents:
-
-- **From the UI (admin):** go to **Documents** → upload a `.pdf`, `.docx`, `.md`, or `.txt` file.
-- **From the CLI (bulk):**
-  ```bash
-  npm run ingest -- ./path/to/your/docs
-  ```
-  It recursively indexes every supported file in the folder and is safe to
-  re-run (unchanged content is skipped).
-
-## Use it
-
-- **Chat:** start a new conversation and ask a question. Answers stream in, with a
-  **Sources** line showing which documents were used, and 👍/👎 rating buttons.
-- **Admin → Documents:** upload / view status / delete indexed documents.
-- **Admin → Settings:** tune retrieval — `topK`, model, temperature, system prompt,
-  minimum similarity, and the context token budget.
-- **Admin → Users (super-admin only):** the env-seeded `ADMIN_EMAIL` account is
-  the **super-admin** — the only account that can manage users (block/unblock,
-  change roles) here. Regular admins cannot. Blocking takes effect immediately:
-  a blocked user is logged out on their next request and cannot sign in. The
-  super-admin itself can never be blocked or demoted.
-
-## Scripts
-
-| Script | Purpose |
-| --- | --- |
-| `npm run dev` | Start the dev server |
-| `npm run build` | Production build |
-| `npm run start` | Run the production build |
-| `npm test` | Unit tests (no database needed) |
-| `npm run test:integration` | Real-DB integration tests (needs the Docker database; sets `RUN_INTEGRATION=1`) |
-| `npm run db:up` | Start Postgres + pgvector in Docker |
-| `npm run db:generate` | Generate a Drizzle migration from the schema |
-| `npm run db:migrate` | Apply migrations |
-| `npm run ingest -- <path>` | Bulk-ingest a file or folder |
-| `npm run seed:admin` | Create the admin user from env |
-| `npm run vectorstore:init` | Create the Qdrant/Chroma/Weaviate collection or the Pinecone indexes (only needed when `VECTOR_STORE=qdrant`, `chroma`, `weaviate`, or `pinecone`) |
-
-## Testing
-
-- `npm test` runs the unit suite (services and routes are tested with injected
-  dependencies / mocked auth — no database or API key required).
-- `npm run test:integration` runs the database-backed tests (start the Docker DB
-  and apply migrations first). These are skipped by the default `npm test`.
-
-## Project layout
-
-```
-src/
-  lib/rag/        RAG engine: chunking, parsing, embeddings, retrieval, ingestion, query
-  lib/db/         Drizzle schema + client + migrator
-  lib/auth/       password hashing, users service, RBAC guards
-  lib/chat/       conversations & messages service
-  lib/settings/   admin settings service
-  lib/documents/  documents service
-  app/api/        route handlers (auth, chat, conversations, messages, admin)
-  app/(app)/      authenticated pages (chat + admin)
-  components/     UI (chat, admin, auth form, theme)
-scripts/          ingest + seed-admin CLIs
-drizzle/          generated SQL migrations
-```
-
-The RAG engine and the provider/database wiring are deliberately thin and
-readable — they are the seams intended for swapping in other models or vector
-stores later.
-
-## Configuration notes
-
-- **Hybrid retrieval.** Search fuses dense vector similarity (pgvector) with
-  Postgres full-text keyword search via Reciprocal Rank Fusion, so named-entity
-  and keyword questions still find the right chunk when dense similarity ranks it
-  too low. The keyword branch uses a GIN index (migration `0003`).
-- **`AUTH_SECRET` is required** at runtime for Auth.js to sign sessions.
-- **Layout-heavy PDFs.** Plain PDF text extraction loses 2D structure, so
-  multi-column layouts and tables can come out in the wrong reading order. When
-  such a layout is detected, the parser re-extracts the PDF with the
-  admin-configured document-parser model that preserves reading order; it
-  falls back to flat text if that call fails. This costs one model call per
-  affected document at ingest time (one-time, deduped).
-- **Chat model latency.** The chat model is configurable in **Admin → Settings**.
-  Large models on the free tier can have a high time-to-first-token; a
-  `gemini-*-flash` model streams noticeably faster if responses feel slow.
-- **Provider API keys are managed in Admin → Settings (encrypted at rest).** Set
-  them in **Admin → Settings → Provider keys**; they are encrypted with
-  `SETTINGS_ENCRYPTION_KEY` (AES-256-GCM), which is required before saving any
-  key. Per-task model selection (chat / embedding / document parser) lives there
-  too. All model calls (chat, embeddings, document parser) use these DB-stored
-  keys; there is no environment fallback. A missing or invalid key surfaces as
-  a clear message in chat and on the document's status — never a silent
-  failure.
-- Embedding dimension is set by `EMBEDDING_DIMENSIONS` (default 768); switching
-  embedding provider/model to a different width requires re-indexing.
-- **Vector store backend is set by `VECTOR_STORE`** (`pgvector` default,
-  `qdrant`, `chroma`, `weaviate`, or `pinecone`). Switching stores requires
-  re-indexing — vectors are not shared between backends. Qdrant's keyword
-  search is a pragmatic `MatchText` approximation (Qdrant has no
-  `ts_rank`/BM25), and Chroma's is a `whereDocument $contains` substring
-  filter ranked by vector score — both are slightly weaker than pgvector's
-  Postgres full-text search. Weaviate uses native BM25 for keyword search;
-  since BM25 returns a relevance score rather than cosine, the returned
-  `score` is recomputed as cosine similarity from the object's stored vector
-  so it stays comparable across backends. Pinecone is sparse-dense: a dense
-  index holds app-supplied vectors and a sparse index (Pinecone's hosted
-  sparse model) handles keyword search; as with Weaviate, the returned
-  `score` is recomputed as cosine similarity from the fetched dense vector,
-  and it is the only backend that needs no docker service (managed/cloud,
-  just an API key).
+For building, testing, and publishing the installer package, see
+[`cli/README.md`](cli/README.md).

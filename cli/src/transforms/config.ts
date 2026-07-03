@@ -13,6 +13,18 @@ export function prunePackageJson(json: string, removeDeps: string[]): string {
   return JSON.stringify(pkg, null, 2) + "\n";
 }
 
+const TEST_DEV_DEPS = ["@testing-library/dom", "@testing-library/jest-dom", "@testing-library/react", "@testing-library/user-event", "@vitejs/plugin-react", "jsdom", "vitest"];
+const TEST_SCRIPTS = ["test", "test:watch", "test:integration"];
+
+// Remove the boilerplate's own test scripts + test-only devDependencies from the
+// generated package.json (the scaffolded app ships without the template's tests).
+export function removeTestTooling(json: string): string {
+  const pkg = JSON.parse(json);
+  if (pkg.scripts) for (const s of TEST_SCRIPTS) delete pkg.scripts[s];
+  if (pkg.devDependencies) for (const d of TEST_DEV_DEPS) delete pkg.devDependencies[d];
+  return JSON.stringify(pkg, null, 2) + "\n";
+}
+
 // Keep only the named services; drop any top-level volume no longer referenced.
 export function pruneDockerCompose(yamlText: string, keepServices: string[]): string {
   const doc = parseYaml(yamlText) as { services?: Record<string, unknown>; volumes?: Record<string, unknown> };

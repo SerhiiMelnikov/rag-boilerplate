@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { prunePackageJson, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret } from "./config";
+import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret } from "./config";
 
 const PKG = JSON.stringify({ dependencies: { "@ai-sdk/google": "1", "@ai-sdk/openai": "1", "chromadb": "1", "next": "15" } }, null, 2);
 
@@ -9,6 +9,51 @@ describe("prunePackageJson", () => {
     expect(out.dependencies["@ai-sdk/openai"]).toBeUndefined();
     expect(out.dependencies["chromadb"]).toBeUndefined();
     expect(out.dependencies["@ai-sdk/google"]).toBe("1");
+    expect(out.dependencies["next"]).toBe("15");
+  });
+});
+
+const PKG_WITH_TEST_TOOLING = JSON.stringify(
+  {
+    scripts: {
+      dev: "next dev",
+      build: "next build",
+      test: "vitest run",
+      "test:watch": "vitest",
+      "test:integration": "RUN_INTEGRATION=1 vitest run --config vitest.integration.config.ts",
+    },
+    dependencies: { next: "15" },
+    devDependencies: {
+      "@testing-library/dom": "1",
+      "@testing-library/jest-dom": "1",
+      "@testing-library/react": "1",
+      "@testing-library/user-event": "1",
+      "@vitejs/plugin-react": "1",
+      jsdom: "1",
+      vitest: "1",
+      typescript: "5",
+    },
+  },
+  null,
+  2
+);
+
+describe("removeTestTooling", () => {
+  it("removes exactly the template's test scripts and test-only devDependencies, preserving the rest", () => {
+    const out = JSON.parse(removeTestTooling(PKG_WITH_TEST_TOOLING));
+    expect(out.scripts.test).toBeUndefined();
+    expect(out.scripts["test:watch"]).toBeUndefined();
+    expect(out.scripts["test:integration"]).toBeUndefined();
+    expect(out.scripts.dev).toBe("next dev");
+    expect(out.scripts.build).toBe("next build");
+    expect(out.devDependencies["@testing-library/dom"]).toBeUndefined();
+    expect(out.devDependencies["@testing-library/jest-dom"]).toBeUndefined();
+    expect(out.devDependencies["@testing-library/react"]).toBeUndefined();
+    expect(out.devDependencies["@testing-library/user-event"]).toBeUndefined();
+    expect(out.devDependencies["@vitejs/plugin-react"]).toBeUndefined();
+    expect(out.devDependencies["jsdom"]).toBeUndefined();
+    expect(out.devDependencies["vitest"]).toBeUndefined();
+    expect(out.devDependencies["typescript"]).toBe("5");
     expect(out.dependencies["next"]).toBe("15");
   });
 });

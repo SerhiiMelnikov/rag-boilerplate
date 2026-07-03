@@ -1,12 +1,20 @@
 import { cp, rm, rename, mkdtemp } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 // Assemble cli/template/ from the app root, excluding dev-only scaffolding.
 const ROOT = resolve(import.meta.dirname, "..", "..");
 const OUT = resolve(import.meta.dirname, "..", "template");
 const EXCLUDE = new Set(["cli", "docs", ".superpowers", "node_modules", ".next", ".git", "tsconfig.tsbuildinfo", ".env", "package-lock.json", "next-env.d.ts"]);
+// The template is a clean starting point; the boilerplate's own tests (and the
+// vitest configs that run them) are not shipped. This also matters functionally:
+// scaffold() prunes unselected provider adapters and vector-store dirs, and the
+// boilerplate's test files import across those modules (e.g. adapters.test.ts
+// imports every provider, ingest.integration.test.ts imports pgvector), so
+// shipping them would break `tsc`/`next build`/`npm test` in the generated app.
+const TEST_FILE_RE = /\.test\.tsx?$/;
+const EXCLUDE_BASENAMES = new Set(["vitest.config.ts", "vitest.integration.config.ts", "vitest.setup.ts"]);
 
 async function main() {
   if (existsSync(OUT)) await rm(OUT, { recursive: true, force: true });
@@ -24,6 +32,9 @@ async function main() {
         if (rel === "") return true;
         if (EXCLUDE.has(top)) return false;
         if (rel.endsWith(".tsbuildinfo")) return false;
+        const base = basename(src);
+        if (TEST_FILE_RE.test(base)) return false;
+        if (EXCLUDE_BASENAMES.has(base)) return false;
         return true;
       },
     });

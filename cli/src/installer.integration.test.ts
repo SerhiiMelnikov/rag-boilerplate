@@ -35,7 +35,11 @@ describe.runIf(RUN)("installer (integration)", () => {
       const pkg = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
       if (full.vectorStore !== "chroma") expect(pkg.dependencies["chromadb"]).toBeUndefined();
       if (!full.providers.includes("anthropic")) expect(pkg.dependencies["@ai-sdk/anthropic"]).toBeUndefined();
-      expect(existsSync(join(target, `src/lib/vectorstore/${full.vectorStore}`))).toBe(full.vectorStore !== "pgvector" ? true : true);
+      expect(existsSync(join(target, `src/lib/vectorstore/${full.vectorStore}`))).toBe(true);
+      // The template is a clean starting point: the boilerplate's own test files and
+      // vitest configs must not ship (they'd import pruned provider/store modules).
+      expect(existsSync(join(target, "src/lib/providers/adapters.test.ts"))).toBe(false);
+      expect(existsSync(join(target, "vitest.config.ts"))).toBe(false);
       // Type-check the generated app using its own installed typescript if present,
       // else skip the tsc step (dep install is out of scope for CI speed).
       const tsc = join(target, "node_modules/.bin/tsc");

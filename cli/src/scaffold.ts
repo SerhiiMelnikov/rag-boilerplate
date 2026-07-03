@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { InstallOptions, ProviderId, VectorStoreId } from "./options";
 import { PROVIDER_IDS, VECTOR_STORE_IDS, resolveEmbeddingProvider } from "./options";
 import { PROVIDERS, VECTOR_STORES, providerDepsToRemove } from "./modules";
-import { prunePackageJson, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret } from "./transforms/config";
+import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret } from "./transforms/config";
 import { applySourceTransforms } from "./transforms/source";
 
 // Compute the six settings defaults from the chosen default provider + manifest.
@@ -39,10 +39,12 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
     if (dir && existsSync(dir)) await rm(dir, { recursive: true, force: true });
   }
 
-  // 4. package.json deps.
+  // 4. package.json deps: prune unselected provider/store deps, then strip the
+  // template's own test scripts + test-only devDependencies (no test files ship).
   const pkgPath = join(opts.targetDir, "package.json");
   const removeDeps = [...providerDepsToRemove(o.providers), ...removedStores.flatMap((s) => VECTOR_STORES[s].deps)];
-  await writeFile(pkgPath, prunePackageJson(await readFile(pkgPath, "utf8"), removeDeps));
+  const pkgJson = removeTestTooling(prunePackageJson(await readFile(pkgPath, "utf8"), removeDeps));
+  await writeFile(pkgPath, pkgJson);
 
   // 5. docker-compose: keep db + the selected store's service (if any).
   const dcPath = join(opts.targetDir, "docker-compose.yml");

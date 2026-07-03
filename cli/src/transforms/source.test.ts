@@ -83,6 +83,31 @@ describe("pruneAdminProviderLists", () => {
     expect(kf).not.toMatch(/OpenAI API key/);
     expect(kf).toMatch(/Google API key/);
   });
+
+  it("prunes the Ollama input and dead provider refs when ollama is not kept", () => {
+    const project = new Project({ useInMemoryFileSystem: true });
+    project.createSourceFile("src/components/admin/settings-form.tsx", read("settings-form.tsx"));
+    project.createSourceFile("src/components/admin/provider-keys-form.tsx", read("provider-keys-form.tsx"));
+    pruneAdminProviderLists(project, ["google"]);
+    const kf = project.getSourceFileOrThrow("src/components/admin/provider-keys-form.tsx").getFullText();
+    expect(kf).not.toContain("Ollama base URL");
+    expect(kf).not.toContain('"openai"');
+    expect(kf).not.toContain('"anthropic"');
+    expect(kf).toContain('type KeyName = "google"');
+    expect(kf).toMatch(/Google API key/);
+  });
+
+  it("keeps the Ollama input when ollama is kept, but still narrows KeyName to key-based providers", () => {
+    const project = new Project({ useInMemoryFileSystem: true });
+    project.createSourceFile("src/components/admin/settings-form.tsx", read("settings-form.tsx"));
+    project.createSourceFile("src/components/admin/provider-keys-form.tsx", read("provider-keys-form.tsx"));
+    pruneAdminProviderLists(project, ["google", "ollama"]);
+    const kf = project.getSourceFileOrThrow("src/components/admin/provider-keys-form.tsx").getFullText();
+    expect(kf).toContain("Ollama base URL");
+    expect(kf).toContain('type KeyName = "google"');
+    expect(kf).not.toContain('"openai"');
+    expect(kf).not.toContain('"anthropic"');
+  });
 });
 
 describe("rewriteSettingsDefaults", () => {

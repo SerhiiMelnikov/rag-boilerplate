@@ -163,6 +163,51 @@ export function pruneAdminProviderLists(project: Project, kept: ProviderId[]): v
       jsx.replaceWithText("");
     }
   }
+
+  // Remove the standalone "Ollama base URL" <label>...</label> block (it isn't
+  // a <KeyRow>, so the loop above never touches it) when ollama isn't kept.
+  if (removed.includes("ollama")) {
+    const matches = kf.getDescendantsOfKind(SyntaxKind.JsxElement).filter((el) => el.getText().includes("Ollama base URL"));
+    // Prefer the innermost match: an enclosing <section>/<form> also "contains"
+    // the text transitively, so only remove elements with no matching descendant.
+    for (const el of matches) {
+      const hasNestedMatch = el.getDescendantsOfKind(SyntaxKind.JsxElement).some((d) => d.getText().includes("Ollama base URL"));
+      if (!hasNestedMatch) el.replaceWithText("");
+    }
+  }
+
+  // Narrow the KeyName type alias to the key-based kept providers. Ollama is
+  // key-less (no API key, just a base URL) so it's never a KeyName member.
+  const keyBasedProviders: ProviderId[] = ["google", "openai", "anthropic"];
+  const keyBasedKept = keyBasedProviders.filter((p) => keptSet.has(p));
+  const keyNameAlias = kf.getTypeAliasOrThrow("KeyName");
+  keyNameAlias.setType(keyBasedKept.length ? keyBasedKept.map((m) => `"${m}"`).join(" | ") : "never");
+
+  // Filter the keyInputs initializer object literals (the useState default and
+  // the reset call after a successful save) down to the kept key-based providers.
+  const keyBasedSet = new Set<string>(keyBasedProviders);
+  for (const obj of kf.getDescendantsOfKind(SyntaxKind.ObjectLiteralExpression)) {
+    const props = obj.getProperties();
+    const isKeyInputsInitializer = props.length > 0 && props.every(
+      (p) => Node.isPropertyAssignment(p) && keyBasedSet.has(p.getName().replace(/['"]/g, "")),
+    );
+    if (!isKeyInputsInitializer) continue;
+    for (const prop of [...props]) {
+      if (Node.isPropertyAssignment(prop) && removed.includes(prop.getName().replace(/['"]/g, "") as ProviderId)) {
+        prop.remove();
+      }
+    }
+  }
+
+  // Filter the submit-loop provider array (`["google", "openai", "anthropic"] as const`).
+  for (const arr of kf.getDescendantsOfKind(SyntaxKind.ArrayLiteralExpression)) {
+    const indicesToRemove: number[] = [];
+    arr.getElements().forEach((el, i) => {
+      if (Node.isStringLiteral(el) && removed.includes(el.getLiteralValue() as ProviderId)) indicesToRemove.push(i);
+    });
+    for (const i of indicesToRemove.reverse()) arr.removeElement(i);
+  }
+
   kf.saveSync();
 }
 

@@ -122,6 +122,18 @@ export function pruneAdminProviderLists(project: Project, kept: ProviderId[]): v
   const keptSet = new Set<string>(kept);
   const removed = (["google", "openai", "anthropic", "ollama"] as ProviderId[]).filter((p) => !keptSet.has(p));
 
+  // Key-based providers actually have an API-key input (ollama is key-less: a
+  // base URL only). When none of them survive (an ollama-only selection,
+  // which validateSelection allows since ollama is embedding-capable),
+  // narrowing the key-based unions/objects below down to nothing collapses
+  // them to `never`, which fails `tsc` downstream (e.g. `KEY_OF`'s value
+  // union in settings-form.tsx, and `KeyName` in provider-keys-form.tsx). In
+  // that case we skip narrowing those specific declarations and leave them in
+  // their original three-provider form; the corresponding UI rows are still
+  // removed and the stale values are never read, so this is harmless.
+  const keyBasedProviders: ProviderId[] = ["google", "openai", "anthropic"];
+  const keptKeyBased = keyBasedProviders.filter((p) => keptSet.has(p));
+
   // settings-form: filter string-literal array elements, object properties
   // whose key is a removed provider, and union-type literals for a removed
   // provider (e.g. the `Record<string, "google" | "openai" | ...>` annotation).
@@ -145,9 +157,16 @@ export function pruneAdminProviderLists(project: Project, kept: ProviderId[]): v
     }
   }
   // Narrow union type nodes last (removing array/object entries above does not
-  // touch type annotations, which are handled separately here).
+  // touch type annotations, which are handled separately here). Guard: when no
+  // key-based provider is kept (ollama-only), don't strip key-based literals
+  // out of a union — that would collapse `KEY_OF`'s value union down to just
+  // `null`, which the `if (!k) return false;` guard in `providerMissingKey`
+  // then narrows to `never`, breaking `keys[k].set`. Only non-key-based
+  // members (currently just "ollama", which doesn't appear in that union
+  // anyway) are removed in that case.
+  const unionRemoved = keptKeyBased.length > 0 ? removed : removed.filter((p) => !keyBasedProviders.includes(p));
   for (const union of [...sf.getDescendantsOfKind(SyntaxKind.UnionType)]) {
-    narrowUnionTypeNode(union, removed);
+    narrowUnionTypeNode(union, unionRemoved);
   }
   sf.saveSync();
 
@@ -178,34 +197,40 @@ export function pruneAdminProviderLists(project: Project, kept: ProviderId[]): v
 
   // Narrow the KeyName type alias to the key-based kept providers. Ollama is
   // key-less (no API key, just a base URL) so it's never a KeyName member.
-  const keyBasedProviders: ProviderId[] = ["google", "openai", "anthropic"];
-  const keyBasedKept = keyBasedProviders.filter((p) => keptSet.has(p));
-  const keyNameAlias = kf.getTypeAliasOrThrow("KeyName");
-  keyNameAlias.setType(keyBasedKept.length ? keyBasedKept.map((m) => `"${m}"`).join(" | ") : "never");
+  // Guard: when no key-based provider is kept (ollama-only), skip this
+  // narrowing entirely rather than collapsing to `never` — a `never` KeyName
+  // then poisons every `keyInputs[k]`/`Record<KeyName, string>` use with a
+  // `tsc` error. Leaving the original three-provider union in place is
+  // harmless here: the corresponding <KeyRow>s are already removed above, so
+  // the extra union members / object keys are simply never read or submitted.
+  if (keptKeyBased.length > 0) {
+    const keyNameAlias = kf.getTypeAliasOrThrow("KeyName");
+    keyNameAlias.setType(keptKeyBased.map((m) => `"${m}"`).join(" | "));
 
-  // Filter the keyInputs initializer object literals (the useState default and
-  // the reset call after a successful save) down to the kept key-based providers.
-  const keyBasedSet = new Set<string>(keyBasedProviders);
-  for (const obj of kf.getDescendantsOfKind(SyntaxKind.ObjectLiteralExpression)) {
-    const props = obj.getProperties();
-    const isKeyInputsInitializer = props.length > 0 && props.every(
-      (p) => Node.isPropertyAssignment(p) && keyBasedSet.has(p.getName().replace(/['"]/g, "")),
-    );
-    if (!isKeyInputsInitializer) continue;
-    for (const prop of [...props]) {
-      if (Node.isPropertyAssignment(prop) && removed.includes(prop.getName().replace(/['"]/g, "") as ProviderId)) {
-        prop.remove();
+    // Filter the keyInputs initializer object literals (the useState default and
+    // the reset call after a successful save) down to the kept key-based providers.
+    const keyBasedSet = new Set<string>(keyBasedProviders);
+    for (const obj of kf.getDescendantsOfKind(SyntaxKind.ObjectLiteralExpression)) {
+      const props = obj.getProperties();
+      const isKeyInputsInitializer = props.length > 0 && props.every(
+        (p) => Node.isPropertyAssignment(p) && keyBasedSet.has(p.getName().replace(/['"]/g, "")),
+      );
+      if (!isKeyInputsInitializer) continue;
+      for (const prop of [...props]) {
+        if (Node.isPropertyAssignment(prop) && removed.includes(prop.getName().replace(/['"]/g, "") as ProviderId)) {
+          prop.remove();
+        }
       }
     }
-  }
 
-  // Filter the submit-loop provider array (`["google", "openai", "anthropic"] as const`).
-  for (const arr of kf.getDescendantsOfKind(SyntaxKind.ArrayLiteralExpression)) {
-    const indicesToRemove: number[] = [];
-    arr.getElements().forEach((el, i) => {
-      if (Node.isStringLiteral(el) && removed.includes(el.getLiteralValue() as ProviderId)) indicesToRemove.push(i);
-    });
-    for (const i of indicesToRemove.reverse()) arr.removeElement(i);
+    // Filter the submit-loop provider array (`["google", "openai", "anthropic"] as const`).
+    for (const arr of kf.getDescendantsOfKind(SyntaxKind.ArrayLiteralExpression)) {
+      const indicesToRemove: number[] = [];
+      arr.getElements().forEach((el, i) => {
+        if (Node.isStringLiteral(el) && removed.includes(el.getLiteralValue() as ProviderId)) indicesToRemove.push(i);
+      });
+      for (const i of indicesToRemove.reverse()) arr.removeElement(i);
+    }
   }
 
   kf.saveSync();

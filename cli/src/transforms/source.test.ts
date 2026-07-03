@@ -108,6 +108,20 @@ describe("pruneAdminProviderLists", () => {
     expect(kf).not.toContain('"openai"');
     expect(kf).not.toContain('"anthropic"');
   });
+
+  it("skips narrowing KeyName/keyInputs/the submit loop for an ollama-only selection (avoids `never`)", () => {
+    const project = new Project({ useInMemoryFileSystem: true });
+    project.createSourceFile("src/components/admin/settings-form.tsx", read("settings-form.tsx"));
+    project.createSourceFile("src/components/admin/provider-keys-form.tsx", read("provider-keys-form.tsx"));
+    pruneAdminProviderLists(project, ["ollama"]);
+    const kf = project.getSourceFileOrThrow("src/components/admin/provider-keys-form.tsx").getFullText();
+    // ollama is kept, so its base-URL input must remain.
+    expect(kf).toContain("Ollama base URL");
+    // No key-based provider survives: KeyName must NOT collapse to `never`.
+    // It's left un-narrowed (still the original three-provider union).
+    expect(kf).not.toContain("never");
+    expect(kf).toContain('type KeyName = "google"');
+  });
 });
 
 describe("rewriteSettingsDefaults", () => {

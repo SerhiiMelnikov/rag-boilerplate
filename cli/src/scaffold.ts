@@ -1,12 +1,12 @@
 import { cp, rm, rename, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { InstallOptions, ProviderId, VectorStoreId } from "./options";
-import { PROVIDER_IDS, VECTOR_STORE_IDS, resolveEmbeddingProvider } from "./options";
-import { PROVIDERS, VECTOR_STORES, providerDepsToRemove } from "./modules";
-import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret } from "./transforms/config";
-import { applySourceTransforms } from "./transforms/source";
-import { generateReadme } from "./readme";
+import type { InstallOptions, ProviderId, VectorStoreId } from "./options.js";
+import { PROVIDER_IDS, VECTOR_STORE_IDS, resolveEmbeddingProvider } from "./options.js";
+import { PROVIDERS, VECTOR_STORES, providerDepsToRemove } from "./modules.js";
+import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret } from "./transforms/config.js";
+import { applySourceTransforms } from "./transforms/source.js";
+import { generateReadme } from "./readme.js";
 
 // Compute the six settings defaults from the chosen default provider + manifest.
 export function settingsDefaultsFor(o: InstallOptions) {

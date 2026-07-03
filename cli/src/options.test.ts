@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseArgs, validateSelection, detectPackageManager, EMBEDDING_CAPABLE } from "./options";
+import { parseArgs, validateSelection, detectPackageManager, EMBEDDING_CAPABLE } from "./options.js";
 
 describe("parseArgs", () => {
   it("parses the project name positional and flags", () => {

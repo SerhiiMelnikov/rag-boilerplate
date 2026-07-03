@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PROVIDERS, VECTOR_STORES, providerDepsToRemove } from "./modules";
+import { PROVIDERS, VECTOR_STORES, providerDepsToRemove } from "./modules.js";
 
 describe("PROVIDERS manifest", () => {
   it("marks anthropic as not embedding-capable and the rest capable", () => {

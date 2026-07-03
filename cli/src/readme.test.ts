@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { generateReadme } from "./readme";
-import type { InstallOptions } from "./options";
+import { generateReadme } from "./readme.js";
+import type { InstallOptions } from "./options.js";
 
 const opts = (over: Partial<InstallOptions> = {}): InstallOptions => ({
   projectName: "my-rag-app", providers: ["google"], defaultProvider: "google", vectorStore: "pgvector",

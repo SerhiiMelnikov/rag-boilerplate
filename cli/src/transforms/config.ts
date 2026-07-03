@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import type { VectorStoreId } from "../options";
-import { VECTOR_STORES } from "../modules";
+import type { VectorStoreId } from "../options.js";
+import { VECTOR_STORES } from "../modules.js";
 
 // Remove the given dependency names from package.json (dependencies + devDependencies).
 export function prunePackageJson(json: string, removeDeps: string[]): string {

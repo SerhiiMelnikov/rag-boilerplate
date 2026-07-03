@@ -4,11 +4,11 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import * as p from "@clack/prompts";
-import { parseArgs, PROVIDER_IDS, VECTOR_STORE_IDS, type ProviderId, type VectorStoreId } from "./options";
-import { PROVIDERS, VECTOR_STORES } from "./modules";
-import { resolveOptions, type Prompter } from "./prompts";
-import { scaffold } from "./scaffold";
-import { runPostInstall, nextSteps } from "./postinstall";
+import { parseArgs, PROVIDER_IDS, VECTOR_STORE_IDS, type ProviderId, type VectorStoreId } from "./options.js";
+import { PROVIDERS, VECTOR_STORES } from "./modules.js";
+import { resolveOptions, type Prompter } from "./prompts.js";
+import { scaffold } from "./scaffold.js";
+import { runPostInstall, nextSteps } from "./postinstall.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const templateDir = join(here, "..", "template");

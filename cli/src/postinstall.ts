@@ -1,5 +1,5 @@
-import type { InstallOptions, PackageManager } from "./options";
-import { VECTOR_STORES } from "./modules";
+import type { InstallOptions, PackageManager } from "./options.js";
+import { VECTOR_STORES } from "./modules.js";
 
 export function installCommand(pm: PackageManager): string[] {
   if (pm === "yarn") return ["yarn"];

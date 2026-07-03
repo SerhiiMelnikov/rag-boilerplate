@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { resolveOptions } from "./prompts";
-import type { InstallOptions } from "./options";
+import { resolveOptions } from "./prompts.js";
+import type { InstallOptions } from "./options.js";
 
 // A fake prompter returns canned answers; --yes / provided flags should bypass it.
 const fake = (answers: Partial<InstallOptions>) => ({

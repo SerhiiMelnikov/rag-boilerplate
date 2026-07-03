@@ -1,6 +1,6 @@
 import { Project, SyntaxKind, Node } from "ts-morph";
 import type { SourceFile } from "ts-morph";
-import type { ProviderId, VectorStoreId } from "../options";
+import type { ProviderId, VectorStoreId } from "../options.js";
 
 // Resolve a source file either by its exact path (used by the in-memory tests,
 // which create files at repo-relative virtual paths) or by an absolute path

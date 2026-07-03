@@ -1,5 +1,5 @@
-import type { InstallOptions } from "./options";
-import { PROVIDERS, VECTOR_STORES } from "./modules";
+import type { InstallOptions } from "./options.js";
+import { PROVIDERS, VECTOR_STORES } from "./modules.js";
 
 // Pure function: renders the generated app's own README, tailored to the
 // caller's provider/vector-store selection. No filesystem access here —

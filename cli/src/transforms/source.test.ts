@@ -3,7 +3,7 @@ import { Project } from "ts-morph";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneAdminProviderLists, rewriteSettingsDefaults } from "./source";
+import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneAdminProviderLists, rewriteSettingsDefaults } from "./source.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "test-fixtures");
 const read = (p: string) => readFileSync(join(FIX, p), "utf8");

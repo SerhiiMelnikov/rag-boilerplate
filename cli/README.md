@@ -1,109 +1,80 @@
-# create-rag-boilerplate (`rag-boilerplate` CLI)
+# rag-boilerplate
 
-Scaffold a full-stack Next.js RAG (retrieval-augmented generation) app —
-create-t3-app style. The CLI copies a prebuilt template of the app at the
-repo root, prunes it down to the AI providers and vector store you choose,
-and writes a ready-to-run project.
-
-## Usage
+Scaffold a **full-stack Next.js RAG (retrieval-augmented generation) chat app** —
+`create-next-app` style. One command generates a complete, runnable project
+tailored to the AI providers and vector store you choose.
 
 ```bash
 npx rag-boilerplate my-app
 ```
 
-Run without a project name and the CLI prompts for it interactively, along
-with the AI providers, the default provider, the vector store, and whether
-to run `git init` / install dependencies afterwards.
+That's it — you get real files in `./my-app`: a Next.js App Router project with a
+streaming chat UI, an admin panel, authentication, and a working RAG engine,
+already wired to your selections.
 
-### Flags
+## What you get
+
+- **Chat UI** — streaming answers with sources and 👍/👎 ratings.
+- **Admin panel** — upload documents, manage users, set provider API keys, tune
+  retrieval settings, view answer-rating analytics.
+- **RAG engine** — chunking, PDF/DOCX/Markdown parsing, embeddings, hybrid
+  (vector + keyword) retrieval with reciprocal-rank fusion.
+- **Auth** — Auth.js (credentials) with admin/user roles.
+- **Your stack only** — the providers and vector store you pick; everything else
+  is pruned out (code, dependencies, Docker services, env vars).
+
+## Options
+
+Run `npx rag-boilerplate` with no arguments to be prompted for everything, or
+pass flags for a non-interactive run:
 
 | Flag | Description |
 | --- | --- |
-| `<project-name>` (positional) | Directory to create. Prompted for if omitted. |
-| `--providers <list>` | Comma-separated AI providers to include: `google`, `openai`, `anthropic`, `ollama`. |
-| `--default-provider <id>` | Which of the selected providers is used by default (chat + doc parsing). |
-| `--vector-store <id>` | Vector store to include: `pgvector`, `qdrant`, `chroma`, `weaviate`, `pinecone`. |
-| `--install` / `--no-install` | Run the package manager install after scaffolding. |
-| `--git` / `--no-git` | Run `git init` after scaffolding. |
-| `-y`, `--yes` | Accept defaults for anything not passed on the command line (no prompts). |
+| `<project-name>` | Directory to create (prompted if omitted). |
+| `--providers <list>` | Providers to include: `google`, `openai`, `anthropic`, `ollama`. |
+| `--default-provider <id>` | Provider used by default for chat + document parsing. |
+| `--vector-store <id>` | `pgvector`, `qdrant`, `chroma`, `weaviate`, or `pinecone`. |
+| `--no-install` / `--install` | Skip / force dependency install. |
+| `--no-git` / `--git` | Skip / force `git init`. |
+| `-y`, `--yes` | Accept defaults for anything not passed (no prompts). |
 
-At least one selected provider must support embeddings (`google`, `openai`,
-or `ollama` — `anthropic` cannot embed on its own). The default provider must
-be one of the selected providers.
+At least one selected provider must support embeddings (`google`, `openai`, or
+`ollama` — Anthropic has no embedding model). The default provider must be one of
+the selected providers.
 
-## How it works
-
-- **Template.** `npm run build:template` copies the repo root into
-  `cli/template/`, excluding dev-only scaffolding (`cli/`, `docs/`,
-  `.superpowers/`, `node_modules/`, `.next/`, `.git/`, lockfiles, build
-  artifacts). Its `.gitignore` is stored as `_gitignore` so npm doesn't strip
-  it from the published package; `scaffold()` renames it back to `.gitignore`
-  in the generated project.
-- **Prune.** Based on your selections, `scaffold()` removes the unselected
-  provider adapter files and vector-store directories, prunes
-  `package.json` dependencies, trims the unused services/volumes out of
-  `docker-compose.yml`, drops the unused vector-store blocks from
-  `.env.example`, and rewrites source (factories, discriminated unions, admin
-  lists, settings defaults) via `ts-morph` so the generated app only
-  references what you kept.
-- **`.env`.** A fresh `.env` is generated with newly minted secrets
-  (`NEXTAUTH_SECRET`, encryption key, etc.) plus the vector-store connection
-  vars for the store you picked.
-- **`prepack`.** Publishing (`npm publish` / `npm pack`) runs
-  `npm run build:template && npm run build` automatically, so `dist/` and
-  `template/` are always fresh in the published tarball. Both directories are
-  build artifacts — they are gitignored and rebuilt on demand, not committed.
-
-## Testing
+Example:
 
 ```bash
-cd cli
-npx vitest run        # unit tests (fast, no filesystem-heavy work)
-npx tsc --noEmit       # type-check the CLI itself
+npx rag-boilerplate my-app --providers openai,anthropic --default-provider openai --vector-store qdrant
 ```
 
-### Gated integration test
+## After scaffolding
 
-`src/installer.integration.test.ts` scaffolds a few real provider/vector-store
-combinations into temp directories and asserts the generated app is pruned
-correctly (removed deps/files absent, selected ones present). It is skipped
-by default and only runs when explicitly enabled, since it needs the
-template assembled first:
+The generated project ships with its own tailored `README.md` describing the exact
+steps for your selection. In short:
 
 ```bash
-cd cli
-npm run build:template
-RUN_INTEGRATION=1 npx vitest run src/installer.integration.test.ts
+cd my-app
+docker compose up -d db      # + your vector store's service, if self-hosted
+npm run db:migrate
+npm run seed:admin
+npm run vectorstore:init     # only if your vector store needs it
+npm run dev                  # → http://localhost:3000
 ```
 
-The test also type-checks each scaffolded app with `tsc --noEmit`, but only
-if that app already has `node_modules` (dependency install is skipped for
-speed, so this step is a no-op unless you wire it up manually).
+A `.env` is generated for you with fresh secrets; set your provider API keys in
+the admin UI after the first run.
 
-### Full check (dependency install + build)
+## Requirements
 
-To fully verify a scaffolded app end to end, including the Next.js build,
-run the installer for real and then build the generated project:
+- Node.js 18+ (note: the Qdrant client requires Node 20/22 LTS).
+- Docker (for the self-hosted database / vector stores).
 
-```bash
-npx rag-boilerplate test-app --providers openai --default-provider openai --vector-store qdrant --no-git --no-install -y
-cd test-app
-npm install
-npm run build
-```
+## Links
 
-This is slower than the gated integration test (it installs real
-dependencies) and isn't part of the normal test suite; use it before
-publishing a release or after touching the ts-morph transforms.
+- **Repository & full documentation:** https://github.com/SerhiiMelnikov/rag-boilerplate
+- **Issues:** https://github.com/SerhiiMelnikov/rag-boilerplate/issues
 
-## Publishing
+## License
 
-`package.json` lists `files: ["dist", "template"]` and a `prepack` script
-that builds both, so a real `npm publish` (or `npm pack`) always ships fresh
-build artifacts without `src/`, `test-fixtures/`, or any dev-only files. To
-verify locally without publishing:
-
-```bash
-cd cli
-npm pack --dry-run
-```
+MIT © Serhii Melnikov

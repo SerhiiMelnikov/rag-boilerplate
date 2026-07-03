@@ -1,0 +1,26 @@
+{
+  "name": "rag-boilerplate",
+  "version": "0.1.0",
+  "description": "Scaffold a full-stack Next.js RAG app (create-t3-app style).",
+  "type": "module",
+  "bin": { "rag-boilerplate": "dist/index.js" },
+  "files": ["dist", "template"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:template": "tsx scripts/build-template.ts",
+    "test": "vitest run",
+    "prepack": "npm run build:template && npm run build"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "ts-morph": "^24.0.0",
+    "yaml": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

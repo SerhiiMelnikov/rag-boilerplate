@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, configDefaults } from "vitest/config";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 
@@ -7,6 +7,9 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    // The installer under cli/ is a separate package with its own vitest runner;
+    // exclude it so the app's test suite does not collect (and mis-resolve) it.
+    exclude: [...configDefaults.exclude, "cli/**"],
     setupFiles: ["./vitest.setup.ts"],
     env: {
       DATABASE_URL: "postgres://stub:stub@localhost:5432/stub",

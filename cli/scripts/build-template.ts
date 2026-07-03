@@ -6,7 +6,12 @@ import { basename, join, resolve } from "node:path";
 // Assemble cli/template/ from the app root, excluding dev-only scaffolding.
 const ROOT = resolve(import.meta.dirname, "..", "..");
 const OUT = resolve(import.meta.dirname, "..", "template");
-const EXCLUDE = new Set(["cli", "docs", ".superpowers", "node_modules", ".next", ".git", "tsconfig.tsbuildinfo", ".env", "package-lock.json", "next-env.d.ts"]);
+// ".claude" and "LICENSE" are dev-repo-only, not part of the boilerplate a user
+// wants in their generated app. "README.md" is excluded because it documents
+// THIS repo's own fixed golden-path config; the generated app instead gets a
+// README tailored to the user's actual selection, written by scaffold() (see
+// cli/src/readme.ts) as its only README.
+const EXCLUDE = new Set(["cli", "docs", ".superpowers", "node_modules", ".next", ".git", "tsconfig.tsbuildinfo", ".env", "package-lock.json", "next-env.d.ts", ".claude", "LICENSE", "README.md"]);
 // The template is a clean starting point; the boilerplate's own tests (and the
 // vitest configs that run them) are not shipped. This also matters functionally:
 // scaffold() prunes unselected provider adapters and vector-store dirs, and the

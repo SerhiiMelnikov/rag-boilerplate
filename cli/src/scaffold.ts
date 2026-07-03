@@ -6,6 +6,7 @@ import { PROVIDER_IDS, VECTOR_STORE_IDS, resolveEmbeddingProvider } from "./opti
 import { PROVIDERS, VECTOR_STORES, providerDepsToRemove } from "./modules";
 import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret } from "./transforms/config";
 import { applySourceTransforms } from "./transforms/source";
+import { generateReadme } from "./readme";
 
 // Compute the six settings defaults from the chosen default provider + manifest.
 export function settingsDefaultsFor(o: InstallOptions) {
@@ -68,4 +69,7 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
 
   // 8. Generate .env with fresh secrets.
   await writeFile(join(opts.targetDir, ".env"), generateEnv({ vectorStore: o.vectorStore }, { authSecret: generateSecret(), encryptionKey: generateSecret() }));
+
+  // 9. Generate a README tailored to this selection (the template ships none).
+  await writeFile(join(opts.targetDir, "README.md"), generateReadme(o));
 }

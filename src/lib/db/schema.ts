@@ -40,6 +40,25 @@ export const chunks = pgTable("chunks", {
   contentHash: text("content_hash").notNull(),
 });
 
+export const images = pgTable("images", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  filename: text("filename").notNull(),
+  storageKey: text("storage_key").notNull().unique(),
+  contentType: text("content_type").notNull(),
+  caption: text("caption").notNull().default(""),
+  status: docStatusEnum("status").notNull().default("pending"),
+  error: text("error"),
+  uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// pgvector-only: image caption embeddings live here ONLY when VECTOR_STORE=pgvector
+// (other stores keep image vectors in their own backend). Mirrors `chunks`.
+export const imageVectors = pgTable("image_vectors", {
+  imageId: uuid("image_id").primaryKey().references(() => images.id, { onDelete: "cascade" }),
+  embedding: vector("embedding", { dimensions: EMBEDDING_DIMENSIONS }).notNull(),
+});
+
 export const conversations = pgTable("conversations", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

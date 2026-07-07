@@ -24,20 +24,23 @@ export function generateReadme(o: InstallOptions): string {
   lines.push("");
 
   lines.push("## Getting started", "");
-  lines.push("1. `npm install` (skip this if the installer already installed dependencies for you)");
+  let step = 1;
+  lines.push(`${step++}. \`npm install\` (skip this if the installer already installed dependencies for you)`);
   lines.push(
-    "2. `.env` is already generated with a fresh `AUTH_SECRET` / `SETTINGS_ENCRYPTION_KEY`; " +
+    `${step++}. \`.env\` is already generated with a fresh \`AUTH_SECRET\` / \`SETTINGS_ENCRYPTION_KEY\`; ` +
       "set provider API keys later in the admin UI (admin → Provider keys). Set " +
       "`ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env` if you want non-default admin credentials.",
   );
   const composeCmd = `docker compose up -d db${store.dockerService ? ` ${store.dockerService}` : ""}`;
   lines.push(
-    `3. Start services: \`${composeCmd}\` (Postgres, plus the selected self-hosted store if any; ` +
+    `${step++}. Start services: \`${composeCmd}\` (Postgres, plus the selected self-hosted store if any; ` +
       "Pinecone is managed → just `db`).",
   );
-  lines.push("4. `npm run db:migrate`");
-  lines.push("5. `npm run seed:admin`");
-  let step = 6;
+  if (o.vectorStore !== "pgvector") {
+    lines.push(`${step++}. \`npm run db:generate\` (generate the database migrations for your schema)`);
+  }
+  lines.push(`${step++}. \`npm run db:migrate\``);
+  lines.push(`${step++}. \`npm run seed:admin\``);
   if (store.initNeeded) lines.push(`${step++}. \`npm run vectorstore:init\``);
   lines.push(`${step++}. \`npm run dev\` → http://localhost:3000`);
   lines.push("");

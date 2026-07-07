@@ -1,6 +1,6 @@
 {
   "name": "rag-boilerplate",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Scaffold a full-stack Next.js RAG (retrieval-augmented generation) chat app — create-next-app style, tailored to the AI providers and vector store you choose.",
   "type": "module",
   "bin": { "rag-boilerplate": "dist/index.js" },

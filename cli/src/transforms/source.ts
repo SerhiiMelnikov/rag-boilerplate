@@ -101,6 +101,29 @@ export function rewriteSettingsDefaults(
   sf.saveSync();
 }
 
+// schema.ts: remove the pgvector-only `chunks` table + its local
+// EMBEDDING_DIMENSIONS const, then drop any drizzle-orm/pg-core named import left
+// unused (e.g. `vector`). Used when the chosen vector store is NOT pgvector, so
+// the app keeps no chunk vectors in Postgres. The runtime EMBEDDING_DIMENSIONS in
+// providers/embedding.ts is a different, untouched constant.
+export function pruneChunksFromSchema(project: Project): void {
+  const sf = resolveSourceFile(project, "src/lib/db/schema.ts");
+  for (const name of ["chunks", "EMBEDDING_DIMENSIONS"]) {
+    sf.getVariableDeclaration(name)?.getVariableStatementOrThrow().remove();
+  }
+  // Drop named imports whose binding is no longer referenced anywhere in the file.
+  for (const imp of sf.getImportDeclarations()) {
+    const unused = imp.getNamedImports().filter((spec) => {
+      const nm = spec.getName();
+      const uses = sf.getDescendantsOfKind(SyntaxKind.Identifier).filter((i) => i.getText() === nm);
+      return uses.length <= 1; // only the import binding itself remains
+    });
+    for (const spec of unused) spec.remove();
+    if (imp.getNamedImports().length === 0) imp.remove();
+  }
+  sf.saveSync();
+}
+
 // Narrow a union type node in-place to drop members whose literal string value
 // is in `removed`, preserving non-string-literal members (e.g. `null`) as-is.
 function narrowUnionTypeNode(union: import("ts-morph").UnionTypeNode, removed: string[]) {
@@ -243,6 +266,7 @@ export async function applySourceTransforms(
     keptProviders: ProviderId[];
     keptStores: VectorStoreId[];
     settingsDefaults: { chatProvider: ProviderId; chatModel: string; embeddingProvider: ProviderId; embeddingModel: string; parserProvider: ProviderId; parserModel: string };
+    cutPgvector: boolean;
   },
 ): Promise<void> {
   const allProviders: ProviderId[] = ["google", "openai", "anthropic", "ollama"];
@@ -269,5 +293,6 @@ export async function applySourceTransforms(
     pruneVectorInitScript(project, removedStores);
   }
   rewriteSettingsDefaults(project, o.settingsDefaults);
+  if (o.cutPgvector) pruneChunksFromSchema(project);
   await project.save();
 }

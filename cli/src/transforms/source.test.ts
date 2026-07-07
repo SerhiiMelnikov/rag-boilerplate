@@ -3,7 +3,7 @@ import { Project } from "ts-morph";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneAdminProviderLists, rewriteSettingsDefaults } from "./source.js";
+import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneAdminProviderLists, rewriteSettingsDefaults, pruneChunksFromSchema } from "./source.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "test-fixtures");
 const read = (p: string) => readFileSync(join(FIX, p), "utf8");
@@ -138,5 +138,22 @@ describe("rewriteSettingsDefaults", () => {
     expect(text).toContain('.default("text-embedding-3-small")');
     expect(text).not.toContain('.default("google")');
     expect(text).not.toContain('.default("gemma-4-31b-it")');
+  });
+});
+
+describe("pruneChunksFromSchema", () => {
+  it("removes the chunks table, the local EMBEDDING_DIMENSIONS, and the now-unused vector import", () => {
+    const project = projectWith("src/lib/db/schema.ts", read("schema.ts"));
+    pruneChunksFromSchema(project);
+    const text = project.getSourceFileOrThrow("src/lib/db/schema.ts").getFullText();
+    expect(text).not.toContain('pgTable("chunks"');
+    expect(text).not.toContain("EMBEDDING_DIMENSIONS");
+    // `vector` was only used by the chunks column → dropped from the pg-core import
+    expect(text).not.toMatch(/\bvector\b/);
+    // Other tables + their imports survive
+    expect(text).toContain('pgTable("settings"');
+    expect(text).toContain('pgTable("messages"');
+    expect(text).toContain("integer");
+    expect(text).toContain("jsonb");
   });
 });

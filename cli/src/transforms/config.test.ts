@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret } from "./config.js";
+import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret, setDbImage } from "./config.js";
 
 const PKG = JSON.stringify({ dependencies: { "@ai-sdk/google": "1", "@ai-sdk/openai": "1", "chromadb": "1", "next": "15" } }, null, 2);
 
@@ -127,5 +127,21 @@ describe("generateEnv", () => {
     const out = generateEnv({ vectorStore: "pgvector" }, { authSecret: "A", encryptionKey: "B" });
     expect(out).toContain("VECTOR_STORE=pgvector");
     expect(out).not.toContain("QDRANT_URL");
+  });
+});
+
+describe("setDbImage", () => {
+  it("rewrites the db service image and leaves other services intact", () => {
+    const out = setDbImage(COMPOSE, "postgres:16");
+    expect(out).toContain("image: postgres:16");
+    expect(out).not.toContain("pgvector/pgvector:pg16");
+    // qdrant service (in COMPOSE) is untouched
+    expect(out).toContain("qdrant/qdrant:latest");
+  });
+
+  it("is a no-op when there is no db service", () => {
+    const out = setDbImage("services:\n  qdrant:\n    image: q\n", "postgres:16");
+    expect(out).not.toContain("postgres:16");
+    expect(out).toContain("image: q");
   });
 });

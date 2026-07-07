@@ -74,3 +74,45 @@ describe("scaffold", () => {
     expect(dc).toContain("qdrant:");
   });
 });
+
+describe("cut pgvector for non-pgvector stores", () => {
+  async function setupPgvectorTemplate() {
+    // db image starts as pgvector; a drizzle/ dir is present (as the real template ships).
+    await writeFile(
+      join(templateDir, "docker-compose.yml"),
+      "services:\n  db:\n    image: pgvector/pgvector:pg16\n    volumes:\n      - rag_pgdata:/x\n  qdrant:\n    image: q\n    volumes:\n      - rag_qdrant:/x\nvolumes:\n  rag_pgdata:\n  rag_qdrant:\n",
+    );
+    await mkdir(join(templateDir, "drizzle", "meta"), { recursive: true });
+    await writeFile(join(templateDir, "drizzle", "0000_x.sql"), "CREATE EXTENSION vector;\n");
+  }
+
+  it("qdrant: swaps db image to postgres:16, deletes drizzle/, strips chunks from schema", async () => {
+    await setupPgvectorTemplate();
+    const targetDir = join(targetParent, "app");
+    await scaffold(opts({ vectorStore: "qdrant" }), { templateDir, targetDir });
+
+    const dc = await readFile(join(targetDir, "docker-compose.yml"), "utf8");
+    expect(dc).toContain("image: postgres:16");
+    expect(dc).not.toContain("pgvector/pgvector:pg16");
+
+    expect(existsSync(join(targetDir, "drizzle"))).toBe(false);
+
+    const schema = await readFile(join(targetDir, "src/lib/db/schema.ts"), "utf8");
+    expect(schema).not.toContain('pgTable("chunks"');
+    expect(schema).not.toContain("EMBEDDING_DIMENSIONS");
+  });
+
+  it("pgvector: keeps the pgvector image, drizzle/, and the chunks table", async () => {
+    await setupPgvectorTemplate();
+    const targetDir = join(targetParent, "app-pg");
+    await scaffold(opts({ vectorStore: "pgvector" }), { templateDir, targetDir });
+
+    const dc = await readFile(join(targetDir, "docker-compose.yml"), "utf8");
+    expect(dc).toContain("pgvector/pgvector:pg16");
+
+    expect(existsSync(join(targetDir, "drizzle"))).toBe(true);
+
+    const schema = await readFile(join(targetDir, "src/lib/db/schema.ts"), "utf8");
+    expect(schema).toContain('pgTable("chunks"');
+  });
+});

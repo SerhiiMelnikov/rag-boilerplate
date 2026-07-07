@@ -32,4 +32,19 @@ describe("generateReadme", () => {
     expect(readme).toContain("Google");
     expect(readme).toContain("Weaviate");
   });
+
+  it("non-pgvector: includes a db:generate step before db:migrate", () => {
+    const readme = generateReadme(opts({ vectorStore: "qdrant" }));
+    expect(readme).toContain("db:generate");
+    const genIdx = readme.indexOf("db:generate");
+    const migrateIdx = readme.indexOf("db:migrate");
+    expect(genIdx).toBeGreaterThan(-1);
+    expect(migrateIdx).toBeGreaterThan(genIdx); // generate comes before migrate
+  });
+
+  it("pgvector: has no db:generate step (migrations ship pre-generated)", () => {
+    const readme = generateReadme(opts({ vectorStore: "pgvector" }));
+    expect(readme).not.toContain("db:generate");
+    expect(readme).toContain("db:migrate");
+  });
 });

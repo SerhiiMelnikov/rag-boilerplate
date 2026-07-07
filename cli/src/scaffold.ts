@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { InstallOptions, ProviderId, VectorStoreId } from "./options.js";
 import { PROVIDER_IDS, VECTOR_STORE_IDS, resolveEmbeddingProvider } from "./options.js";
 import { PROVIDERS, VECTOR_STORES, providerDepsToRemove } from "./modules.js";
-import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret } from "./transforms/config.js";
+import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret, setDbImage } from "./transforms/config.js";
 import { applySourceTransforms } from "./transforms/source.js";
 import { generateReadme } from "./readme.js";
 
@@ -29,6 +29,7 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
 
   const removedProviders = PROVIDER_IDS.filter((p) => !o.providers.includes(p));
   const removedStores = VECTOR_STORE_IDS.filter((s) => s !== o.vectorStore);
+  const cutPgvector = o.vectorStore !== "pgvector";
 
   // 3. Delete pruned provider adapter files + pruned vector-store dirs.
   for (const p of removedProviders) {
@@ -47,11 +48,14 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
   const pkgJson = removeTestTooling(prunePackageJson(await readFile(pkgPath, "utf8"), removeDeps));
   await writeFile(pkgPath, pkgJson);
 
-  // 5. docker-compose: keep db + the selected store's service (if any).
+  // 5. docker-compose: keep db + the selected store's service (if any). When the
+  // chosen store is not pgvector, downgrade the db image to plain Postgres.
   const dcPath = join(opts.targetDir, "docker-compose.yml");
   if (existsSync(dcPath)) {
     const keep = ["db", VECTOR_STORES[o.vectorStore].dockerService].filter((s): s is string => !!s);
-    await writeFile(dcPath, pruneDockerCompose(await readFile(dcPath, "utf8"), keep));
+    let dc = pruneDockerCompose(await readFile(dcPath, "utf8"), keep);
+    if (cutPgvector) dc = setDbImage(dc, "postgres:16");
+    await writeFile(dcPath, dc);
   }
 
   // 6. .env.example store blocks.
@@ -65,7 +69,15 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
     keptProviders: o.providers,
     keptStores: [o.vectorStore],
     settingsDefaults: settingsDefaultsFor(o),
+    cutPgvector,
   });
+
+  // 7b. Non-pgvector projects generate migrations from their own pruned schema
+  // via `npm run db:generate`; the shipped pgvector migrations do not apply.
+  if (cutPgvector) {
+    const drizzleDir = join(opts.targetDir, "drizzle");
+    if (existsSync(drizzleDir)) await rm(drizzleDir, { recursive: true, force: true });
+  }
 
   // 8. Generate .env with fresh secrets.
   await writeFile(join(opts.targetDir, ".env"), generateEnv({ vectorStore: o.vectorStore }, { authSecret: generateSecret(), encryptionKey: generateSecret() }));

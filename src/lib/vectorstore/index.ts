@@ -1,13 +1,15 @@
-import type { VectorStore, DocumentRepo } from "./types";
+import type { VectorStore, DocumentRepo, ImageVectorStore } from "./types";
 import { createPgVectorStore } from "./pgvector/store";
 import { createQdrantStore } from "./qdrant/store";
 import { createChromaStore } from "./chroma/store";
 import { createWeaviateStore } from "./weaviate/store";
 import { createPineconeStore } from "./pinecone/store";
 import { createDocumentRepo } from "./document-repo";
+import { createPgImageStore } from "./pgvector/image-store";
 
 let store: VectorStore | null = null;
 let repo: DocumentRepo | null = null;
+let imageStore: ImageVectorStore | null = null;
 
 function build(): VectorStore {
   const kind = process.env.VECTOR_STORE ?? "pgvector";
@@ -39,8 +41,25 @@ export function getDocumentRepo(): DocumentRepo {
   return repo;
 }
 
+function buildImageStore(): ImageVectorStore {
+  const kind = process.env.VECTOR_STORE ?? "pgvector";
+  switch (kind) {
+    case "pgvector":
+      return createPgImageStore();
+    default:
+      throw new Error(`image vector store not implemented for VECTOR_STORE="${kind}".`);
+  }
+}
+
+// Image-vector adapter selected by VECTOR_STORE (default pgvector), memoized.
+export function getImageVectorStore(): ImageVectorStore {
+  if (!imageStore) imageStore = buildImageStore();
+  return imageStore;
+}
+
 // Test hook: clear the memoized singletons so a test can switch VECTOR_STORE.
 export function resetVectorStoreForTests(): void {
   store = null;
   repo = null;
+  imageStore = null;
 }

@@ -266,6 +266,7 @@ export async function applySourceTransforms(
     keptProviders: ProviderId[];
     keptStores: VectorStoreId[];
     settingsDefaults: { chatProvider: ProviderId; chatModel: string; embeddingProvider: ProviderId; embeddingModel: string; parserProvider: ProviderId; parserModel: string };
+    cutPgvector: boolean;
   },
 ): Promise<void> {
   const allProviders: ProviderId[] = ["google", "openai", "anthropic", "ollama"];
@@ -292,5 +293,6 @@ export async function applySourceTransforms(
     pruneVectorInitScript(project, removedStores);
   }
   rewriteSettingsDefaults(project, o.settingsDefaults);
+  if (o.cutPgvector) pruneChunksFromSchema(project);
   await project.save();
 }

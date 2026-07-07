@@ -18,6 +18,8 @@ interface BaseSettings {
   embeddingModel: string;
   parserProvider: string;
   parserModel: string;
+  imageProvider: string;
+  imageModel: string;
   temperature: number;
   topK: number;
   minSimilarity: number;
@@ -42,6 +44,8 @@ const BASE_COLUMNS = {
   embeddingModel: settings.embeddingModel,
   parserProvider: settings.parserProvider,
   parserModel: settings.parserModel,
+  imageProvider: settings.imageProvider,
+  imageModel: settings.imageModel,
   temperature: settings.temperature,
   topK: settings.topK,
   minSimilarity: settings.minSimilarity,
@@ -65,6 +69,8 @@ export const settingsPatchSchema = z
     embeddingModel: z.string().min(1),
     parserProvider: z.enum(CHAT_PROVIDERS),
     parserModel: z.string().min(1),
+    imageProvider: z.enum(CHAT_PROVIDERS),
+    imageModel: z.string().min(1),
     temperature: z.number().min(0).max(2),
     topK: z.number().int().min(1).max(50),
     minSimilarity: z.number().min(0).max(1),

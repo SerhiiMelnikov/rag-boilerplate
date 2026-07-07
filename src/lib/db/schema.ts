@@ -87,6 +87,8 @@ export const settings = pgTable("settings", {
   embeddingModel: text("embedding_model").notNull().default("gemini-embedding-2"),
   parserProvider: text("parser_provider").notNull().default("google"),
   parserModel: text("parser_model").notNull().default("gemini-2.5-flash"),
+  imageProvider: text("image_provider").notNull().default("google"),
+  imageModel: text("image_model").notNull().default("gemini-2.5-flash"),
   // Behavior (sampling = temperature only).
   temperature: real("temperature").notNull().default(0.2),
   topK: integer("top_k").notNull().default(5), // retrieval chunk count

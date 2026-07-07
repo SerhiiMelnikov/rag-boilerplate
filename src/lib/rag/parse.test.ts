@@ -11,6 +11,7 @@ const settings = {
   chatProvider: "google", chatModel: "gemma-4-31b-it",
   embeddingProvider: "google", embeddingModel: "gemini-embedding-2",
   parserProvider: "google", parserModel: "gemini-2.5-flash",
+  imageProvider: "google", imageModel: "gemini-2.5-flash",
   temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
   keys: { google: "gk", openai: null, anthropic: null },

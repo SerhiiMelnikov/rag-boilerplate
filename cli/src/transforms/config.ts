@@ -45,6 +45,14 @@ export function pruneDockerCompose(yamlText: string, keepServices: string[]): st
   return stringifyYaml(doc);
 }
 
+// Rewrite the `db` service image. Used when the chosen vector store keeps its
+// vectors elsewhere, so a plain Postgres image (no pgvector) suffices.
+export function setDbImage(yamlText: string, image: string): string {
+  const doc = parseYaml(yamlText) as { services?: Record<string, { image?: string }> };
+  if (doc.services?.db) doc.services.db.image = image;
+  return stringifyYaml(doc);
+}
+
 // Remove every store's .env block except the chosen one. Blocks start at a
 // `# --- <Store> ...` header and run until the next such header or EOF.
 export function pruneEnvExampleStores(text: string, keepStore: VectorStoreId): string {

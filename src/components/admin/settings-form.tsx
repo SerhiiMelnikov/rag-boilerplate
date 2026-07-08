@@ -8,6 +8,8 @@ interface AdminSettings {
   chatProvider: string; chatModel: string;
   embeddingProvider: string; embeddingModel: string;
   parserProvider: string; parserModel: string;
+  imageProvider: string; imageModel: string;
+  unifiedMode: boolean; unifiedProvider: string; unifiedModel: string;
   temperature: number; topK: number; minSimilarity: number; contextTokenBudget: number;
   systemPrompt: string; ollamaBaseUrl: string;
   keys: { google: KeyStatus; openai: KeyStatus; anthropic: KeyStatus };
@@ -75,6 +77,8 @@ export function SettingsForm() {
       chatProvider: cfg.chatProvider, chatModel: cfg.chatModel,
       embeddingProvider: cfg.embeddingProvider, embeddingModel: cfg.embeddingModel,
       parserProvider: cfg.parserProvider, parserModel: cfg.parserModel,
+      imageProvider: cfg.imageProvider, imageModel: cfg.imageModel,
+      unifiedMode: cfg.unifiedMode, unifiedProvider: cfg.unifiedProvider, unifiedModel: cfg.unifiedModel,
       temperature: cfg.temperature, topK: cfg.topK, minSimilarity: cfg.minSimilarity,
       contextTokenBudget: cfg.contextTokenBudget, systemPrompt: cfg.systemPrompt,
     };
@@ -91,15 +95,30 @@ export function SettingsForm() {
     <form onSubmit={save} className="mx-auto flex max-w-xl flex-col gap-6 p-6">
       <section className="flex flex-col gap-4">
         <h1 className="text-xl font-semibold">Models</h1>
-        <ModelRow label="Chat" provider={s.chatProvider} model={s.chatModel} providers={CHAT_PROVIDERS}
-          onProvider={(v) => set({ chatProvider: v })} onModel={(v) => set({ chatModel: v })}
-          missingKey={providerMissingKey(s.chatProvider, s.keys)} />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" aria-label="Unified provider mode" checked={s.unifiedMode} onChange={(e) => set({ unifiedMode: e.target.checked })} />
+          Use one provider + model for all tasks (except embedding)
+        </label>
+        {s.unifiedMode ? (
+          <ModelRow label="All tasks" provider={s.unifiedProvider} model={s.unifiedModel} providers={CHAT_PROVIDERS}
+            onProvider={(v) => set({ unifiedProvider: v })} onModel={(v) => set({ unifiedModel: v })}
+            missingKey={providerMissingKey(s.unifiedProvider, s.keys)} />
+        ) : (
+          <>
+            <ModelRow label="Chat" provider={s.chatProvider} model={s.chatModel} providers={CHAT_PROVIDERS}
+              onProvider={(v) => set({ chatProvider: v })} onModel={(v) => set({ chatModel: v })}
+              missingKey={providerMissingKey(s.chatProvider, s.keys)} />
+            <ModelRow label="Document parser" provider={s.parserProvider} model={s.parserModel} providers={CHAT_PROVIDERS}
+              onProvider={(v) => set({ parserProvider: v })} onModel={(v) => set({ parserModel: v })}
+              missingKey={providerMissingKey(s.parserProvider, s.keys)} />
+            <ModelRow label="Image analyzer" provider={s.imageProvider} model={s.imageModel} providers={CHAT_PROVIDERS}
+              onProvider={(v) => set({ imageProvider: v })} onModel={(v) => set({ imageModel: v })}
+              missingKey={providerMissingKey(s.imageProvider, s.keys)} />
+          </>
+        )}
         <ModelRow label="Embedding" provider={s.embeddingProvider} model={s.embeddingModel} providers={EMBEDDING_PROVIDERS}
           onProvider={(v) => set({ embeddingProvider: v })} onModel={(v) => set({ embeddingModel: v })}
           missingKey={providerMissingKey(s.embeddingProvider, s.keys)} />
-        <ModelRow label="Document parser" provider={s.parserProvider} model={s.parserModel} providers={CHAT_PROVIDERS}
-          onProvider={(v) => set({ parserProvider: v })} onModel={(v) => set({ parserModel: v })}
-          missingKey={providerMissingKey(s.parserProvider, s.keys)} />
       </section>
 
       <section className="flex flex-col gap-4">

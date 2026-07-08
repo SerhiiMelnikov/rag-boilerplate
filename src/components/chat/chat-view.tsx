@@ -7,12 +7,14 @@ import { Spinner } from "@/components/ui/spinner";
 import { MessageContent } from "./message-content";
 import { Sources } from "./sources";
 import { Rating } from "./rating";
+import { ImageResults } from "./image-results";
 
 interface PersistedMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   sources: { documentId: string; filename: string; chunkId: string; score: number }[];
+  images: { imageId: string; filename: string; score: number }[];
   rating: number | null;
 }
 
@@ -70,6 +72,7 @@ export function ChatView({ conversationId, onTurnComplete }: { conversationId: s
                 )}
                 {m.role === "assistant" && saved && (
                   <>
+                    <ImageResults images={saved.images ?? []} />
                     <Sources sources={saved.sources} />
                     <Rating messageId={saved.id} initial={saved.rating} />
                   </>

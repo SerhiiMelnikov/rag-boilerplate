@@ -3,6 +3,7 @@ import weaviate, { type WeaviateClient } from "weaviate-client";
 // Single collection (class) holding all chunks. Weaviate class names are
 // capitalized by convention.
 export const WEAVIATE_COLLECTION = process.env.WEAVIATE_COLLECTION || "RagChunk";
+export const WEAVIATE_IMAGE_COLLECTION = process.env.WEAVIATE_IMAGE_COLLECTION || "RagImage";
 
 let clientPromise: Promise<WeaviateClient> | null = null;
 
@@ -29,4 +30,10 @@ export function weaviateClient(): Promise<WeaviateClient> {
 export async function weaviateCollection() {
   const client = await weaviateClient();
   return client.collections.get(WEAVIATE_COLLECTION);
+}
+
+// Return the typed collection handle for the image-vector class.
+export async function weaviateImageCollection() {
+  const client = await weaviateClient();
+  return client.collections.get(WEAVIATE_IMAGE_COLLECTION);
 }

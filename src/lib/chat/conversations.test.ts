@@ -70,6 +70,52 @@ describe("setConversationTitleIfDefault", () => {
   });
 });
 
+describe("addMessage + getConversationWithMessages (images)", () => {
+  it("persists and returns assistant message images", async () => {
+    // Capture the values passed to insert(), then feed them back through the
+    // select mock so we can assert the round-trip end to end.
+    const insertedValues: any[] = [];
+    let selectCallCount = 0;
+    const db = {
+      insert: () => ({
+        values: (v: any) => {
+          insertedValues.push(v);
+          return { returning: async () => [{ id: "m1" }] };
+        },
+      }),
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => {
+              selectCallCount++;
+              return selectCallCount === 1 ? [{ id: "c1", title: "Hello" }] : [];
+            },
+            orderBy: async () => [
+              {
+                id: "m1",
+                role: "assistant",
+                content: "here",
+                sources: [],
+                images: insertedValues[0]?.images ?? [],
+                rating: null,
+                usage: null,
+                createdAt: new Date(0),
+              },
+            ],
+          }),
+        }),
+      }),
+    } as any;
+
+    await addMessage(
+      { conversationId: "c1", role: "assistant", content: "here", images: [{ imageId: "img-1", filename: "bike.png", score: 0.9 }] },
+      db,
+    );
+    const out = await getConversationWithMessages("u1", "c1", db);
+    expect(out?.messages.at(-1)?.images).toEqual([{ imageId: "img-1", filename: "bike.png", score: 0.9 }]);
+  });
+});
+
 describe("getConversationWithMessages", () => {
   it("returns null when the conversation is not owned/found", async () => {
     const db = { select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }) } as any;

@@ -35,6 +35,9 @@ function baseDeps(over: Partial<any> = {}) {
       args.onFinish?.({ text: "answer", usage: { promptTokens: 10, completionTokens: 3 } });
       return { toDataStreamResponse: () => new Response("stream", { status: 200 }) };
     }),
+    // Default to the TEXT intent so existing (pre-routing) tests keep exercising the
+    // document-RAG path deterministically instead of hitting the real router/model.
+    routeIntentFn: vi.fn(async () => ({ kind: "text" }) as const),
     ...over,
   };
 }
@@ -120,5 +123,41 @@ describe("handleChat", () => {
       content: expect.stringMatching(/no API key for provider "openai"/),
       usage: null,
     }));
+  });
+
+  it("IMAGE intent: persists images + streams the intro, skips prepareContext", async () => {
+    const prepareContextFn = vi.fn();
+    const deps = baseDeps({
+      prepareContextFn,
+      routeIntentFn: vi.fn(async () => ({ kind: "image", query: "red bike" }) as const),
+      searchImagesFn: vi.fn(async () => [{ imageId: "img-1", filename: "bike.png", caption: "a red bicycle", score: 0.9 }]),
+    });
+    const res = await handleChat(body(msg("show me a red bike")), deps);
+    expect(res.status).toBe(200);
+    // assistant message persisted with the images
+    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", filename: "bike.png", score: 0.9 }]);
+    expect(prepareContextFn).not.toHaveBeenCalled();
+  });
+
+  it("IMAGE intent with no hits: streams the not-found message", async () => {
+    const deps = baseDeps({
+      routeIntentFn: vi.fn(async () => ({ kind: "image", query: "unicorn" }) as const),
+      searchImagesFn: vi.fn(async () => []),
+    });
+    await handleChat(body(msg("show me a unicorn")), deps);
+    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    expect(assistantCall?.[0].content).toMatch(/couldn't find/i);
+    expect(assistantCall?.[0].images ?? []).toEqual([]);
+  });
+
+  it("TEXT intent: takes the existing RAG path (prepareContext called)", async () => {
+    const prepareContextFn = vi.fn(async () => ({ hasContext: false, context: "", sources: [] }));
+    const deps = baseDeps({
+      prepareContextFn,
+      routeIntentFn: vi.fn(async () => ({ kind: "text" }) as const),
+    });
+    await handleChat(body(msg("why is the sky blue?")), deps);
+    expect(prepareContextFn).toHaveBeenCalled();
   });
 });

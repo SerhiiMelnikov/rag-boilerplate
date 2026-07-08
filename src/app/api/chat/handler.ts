@@ -6,9 +6,14 @@ import { getRuntimeSettings } from "@/lib/config/settings-service";
 import { prepareContext } from "@/lib/rag/answer";
 import { getChatModel } from "@/lib/providers";
 import { isProviderError } from "@/lib/providers/types";
+import { routeIntent } from "@/lib/chat/route-intent";
+import { searchImages } from "@/lib/images/search";
 
 const NO_CONTEXT_ANSWER =
   "I don't have any relevant information in the knowledge base to answer that.";
+const IMAGE_TOP_N = 3;
+const IMAGE_INTRO = "Here are the images that best match your description:";
+const NO_IMAGE_ANSWER = "I couldn't find any image matching that description.";
 
 // Narrow session type: unit-test mocks only need to return { user } or null,
 // without the full NextAuth Session shape (which requires `expires`).
@@ -27,6 +32,8 @@ export interface ChatDeps {
   addMessageFn?: typeof addMessage;
   setTitleFn?: typeof setConversationTitleIfDefault;
   streamTextFn?: StreamTextLike;
+  routeIntentFn?: typeof routeIntent;
+  searchImagesFn?: typeof searchImages;
 }
 
 // Testable core: every collaborator is injectable.
@@ -39,6 +46,8 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   const addMessageFn = deps.addMessageFn ?? addMessage;
   const setTitleFn = deps.setTitleFn ?? setConversationTitleIfDefault;
   const streamTextFn = deps.streamTextFn ?? (streamText as unknown as StreamTextLike);
+  const routeIntentFn = deps.routeIntentFn ?? routeIntent;
+  const searchImagesFn = deps.searchImagesFn ?? searchImages;
 
   let user;
   try {
@@ -99,14 +108,30 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
       .map((m) => m.content)
       .join("\n") || content;
   // Persist an assistant message and stream it verbatim (no model call).
-  const replyWithMessage = async (textOut: string) => {
-    await addMessageFn({ conversationId, role: "assistant", content: textOut, sources: [], usage: null });
+  const replyWithMessage = async (textOut: string, images: Array<{ imageId: string; filename: string; score: number }> = []) => {
+    await addMessageFn({ conversationId, role: "assistant", content: textOut, sources: [], images, usage: null });
     return createDataStreamResponse({
       execute: (dataStream) => {
         dataStream.write(formatDataStreamPart("text", textOut));
       },
     });
   };
+
+  // Hybrid routing: an image request returns matching images; anything else
+  // falls through to the normal document-RAG answer below.
+  const intent = await routeIntentFn(content, settings);
+  if (intent.kind === "image") {
+    let hits;
+    try {
+      hits = await searchImagesFn(intent.query, { topN: IMAGE_TOP_N, minScore: settings.minSimilarity }, { settings });
+    } catch (err) {
+      if (isProviderError(err)) return replyWithMessage((err as Error).message);
+      throw err;
+    }
+    if (hits.length === 0) return replyWithMessage(NO_IMAGE_ANSWER);
+    const images = hits.map((h) => ({ imageId: h.imageId, filename: h.filename, score: h.score }));
+    return replyWithMessage(IMAGE_INTRO, images);
+  }
 
   let prepared;
   try {

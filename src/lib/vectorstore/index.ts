@@ -6,6 +6,7 @@ import { createWeaviateStore } from "./weaviate/store";
 import { createPineconeStore } from "./pinecone/store";
 import { createDocumentRepo } from "./document-repo";
 import { createPgImageStore } from "./pgvector/image-store";
+import { createQdrantImageStore } from "./qdrant/image-store";
 
 let store: VectorStore | null = null;
 let repo: DocumentRepo | null = null;
@@ -46,6 +47,8 @@ function buildImageStore(): ImageVectorStore {
   switch (kind) {
     case "pgvector":
       return createPgImageStore();
+    case "qdrant":
+      return createQdrantImageStore();
     default:
       throw new Error(`image vector store not implemented for VECTOR_STORE="${kind}".`);
   }

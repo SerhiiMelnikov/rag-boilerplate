@@ -20,6 +20,9 @@ interface BaseSettings {
   parserModel: string;
   imageProvider: string;
   imageModel: string;
+  unifiedMode: boolean;
+  unifiedProvider: string;
+  unifiedModel: string;
   temperature: number;
   topK: number;
   minSimilarity: number;
@@ -46,6 +49,9 @@ const BASE_COLUMNS = {
   parserModel: settings.parserModel,
   imageProvider: settings.imageProvider,
   imageModel: settings.imageModel,
+  unifiedMode: settings.unifiedMode,
+  unifiedProvider: settings.unifiedProvider,
+  unifiedModel: settings.unifiedModel,
   temperature: settings.temperature,
   topK: settings.topK,
   minSimilarity: settings.minSimilarity,
@@ -71,6 +77,9 @@ export const settingsPatchSchema = z
     parserModel: z.string().min(1),
     imageProvider: z.enum(CHAT_PROVIDERS),
     imageModel: z.string().min(1),
+    unifiedMode: z.boolean(),
+    unifiedProvider: z.enum(CHAT_PROVIDERS),
+    unifiedModel: z.string().min(1),
     temperature: z.number().min(0).max(2),
     topK: z.number().int().min(1).max(50),
     minSimilarity: z.number().min(0).max(1),
@@ -110,8 +119,19 @@ function dec(blob: string | null): string | null {
 
 export async function getRuntimeSettings(database = defaultDb): Promise<RuntimeSettings> {
   const row = await readRow(database);
+  const b = base(row);
+  // When unified mode is on, chat/parser/image all use one provider+model.
+  // Embedding is always configured independently.
+  const effective: BaseSettings = b.unifiedMode
+    ? {
+        ...b,
+        chatProvider: b.unifiedProvider, chatModel: b.unifiedModel,
+        parserProvider: b.unifiedProvider, parserModel: b.unifiedModel,
+        imageProvider: b.unifiedProvider, imageModel: b.unifiedModel,
+      }
+    : b;
   return {
-    ...base(row),
+    ...effective,
     keys: { google: dec(row.googleKey), openai: dec(row.openaiKey), anthropic: dec(row.anthropicKey) },
   };
 }

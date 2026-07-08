@@ -9,6 +9,7 @@ import { createPgImageStore } from "./pgvector/image-store";
 import { createQdrantImageStore } from "./qdrant/image-store";
 import { createChromaImageStore } from "./chroma/image-store";
 import { createWeaviateImageStore } from "./weaviate/image-store";
+import { createPineconeImageStore } from "./pinecone/image-store";
 
 let store: VectorStore | null = null;
 let repo: DocumentRepo | null = null;
@@ -55,6 +56,8 @@ function buildImageStore(): ImageVectorStore {
       return createChromaImageStore();
     case "weaviate":
       return createWeaviateImageStore();
+    case "pinecone":
+      return createPineconeImageStore();
     default:
       throw new Error(`image vector store not implemented for VECTOR_STORE="${kind}".`);
   }

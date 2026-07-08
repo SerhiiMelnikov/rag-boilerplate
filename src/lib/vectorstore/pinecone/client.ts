@@ -5,6 +5,7 @@ import type { PineconeDenseLike, PineconeSparseLike } from "./store";
 // (Pinecone-hosted sparse model over text) for keyword search.
 export const PINECONE_DENSE_INDEX = process.env.PINECONE_DENSE_INDEX || "rag-chunks-dense";
 export const PINECONE_SPARSE_INDEX = process.env.PINECONE_SPARSE_INDEX || "rag-chunks-sparse";
+export const PINECONE_IMAGE_INDEX = process.env.PINECONE_IMAGE_INDEX || "rag-images-dense";
 
 let clientSingleton: Pinecone | null = null;
 
@@ -31,6 +32,16 @@ export function denseIndex(): PineconeDenseLike {
     fetch: (ids) => idx.fetch({ ids }),
     // listPaginated's real ListItem.id is typed `string | undefined` (ids are
     // always present in practice); narrow it to the store's stricter shape.
+    listPaginated: (args) => idx.listPaginated(args) as never,
+    deleteMany: (ids) => idx.deleteMany({ ids }),
+  };
+}
+export function denseImageIndex(): PineconeDenseLike {
+  const idx = pineconeClient().index(PINECONE_IMAGE_INDEX);
+  return {
+    upsert: (records) => idx.upsert({ records } as never),
+    query: (args) => idx.query(args),
+    fetch: (ids) => idx.fetch({ ids }),
     listPaginated: (args) => idx.listPaginated(args) as never,
     deleteMany: (ids) => idx.deleteMany({ ids }),
   };

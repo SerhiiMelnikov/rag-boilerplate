@@ -1,9 +1,9 @@
 import { EMBEDDING_DIMENSIONS } from "@/lib/providers/embedding";
-import { pineconeClient, PINECONE_DENSE_INDEX, PINECONE_SPARSE_INDEX } from "./client";
+import { pineconeClient, PINECONE_DENSE_INDEX, PINECONE_SPARSE_INDEX, PINECONE_IMAGE_INDEX } from "./client";
 
-// Idempotently create the two serverless indexes: dense (cosine, 768) with
-// app-supplied vectors, and sparse using Pinecone's hosted sparse model over the
-// "text" field.
+// Idempotently create the serverless indexes: chunk dense (cosine, 768) with
+// app-supplied vectors, chunk sparse using Pinecone's hosted sparse model over
+// the "text" field, and image dense (cosine, 768) for caption embeddings.
 export async function ensurePineconeIndexes(pc = pineconeClient()): Promise<void> {
   const cloud = process.env.PINECONE_CLOUD || "aws";
   const region = process.env.PINECONE_REGION || "us-east-1";
@@ -25,6 +25,15 @@ export async function ensurePineconeIndexes(pc = pineconeClient()): Promise<void
       cloud,
       region,
       embed: { model: "pinecone-sparse-english-v0", fieldMap: { text: "text" } },
+      waitUntilReady: true,
+    } as never);
+  }
+  if (!names.has(PINECONE_IMAGE_INDEX)) {
+    await pc.createIndex({
+      name: PINECONE_IMAGE_INDEX,
+      dimension: EMBEDDING_DIMENSIONS,
+      metric: "cosine",
+      spec: { serverless: { cloud, region } },
       waitUntilReady: true,
     } as never);
   }

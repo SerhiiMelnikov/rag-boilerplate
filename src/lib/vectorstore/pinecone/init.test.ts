@@ -10,18 +10,19 @@ function fakePc(existing: string[]) {
 }
 
 describe("ensurePineconeIndexes", () => {
-  it("creates both indexes when neither exists", async () => {
+  it("creates all three indexes when none exist", async () => {
     const pc = fakePc([]);
     await ensurePineconeIndexes(pc);
-    expect(pc.createIndex).toHaveBeenCalledTimes(1); // dense
-    const denseCfg = pc.createIndex.mock.calls[0][0];
-    expect(denseCfg.dimension).toBe(768);
-    expect(denseCfg.metric).toBe("cosine");
-    expect(pc.createIndexForModel).toHaveBeenCalledTimes(1); // sparse
+    expect(pc.createIndex).toHaveBeenCalledTimes(2); // chunk dense + image dense
+    for (const [cfg] of pc.createIndex.mock.calls) {
+      expect(cfg.dimension).toBe(768);
+      expect(cfg.metric).toBe("cosine");
+    }
+    expect(pc.createIndexForModel).toHaveBeenCalledTimes(1); // chunk sparse
   });
 
-  it("is a no-op when both indexes exist", async () => {
-    const pc = fakePc(["rag-chunks-dense", "rag-chunks-sparse"]);
+  it("is a no-op when all indexes exist", async () => {
+    const pc = fakePc(["rag-chunks-dense", "rag-chunks-sparse", "rag-images-dense"]);
     await ensurePineconeIndexes(pc);
     expect(pc.createIndex).not.toHaveBeenCalled();
     expect(pc.createIndexForModel).not.toHaveBeenCalled();

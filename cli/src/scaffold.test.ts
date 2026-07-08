@@ -16,7 +16,7 @@ beforeEach(async () => {
   await writeFile(join(templateDir, "package.json"), JSON.stringify({ name: "app", dependencies: { "@ai-sdk/google": "1", "@ai-sdk/anthropic": "1", "chromadb": "1", "@qdrant/js-client-rest": "1", next: "15" } }, null, 2));
   await writeFile(join(templateDir, "_gitignore"), "node_modules/\n.env\n");
   await writeFile(join(templateDir, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true } }));
-  await writeFile(join(templateDir, "docker-compose.yml"), "services:\n  db:\n    image: pg\n    volumes:\n      - rag_pgdata:/x\n  qdrant:\n    image: q\n    volumes:\n      - rag_qdrant:/x\n  chroma:\n    image: c\n    volumes:\n      - rag_chroma:/x\nvolumes:\n  rag_pgdata:\n  rag_qdrant:\n  rag_chroma:\n");
+  await writeFile(join(templateDir, "docker-compose.yml"), "services:\n  db:\n    image: pg\n    volumes:\n      - rag_pgdata:/x\n  minio:\n    image: minio/minio:latest\n    volumes:\n      - rag_minio:/x\n  createbuckets:\n    image: minio/mc:latest\n    depends_on:\n      - minio\n  qdrant:\n    image: q\n    volumes:\n      - rag_qdrant:/x\n  chroma:\n    image: c\n    volumes:\n      - rag_chroma:/x\nvolumes:\n  rag_pgdata:\n  rag_minio:\n  rag_qdrant:\n  rag_chroma:\n");
   await writeFile(join(templateDir, ".env.example"), "DATABASE_URL=x\n\n# --- Qdrant (VECTOR_STORE=qdrant) ---\n# QDRANT_URL=y\n\n# --- Chroma (VECTOR_STORE=chroma) ---\n# CHROMA_URL=z\n");
   await mkdir(join(templateDir, "src/lib/providers"), { recursive: true });
   await mkdir(join(templateDir, "src/lib/vectorstore/qdrant"), { recursive: true });
@@ -72,6 +72,15 @@ describe("scaffold", () => {
     const dc = await readFile(join(target, "docker-compose.yml"), "utf8");
     expect(dc).not.toContain("chroma:");
     expect(dc).toContain("qdrant:");
+  });
+
+  it("keeps the minio + createbuckets services in the generated compose", async () => {
+    const targetDir = join(targetParent, "app-minio");
+    await scaffold(opts({ vectorStore: "qdrant" }), { templateDir, targetDir });
+    const dc = await readFile(join(targetDir, "docker-compose.yml"), "utf8");
+    expect(dc).toContain("minio:");
+    expect(dc).toContain("createbuckets:");
+    expect(dc).toContain("rag_minio");
   });
 });
 

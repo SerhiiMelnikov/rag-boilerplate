@@ -64,6 +64,13 @@
       "when": 1783494042425,
       "tag": "0008_reflective_sunspot",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783501208072,
+      "tag": "0009_yielding_rage",
+      "breakpoints": true
     }
   ]
 }

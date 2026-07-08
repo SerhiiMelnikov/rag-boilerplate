@@ -90,6 +90,11 @@ export const settings = pgTable("settings", {
   parserModel: text("parser_model").notNull().default("gemini-2.5-flash"),
   imageProvider: text("image_provider").notNull().default("google"),
   imageModel: text("image_model").notNull().default("gemini-2.5-flash"),
+  // When on, chat/parser/image all use unifiedProvider/unifiedModel instead of
+  // their individual columns above (embedding is never affected).
+  unifiedMode: boolean("unified_mode").notNull().default(false),
+  unifiedProvider: text("unified_provider").notNull().default("google"),
+  unifiedModel: text("unified_model").notNull().default("gemma-4-31b-it"),
   // Behavior (sampling = temperature only).
   temperature: real("temperature").notNull().default(0.2),
   topK: integer("top_k").notNull().default(5), // retrieval chunk count

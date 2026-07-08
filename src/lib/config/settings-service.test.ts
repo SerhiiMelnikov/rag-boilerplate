@@ -61,6 +61,23 @@ describe("settings service", () => {
     expect(db.state.googleKey).toBeNull();
   });
 
+  it("getRuntimeSettings applies unifiedMode to chat/parser/image but not embedding", async () => {
+    const db = fakeDb({ ...baseRow, unifiedMode: true, unifiedProvider: "openai", unifiedModel: "gpt-4o" });
+    const s = await getRuntimeSettings(db);
+    expect(s.chatProvider).toBe("openai");
+    expect(s.chatModel).toBe("gpt-4o");
+    expect(s.parserProvider).toBe("openai");
+    expect(s.imageProvider).toBe("openai");
+    expect(s.embeddingProvider).toBe("google"); // never overridden
+  });
+
+  it("getAdminSettings returns the raw per-task values + unifiedMode", async () => {
+    const db = fakeDb({ ...baseRow, unifiedMode: true, unifiedProvider: "openai", unifiedModel: "gpt-4o" });
+    const s = await getAdminSettings(db);
+    expect(s.unifiedMode).toBe(true);
+    expect(s.chatProvider).toBe("google"); // raw, NOT resolved
+  });
+
   it("schema rejects an unknown provider and a sampling top_p", () => {
     expect(settingsPatchSchema.safeParse({ chatProvider: "mistral" }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ topP: 0.9 }).success).toBe(false);

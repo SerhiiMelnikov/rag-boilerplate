@@ -8,6 +8,7 @@ const settings: RuntimeSettings = {
   embeddingProvider: "google", embeddingModel: "text-embedding-004",
   parserProvider: "google", parserModel: "gemini-1.5-flash",
   imageProvider: "google", imageModel: "gemini-2.5-flash",
+  unifiedMode: false, unifiedProvider: "google", unifiedModel: "gemma-4-31b-it",
   temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
   keys: { google: null, openai: null, anthropic: null },

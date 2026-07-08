@@ -8,7 +8,7 @@ import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampl
 import { applySourceTransforms } from "./transforms/source.js";
 import { generateReadme } from "./readme.js";
 
-// Compute the six settings defaults from the chosen default provider + manifest.
+// Compute the ten settings defaults from the chosen default provider + manifest.
 export function settingsDefaultsFor(o: InstallOptions) {
   const chat = PROVIDERS[o.defaultProvider];
   const embProvider = resolveEmbeddingProvider(o.providers, o.defaultProvider);
@@ -17,6 +17,8 @@ export function settingsDefaultsFor(o: InstallOptions) {
     chatProvider: o.defaultProvider, chatModel: chat.defaultChatModel,
     embeddingProvider: embProvider, embeddingModel: emb.defaultEmbeddingModel!,
     parserProvider: o.defaultProvider, parserModel: chat.defaultVisionModel,
+    imageProvider: o.defaultProvider, imageModel: chat.defaultVisionModel,
+    unifiedProvider: o.defaultProvider, unifiedModel: chat.defaultChatModel,
   };
 }
 

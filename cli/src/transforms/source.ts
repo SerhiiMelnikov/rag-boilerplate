@@ -71,16 +71,24 @@ export function narrowProviderUnions(project: Project, kept: ProviderId[]): void
   sf.saveSync();
 }
 
-// schema.ts: rewrite the six settings default("...") calls for provider/model.
+// schema.ts: rewrite the ten settings default("...") calls for provider/model.
 export function rewriteSettingsDefaults(
   project: Project,
-  d: { chatProvider: ProviderId; chatModel: string; embeddingProvider: ProviderId; embeddingModel: string; parserProvider: ProviderId; parserModel: string },
+  d: {
+    chatProvider: ProviderId; chatModel: string;
+    embeddingProvider: ProviderId; embeddingModel: string;
+    parserProvider: ProviderId; parserModel: string;
+    imageProvider: ProviderId; imageModel: string;
+    unifiedProvider: ProviderId; unifiedModel: string;
+  },
 ): void {
   const sf = resolveSourceFile(project, "src/lib/db/schema.ts");
   const map: Record<string, string> = {
     chat_provider: d.chatProvider, chat_model: d.chatModel,
     embedding_provider: d.embeddingProvider, embedding_model: d.embeddingModel,
     parser_provider: d.parserProvider, parser_model: d.parserModel,
+    image_provider: d.imageProvider, image_model: d.imageModel,
+    unified_provider: d.unifiedProvider, unified_model: d.unifiedModel,
   };
   // Each settings column is built as `text("<col>")...default("<old>")` inside a
   // single PropertyAssignment (`colName: text(...).notNull().default(...)`).
@@ -101,14 +109,16 @@ export function rewriteSettingsDefaults(
   sf.saveSync();
 }
 
-// schema.ts: remove the pgvector-only `chunks` table + its local
-// EMBEDDING_DIMENSIONS const, then drop any drizzle-orm/pg-core named import left
-// unused (e.g. `vector`). Used when the chosen vector store is NOT pgvector, so
-// the app keeps no chunk vectors in Postgres. The runtime EMBEDDING_DIMENSIONS in
-// providers/embedding.ts is a different, untouched constant.
+// schema.ts: remove the pgvector-only `chunks` and `image_vectors` tables + the
+// local EMBEDDING_DIMENSIONS const, then drop any drizzle-orm/pg-core named
+// import left unused (e.g. `vector`). Used when the chosen vector store is NOT
+// pgvector, so the app keeps no chunk/image vectors in Postgres (the universal
+// `images` metadata table survives; only its pgvector-only embedding sidecar
+// table is removed). The runtime EMBEDDING_DIMENSIONS in providers/embedding.ts
+// is a different, untouched constant.
 export function pruneChunksFromSchema(project: Project): void {
   const sf = resolveSourceFile(project, "src/lib/db/schema.ts");
-  for (const name of ["chunks", "EMBEDDING_DIMENSIONS"]) {
+  for (const name of ["chunks", "EMBEDDING_DIMENSIONS", "imageVectors"]) {
     sf.getVariableDeclaration(name)?.getVariableStatementOrThrow().remove();
   }
   // Drop named imports whose binding is no longer referenced anywhere in the file.
@@ -265,7 +275,13 @@ export async function applySourceTransforms(
   o: {
     keptProviders: ProviderId[];
     keptStores: VectorStoreId[];
-    settingsDefaults: { chatProvider: ProviderId; chatModel: string; embeddingProvider: ProviderId; embeddingModel: string; parserProvider: ProviderId; parserModel: string };
+    settingsDefaults: {
+      chatProvider: ProviderId; chatModel: string;
+      embeddingProvider: ProviderId; embeddingModel: string;
+      parserProvider: ProviderId; parserModel: string;
+      imageProvider: ProviderId; imageModel: string;
+      unifiedProvider: ProviderId; unifiedModel: string;
+    };
     cutPgvector: boolean;
   },
 ): Promise<void> {

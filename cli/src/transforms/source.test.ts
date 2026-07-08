@@ -131,6 +131,8 @@ describe("rewriteSettingsDefaults", () => {
       chatProvider: "openai", chatModel: "gpt-4o-mini",
       embeddingProvider: "openai", embeddingModel: "text-embedding-3-small",
       parserProvider: "openai", parserModel: "gpt-4o-mini",
+      imageProvider: "openai", imageModel: "gpt-4o-mini",
+      unifiedProvider: "openai", unifiedModel: "gpt-4o-mini",
     });
     const text = project.getSourceFileOrThrow("src/lib/db/schema.ts").getFullText();
     expect(text).toContain('.default("openai")');
@@ -138,6 +140,21 @@ describe("rewriteSettingsDefaults", () => {
     expect(text).toContain('.default("text-embedding-3-small")');
     expect(text).not.toContain('.default("google")');
     expect(text).not.toContain('.default("gemma-4-31b-it")');
+  });
+
+  it("rewrites image + unified provider/model defaults", () => {
+    const project = projectWith("src/lib/db/schema.ts", read("schema.ts"));
+    rewriteSettingsDefaults(project, {
+      chatProvider: "openai", chatModel: "gpt-4o-mini",
+      embeddingProvider: "openai", embeddingModel: "text-embedding-3-small",
+      parserProvider: "openai", parserModel: "gpt-4o",
+      imageProvider: "openai", imageModel: "gpt-4o",
+      unifiedProvider: "openai", unifiedModel: "gpt-4o-mini",
+    });
+    const text = project.getSourceFileOrThrow("src/lib/db/schema.ts").getFullText();
+    expect(text).toContain('.default("gpt-4o")'); // image_model
+    expect(text).toContain('"image_provider"'); // column still present
+    expect(text).not.toContain('.default("google")'); // no stale google default remains for the rewritten columns
   });
 });
 
@@ -155,5 +172,15 @@ describe("pruneChunksFromSchema", () => {
     expect(text).toContain('pgTable("messages"');
     expect(text).toContain("integer");
     expect(text).toContain("jsonb");
+  });
+
+  it("also removes the pgvector-only imageVectors table", () => {
+    const project = projectWith("src/lib/db/schema.ts", read("schema.ts"));
+    pruneChunksFromSchema(project);
+    const text = project.getSourceFileOrThrow("src/lib/db/schema.ts").getFullText();
+    expect(text).not.toContain('pgTable("image_vectors"');
+    expect(text).not.toContain("imageVectors");
+    // the universal images metadata table survives
+    expect(text).toContain('pgTable("images"');
   });
 });

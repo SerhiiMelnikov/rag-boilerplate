@@ -17,6 +17,7 @@ const baseRow = {
   chatProvider: "google", chatModel: "gemma-4-31b-it",
   embeddingProvider: "google", embeddingModel: "gemini-embedding-2",
   parserProvider: "google", parserModel: "gemini-2.5-flash",
+  imageProvider: "google", imageModel: "gemini-2.5-flash",
   temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
   googleKey: null, openaiKey: null, anthropicKey: null,
@@ -29,6 +30,13 @@ describe("settings service", () => {
     expect(s.keys.google).toBe("g-key-1234");
     expect(s.keys.openai).toBeNull();
     expect(s.chatModel).toBe("gemma-4-31b-it");
+  });
+
+  it("exposes imageProvider/imageModel with gemini defaults", async () => {
+    const db = fakeDb(baseRow);
+    const s = await getRuntimeSettings(db);
+    expect(s.imageProvider).toBe("google");
+    expect(s.imageModel).toBe("gemini-2.5-flash");
   });
 
   it("getAdminSettings masks keys (no plaintext)", async () => {

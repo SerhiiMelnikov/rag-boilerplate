@@ -1,5 +1,5 @@
 import weaviate, { type WeaviateClient } from "weaviate-client";
-import { weaviateClient, WEAVIATE_COLLECTION } from "./client";
+import { weaviateClient, WEAVIATE_COLLECTION, WEAVIATE_IMAGE_COLLECTION } from "./client";
 
 // Idempotently create the RagChunk class: no vectorizer (app supplies vectors),
 // cosine distance, and the text/metadata properties the store reads.
@@ -23,5 +23,18 @@ export async function ensureWeaviateCollection(
       { name: "content", dataType: weaviate.configure.dataType.TEXT },
       { name: "contentHash", dataType: weaviate.configure.dataType.TEXT },
     ],
+  });
+}
+
+// RagImage class: no vectorizer (app supplies vectors), cosine, no properties
+// (uuid = imageId; metadata lives in Postgres).
+export async function ensureWeaviateImageCollection(client?: WeaviateClient): Promise<void> {
+  const c = client ?? (await weaviateClient());
+  if (await c.collections.exists(WEAVIATE_IMAGE_COLLECTION)) return;
+  await c.collections.create({
+    name: WEAVIATE_IMAGE_COLLECTION,
+    vectorizers: weaviate.configure.vectorizer.none({
+      vectorIndexConfig: weaviate.configure.vectorIndex.hnsw({ distanceMetric: "cosine" }),
+    }),
   });
 }

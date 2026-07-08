@@ -41,6 +41,16 @@ export function getVisionModel(s: RuntimeSettings, task = "Document parsing"): L
   }
 }
 
+export function getImageModel(s: RuntimeSettings, task = "Image analysis"): LanguageModel {
+  const provider = s.imageProvider as ProviderId;
+  switch (provider) {
+    case "google": return googleChat(requireKey(task, provider, s), s.imageModel);
+    case "openai": return openaiChat(requireKey(task, provider, s), s.imageModel);
+    case "anthropic": return anthropicChat(requireKey(task, provider, s), s.imageModel);
+    case "ollama": return ollamaChat(s.ollamaBaseUrl, s.imageModel);
+  }
+}
+
 export function getEmbeddingModel(s: RuntimeSettings, kind: EmbeddingKind, task = "Ingestion"): EmbeddingModel<string> {
   const provider = s.embeddingProvider as EmbeddingProviderId;
   switch (provider) {

@@ -32,3 +32,15 @@ export interface DocumentRepo {
   createDocument(filename: string): Promise<string>;
   setStatus(id: string, status: string, error?: string): Promise<void>;
 }
+
+// --- Image vectors -----------------------------------------------------------
+// Image caption embeddings live in the chosen vector store, separate from chunk
+// vectors. Metadata (filename, caption, storageKey) lives in Postgres `images`.
+export interface ImageVectorInput { imageId: string; embedding: number[]; }
+export interface ImageMatch { imageId: string; score: number; } // score = cosine
+
+export interface ImageVectorStore {
+  upsertImage(row: ImageVectorInput): Promise<void>;
+  searchImages(embedding: number[], limit: number): Promise<ImageMatch[]>;
+  deleteImage(imageId: string): Promise<void>;
+}

@@ -1,7 +1,7 @@
 import "dotenv/config";
-import { ensureQdrantCollection } from "@/lib/vectorstore/qdrant/init";
-import { ensureChromaCollection } from "@/lib/vectorstore/chroma/init";
-import { ensureWeaviateCollection } from "@/lib/vectorstore/weaviate/init";
+import { ensureQdrantCollection, ensureQdrantImageCollection } from "@/lib/vectorstore/qdrant/init";
+import { ensureChromaCollection, ensureChromaImageCollection } from "@/lib/vectorstore/chroma/init";
+import { ensureWeaviateCollection, ensureWeaviateImageCollection } from "@/lib/vectorstore/weaviate/init";
 import { ensurePineconeIndexes } from "@/lib/vectorstore/pinecone/init";
 
 async function main() {
@@ -9,14 +9,17 @@ async function main() {
   switch (kind) {
     case "qdrant":
       await ensureQdrantCollection();
+      await ensureQdrantImageCollection();
       console.log("Qdrant collection ready.");
       break;
     case "chroma":
       await ensureChromaCollection();
+      await ensureChromaImageCollection();
       console.log("Chroma collection ready.");
       break;
     case "weaviate":
       await ensureWeaviateCollection();
+      await ensureWeaviateImageCollection();
       console.log("Weaviate collection ready.");
       break;
     case "pinecone":

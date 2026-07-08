@@ -23,6 +23,9 @@ export function createWeaviateImageStore(
   return {
     async upsertImage(row: ImageVectorInput) {
       const col = await getCollection();
+      // Weaviate `data.insert` is create-only (rejects an existing uuid), so delete
+      // first (best-effort; ignore not-found) to make re-ingesting an image idempotent.
+      await col.data.deleteById(row.imageId).catch(() => {});
       await col.data.insert({ id: row.imageId, vectors: row.embedding });
     },
     async searchImages(embedding: number[], limit: number): Promise<ImageMatch[]> {

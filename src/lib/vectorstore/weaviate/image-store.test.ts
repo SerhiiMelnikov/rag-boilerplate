@@ -9,6 +9,8 @@ describe("createWeaviateImageStore", () => {
     };
     const store = createWeaviateImageStore(async () => col);
     await store.upsertImage({ imageId: "img-1", embedding: [0.1, 0.2] });
+    // upsert is delete-then-insert, since Weaviate's `data.insert` is create-only.
+    expect(col.data.deleteById).toHaveBeenCalledWith("img-1");
     expect(col.data.insert).toHaveBeenCalledWith({ id: "img-1", vectors: [0.1, 0.2] });
     const hits = await store.searchImages([0.1, 0.2], 3);
     expect(hits).toEqual([{ imageId: "img-1", score: expect.closeTo(0.75, 5) }]);

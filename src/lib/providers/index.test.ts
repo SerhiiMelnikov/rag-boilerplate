@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getChatModel, getVisionModel, getEmbeddingModel } from "./index";
+import { getChatModel, getVisionModel, getEmbeddingModel, getImageModel } from "./index";
 import { MissingProviderKeyError } from "./types";
 import type { RuntimeSettings } from "@/lib/config/settings-service";
 
@@ -39,5 +39,15 @@ describe("provider factory", () => {
   it("getEmbeddingModel builds document and query models", () => {
     expect(getEmbeddingModel(settings(), "document")).toBeDefined();
     expect(getEmbeddingModel(settings(), "query")).toBeDefined();
+  });
+
+  it("getImageModel builds a model for the configured image provider", () => {
+    const s = { ...settings(), imageProvider: "google", imageModel: "gemini-2.5-flash", keys: { google: "k", openai: null, anthropic: null } } as RuntimeSettings;
+    expect(getImageModel(s)).toBeTruthy();
+  });
+
+  it("getImageModel throws MissingProviderKeyError when the image provider has no key", () => {
+    const s = { ...settings(), imageProvider: "openai", imageModel: "gpt-4o", keys: { google: null, openai: null, anthropic: null } } as RuntimeSettings;
+    expect(() => getImageModel(s)).toThrow(MissingProviderKeyError);
   });
 });

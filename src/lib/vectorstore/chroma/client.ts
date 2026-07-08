@@ -3,6 +3,9 @@ import { ChromaClient } from "chromadb";
 // Single collection holding all chunks.
 export const CHROMA_COLLECTION = process.env.CHROMA_COLLECTION || "rag_chunks";
 
+// Separate collection holding image caption embeddings.
+export const CHROMA_IMAGE_COLLECTION = process.env.CHROMA_IMAGE_COLLECTION || "rag_images";
+
 let clientSingleton: ChromaClient | null = null;
 
 // Lazily construct the HTTP client from CHROMA_URL (throws a clear error if unset).
@@ -28,6 +31,15 @@ const noEmbeddingFunction = {
 export async function chromaCollection() {
   return client().getOrCreateCollection({
     name: CHROMA_COLLECTION,
+    metadata: { "hnsw:space": "cosine" },
+    embeddingFunction: noEmbeddingFunction as never,
+  });
+}
+
+// Lazily get-or-create the cosine image collection and return the handle.
+export async function chromaImageCollection() {
+  return client().getOrCreateCollection({
+    name: CHROMA_IMAGE_COLLECTION,
     metadata: { "hnsw:space": "cosine" },
     embeddingFunction: noEmbeddingFunction as never,
   });

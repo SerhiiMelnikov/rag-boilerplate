@@ -9,11 +9,18 @@ export interface SourceRef {
   score: number;
 }
 
+export interface ImageResultRef {
+  imageId: string;
+  filename: string;
+  score: number;
+}
+
 export interface MessageRecord {
   id: string;
   role: "user" | "assistant";
   content: string;
   sources: SourceRef[];
+  images: ImageResultRef[];
   rating: number | null;
   usage: { promptTokens: number; completionTokens: number } | null;
   createdAt: Date;
@@ -48,6 +55,7 @@ export async function getConversationWithMessages(userId: string, id: string, da
       role: messages.role,
       content: messages.content,
       sources: messages.sources,
+      images: messages.images,
       rating: messages.rating,
       usage: messages.usage,
       createdAt: messages.createdAt,
@@ -72,6 +80,7 @@ export async function addMessage(
     role: "user" | "assistant";
     content: string;
     sources?: SourceRef[];
+    images?: ImageResultRef[];
     usage?: { promptTokens: number; completionTokens: number } | null;
   },
   database = defaultDb,
@@ -83,6 +92,7 @@ export async function addMessage(
       role: input.role,
       content: input.content,
       sources: input.sources ?? [],
+      images: input.images ?? [],
       usage: input.usage ?? null,
     })
     .returning({ id: messages.id });

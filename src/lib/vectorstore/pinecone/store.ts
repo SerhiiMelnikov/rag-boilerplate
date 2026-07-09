@@ -6,7 +6,7 @@ import { denseIndex, sparseIndex } from "./client";
 // Minimal shapes of the two Pinecone index handles this adapter uses.
 export interface PineconeDenseLike {
   upsert(records: { id: string; values: number[]; metadata: Record<string, unknown> }[]): Promise<unknown>;
-  query(args: { vector: number[]; topK: number; includeMetadata: boolean }): Promise<{ matches?: { id: string; score?: number; metadata?: Record<string, unknown> }[] }>;
+  query(args: { vector: number[]; topK: number; includeMetadata: boolean; filter?: Record<string, unknown> }): Promise<{ matches?: { id: string; score?: number; metadata?: Record<string, unknown> }[] }>;
   fetch(ids: string[]): Promise<{ records: Record<string, { id: string; values?: number[]; metadata?: Record<string, unknown> }> }>;
   listPaginated(args: { prefix: string; paginationToken?: string }): Promise<{ vectors?: { id: string }[]; pagination?: { next?: string } }>;
   deleteMany(ids: string[]): Promise<unknown>;
@@ -91,13 +91,20 @@ export function createPineconeStore(
       await sparse.deleteMany(ids);
     },
 
-    async searchVector(embedding: number[], limit: number): Promise<RetrievedChunk[]> {
+    async searchVector(embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]> {
+      if (allowedDocumentIds && allowedDocumentIds.length === 0) return [];
       const dense = denseFn();
-      const res = await dense.query({ vector: embedding, topK: limit, includeMetadata: true });
+      const res = await dense.query({
+        vector: embedding,
+        topK: limit,
+        includeMetadata: true,
+        ...(allowedDocumentIds ? { filter: { documentId: { $in: allowedDocumentIds } } } : {}),
+      });
       return (res.matches ?? []).map((m) => metaToChunk(m.id, m.metadata ?? {}, typeof m.score === "number" ? m.score : 0));
     },
 
-    async searchKeyword(query: string, embedding: number[], limit: number): Promise<RetrievedChunk[]> {
+    async searchKeyword(query: string, embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]> {
+      if (allowedDocumentIds && allowedDocumentIds.length === 0) return [];
       const text = query.trim();
       if (text.length < 2) return [];
       const dense = denseFn();
@@ -106,10 +113,13 @@ export function createPineconeStore(
       const ids = hits.result.hits.map((h) => h._id);
       if (ids.length === 0) return [];
       const fetched = await dense.fetch(ids);
-      // Preserve the sparse (keyword) ordering; score is cosine from the dense vector.
+      // The sparse index has no metadata to filter on, so scope post-fetch by the
+      // documentId carried in each dense record's metadata. Preserve keyword order.
+      const allow = allowedDocumentIds ? new Set(allowedDocumentIds) : null;
       return ids
         .map((id) => fetched.records[id])
         .filter((rec): rec is NonNullable<typeof rec> => Boolean(rec))
+        .filter((rec) => !allow || allow.has(String((rec.metadata ?? {}).documentId ?? "")))
         .map((rec) => metaToChunk(rec.id, rec.metadata ?? {}, cosineSimilarity(embedding, rec.values ?? [])));
     },
   };

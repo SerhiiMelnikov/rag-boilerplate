@@ -16,10 +16,10 @@ export interface WeaviateCollectionLike {
   };
   query: {
     fetchObjects(args: { filters?: unknown; returnProperties?: string[]; limit?: number }): Promise<{ objects: WeaviateObject[] }>;
-    nearVector(vector: number[], args: { limit: number; returnMetadata?: string[] }): Promise<{ objects: WeaviateObject[] }>;
-    bm25(query: string, args: { limit: number; includeVector?: boolean }): Promise<{ objects: WeaviateObject[] }>;
+    nearVector(vector: number[], args: { limit: number; returnMetadata?: string[]; filters?: unknown }): Promise<{ objects: WeaviateObject[] }>;
+    bm25(query: string, args: { limit: number; includeVector?: boolean; filters?: unknown }): Promise<{ objects: WeaviateObject[] }>;
   };
-  filter: { byProperty(p: string): { equal(v: unknown): unknown } };
+  filter: { byProperty(p: string): { equal(v: unknown): unknown; containsAny(v: unknown[]): unknown } };
 }
 
 function toChunk(o: WeaviateObject, score: number): RetrievedChunk {
@@ -80,18 +80,22 @@ export function createWeaviateStore(
       await col.data.deleteMany(col.filter.byProperty("documentId").equal(documentId));
     },
 
-    async searchVector(embedding: number[], limit: number): Promise<RetrievedChunk[]> {
+    async searchVector(embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]> {
+      if (allowedDocumentIds && allowedDocumentIds.length === 0) return [];
       const col = await getCollection();
-      const res = await col.query.nearVector(embedding, { limit, returnMetadata: ["distance"] });
+      const filters = allowedDocumentIds ? col.filter.byProperty("documentId").containsAny(allowedDocumentIds) : undefined;
+      const res = await col.query.nearVector(embedding, { limit, returnMetadata: ["distance"], ...(filters ? { filters } : {}) });
       // Weaviate cosine "distance" = 1 - cosine similarity.
       return res.objects.map((o) => toChunk(o, 1 - (o.metadata?.distance ?? 1)));
     },
 
-    async searchKeyword(query: string, embedding: number[], limit: number): Promise<RetrievedChunk[]> {
+    async searchKeyword(query: string, embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]> {
+      if (allowedDocumentIds && allowedDocumentIds.length === 0) return [];
       const text = query.trim();
       if (text.length < 2) return [];
       const col = await getCollection();
-      const res = await col.query.bm25(text, { limit, includeVector: true });
+      const filters = allowedDocumentIds ? col.filter.byProperty("documentId").containsAny(allowedDocumentIds) : undefined;
+      const res = await col.query.bm25(text, { limit, includeVector: true, ...(filters ? { filters } : {}) });
       return res.objects.map((o) => toChunk(o, cosineSimilarity(embedding, o.vectors?.default ?? [])));
     },
   };

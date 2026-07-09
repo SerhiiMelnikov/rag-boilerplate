@@ -38,6 +38,17 @@ function baseDeps(over: Partial<any> = {}) {
     // Default to the TEXT intent so existing (pre-routing) tests keep exercising the
     // document-RAG path deterministically instead of hitting the real router/model.
     routeIntentFn: vi.fn(async () => ({ kind: "text" }) as const),
+    // Fake workspace repo: user sees only General (ws-general), which resolves to
+    // doc-1/img-1 allowlists. No cookie is set in these tests, so the handler
+    // always falls back to General via resolveActiveWorkspaceId.
+    workspaceRepo: {
+      getDefaultId: async () => "ws-general",
+      listAllIds: async () => ["ws-general"],
+      listGrantedIds: async () => [],
+      isAdmin: async () => false,
+      documentIdsIn: async () => ["doc-1"],
+      imageIdsIn: async () => ["img-1"],
+    },
     ...over,
   };
 }
@@ -159,5 +170,29 @@ describe("handleChat", () => {
     });
     await handleChat(body(msg("why is the sky blue?")), deps);
     expect(prepareContextFn).toHaveBeenCalled();
+  });
+
+  it("scopes retrieval + image search to the workspace allowlist and stamps workspace_id", async () => {
+    const deps = baseDeps();
+    await handleChat(body(msg("why is the sky blue?")), deps);
+    // prepareContext receives the resolved document allowlist (General → doc-1)
+    const prepArgs = (deps.prepareContextFn as any).mock.calls[0];
+    expect(prepArgs[2]).toEqual({ allowedDocumentIds: ["doc-1"] });
+    // every persisted message carries the active workspace id
+    for (const call of (deps.addMessageFn as any).mock.calls) {
+      expect(call[0]).toEqual(expect.objectContaining({ workspaceId: "ws-general" }));
+    }
+  });
+
+  it("passes allowedImageIds to image search on an image-intent turn", async () => {
+    const deps = baseDeps({
+      routeIntentFn: vi.fn(async () => ({ kind: "image", query: "red bike" })),
+      searchImagesFn: vi.fn(async () => [{ imageId: "img-1", filename: "bike.png", caption: "a red bicycle", score: 0.9 }]),
+    });
+    await handleChat(body(msg("show me a red bike")), deps);
+    // Cast deps itself (not just the property) to any: searchImagesFn is only
+    // present via the override, so it isn't part of baseDeps's inferred return type.
+    const imgArgs = (deps as any).searchImagesFn.mock.calls[0];
+    expect(imgArgs[1]).toEqual(expect.objectContaining({ allowedImageIds: ["img-1"] }));
   });
 });

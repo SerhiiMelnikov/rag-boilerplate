@@ -3,8 +3,9 @@
 An `npx` scaffolder that generates a full-stack, production-ready
 **Retrieval-Augmented Generation (RAG) chat app** — Next.js (App Router) +
 TypeScript, with a headless/restyleable chat UI, an admin panel, role-based
-auth, and a hand-rolled RAG engine — configured for the AI providers and
-vector store **you** pick.
+auth, a hand-rolled RAG engine, and **image RAG** (upload images, have an AI
+caption them, and get them back in chat by description) — configured for the AI
+providers and vector store **you** pick.
 
 This repository *is* the installer. The app it generates lives as a template
 snapshot under `cli/template/` (built from this repo's own source by

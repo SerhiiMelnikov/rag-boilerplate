@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Upload, Trash2, ArrowUpDown } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Select } from "@/components/ui/select";
 import { ImageModal } from "./image-modal";
 
 interface FileRow {
@@ -106,13 +107,10 @@ export function FilesManager() {
           {busy ? "Uploading..." : "Upload file"}
           <input ref={fileInputRef} type="file" accept={ACCEPT} aria-label="Upload file" onChange={upload} className="hidden" disabled={busy} />
         </label>
-        <label className="text-sm">
-          Type{" "}
-          <select aria-label="Filter by type" value={extFilter} onChange={(e) => setExtFilter(e.target.value)} className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 dark:border-zinc-700">
-            <option value="all">All</option>
-            {exts.map((x) => <option key={x} value={x}>{x}</option>)}
-          </select>
-        </label>
+        <div className="flex items-center gap-2 text-sm">
+          <span>Type</span>
+          <Select ariaLabel="Filter by type" value={extFilter} onChange={setExtFilter} options={["all", ...exts]} className="min-w-28" />
+        </div>
       </div>
       <table className="w-full text-left text-sm">
         <thead>

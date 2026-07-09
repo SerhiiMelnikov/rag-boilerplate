@@ -24,7 +24,8 @@ describe("FilesManager", () => {
   it("filters by extension", async () => {
     render(<FilesManager />);
     await screen.findByText("report.pdf");
-    fireEvent.change(screen.getByLabelText("Filter by type"), { target: { value: "png" } });
+    fireEvent.click(screen.getByLabelText("Filter by type")); // open the styled listbox
+    fireEvent.click(await screen.findByRole("option", { name: "png" }));
     expect(screen.queryByText("report.pdf")).not.toBeInTheDocument();
     expect(screen.getByText("bike.png")).toBeInTheDocument();
   });

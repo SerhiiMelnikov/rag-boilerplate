@@ -40,4 +40,30 @@ describe("searchImages", () => {
     expect(hits).toEqual([]);
     expect(repo.getByIds).not.toHaveBeenCalled();
   });
+
+  it("drops matches outside allowedImageIds and over-fetches to compensate", async () => {
+    const searchImages_ = vi.fn(async (_vector: number[], _limit: number) => [
+      { imageId: "i1", score: 0.9 }, { imageId: "i2", score: 0.8 }, { imageId: "i3", score: 0.7 },
+    ]);
+    const getByIds = vi.fn(async (ids: string[]) => ids.map((id) => ({ id, filename: `${id}.png`, caption: id, storageKey: id, contentType: "image/png" })));
+    const hits = await searchImages(
+      "cat",
+      { topN: 2, minScore: 0, allowedImageIds: ["i1", "i3"] },
+      { embed: async () => [0.1], imageVectorStore: { searchImages: searchImages_ } as never, imageRepo: { getByIds } as never, settings: {} as never },
+    );
+    expect(hits.map((h) => h.imageId)).toEqual(["i1", "i3"]);
+    // over-fetch: asked the store for more than topN
+    expect(searchImages_.mock.calls[0][1]).toBeGreaterThan(2);
+  });
+
+  it("returns [] without querying when allowedImageIds is empty", async () => {
+    const searchImages_ = vi.fn();
+    const hits = await searchImages(
+      "cat",
+      { topN: 2, minScore: 0, allowedImageIds: [] },
+      { embed: async () => [0.1], imageVectorStore: { searchImages: searchImages_ } as never, imageRepo: { getByIds: vi.fn() } as never, settings: {} as never },
+    );
+    expect(hits).toEqual([]);
+    expect(searchImages_).not.toHaveBeenCalled();
+  });
 });

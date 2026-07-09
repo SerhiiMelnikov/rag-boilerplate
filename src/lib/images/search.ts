@@ -18,19 +18,31 @@ export interface SearchImagesDeps {
   settings: RuntimeSettings;
 }
 
+// Over-fetch factor when a workspace allowlist is applied, so post-filtering to
+// the in-scope images still leaves enough candidates to fill topN.
+const OVERFETCH = 5;
+
 // Embed the query text, cosine-search the image vector store, drop matches below
-// minScore, then join Postgres metadata (filename/caption). Score order preserved.
+// minScore and outside the workspace allowlist, then join Postgres metadata
+// (filename/caption). Score order preserved.
 export async function searchImages(
   queryText: string,
-  opts: { topN: number; minScore: number },
+  opts: { topN: number; minScore: number; allowedImageIds?: string[] },
   deps: SearchImagesDeps,
 ): Promise<ImageSearchHit[]> {
+  const allow = opts.allowedImageIds ? new Set(opts.allowedImageIds) : null;
+  if (allow && allow.size === 0) return [];
+
   const embed = deps.embed ?? ((t: string) => embedQuery(t, deps.settings));
   const store = deps.imageVectorStore ?? getImageVectorStore();
   const repo = deps.imageRepo ?? createImageRepo();
 
   const vector = await embed(queryText);
-  const matches = (await store.searchImages(vector, opts.topN)).filter((m) => m.score >= opts.minScore);
+  const fetchN = allow ? opts.topN * OVERFETCH : opts.topN;
+  const matches = (await store.searchImages(vector, fetchN))
+    .filter((m) => m.score >= opts.minScore)
+    .filter((m) => !allow || allow.has(m.imageId))
+    .slice(0, opts.topN);
   if (matches.length === 0) return [];
 
   const records = await repo.getByIds(matches.map((m) => m.imageId));

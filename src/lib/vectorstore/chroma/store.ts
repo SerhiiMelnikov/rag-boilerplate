@@ -14,7 +14,7 @@ export interface ChromaCollectionLike {
   add(args: { ids: string[]; embeddings: number[][]; documents: string[]; metadatas: Record<string, string>[] }): Promise<unknown>;
   get(args: { where?: Record<string, string>; include?: "metadatas"[] }): Promise<{ metadatas?: (Record<string, unknown> | null)[] }>;
   delete(args: { where?: Record<string, string> }): Promise<unknown>;
-  query(args: { queryEmbeddings: number[][]; nResults: number; whereDocument?: { $contains: string } }): Promise<{
+  query(args: { queryEmbeddings: number[][]; nResults: number; where?: { documentId: { $in: string[] } }; whereDocument?: { $contains: string } }): Promise<{
     ids: string[][];
     documents: (string | null)[][];
     metadatas: (Record<string, unknown> | null)[][];
@@ -84,17 +84,28 @@ export function createChromaStore(
       await col.delete({ where: { documentId } });
     },
 
-    async searchVector(embedding: number[], limit: number): Promise<RetrievedChunk[]> {
+    async searchVector(embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]> {
+      if (allowedDocumentIds && allowedDocumentIds.length === 0) return [];
       const col = await getCollection();
-      const res = await col.query({ queryEmbeddings: [embedding], nResults: limit });
+      const res = await col.query({
+        queryEmbeddings: [embedding],
+        nResults: limit,
+        ...(allowedDocumentIds ? { where: { documentId: { $in: allowedDocumentIds } } } : {}),
+      });
       return toChunks(res);
     },
 
-    async searchKeyword(query: string, embedding: number[], limit: number): Promise<RetrievedChunk[]> {
+    async searchKeyword(query: string, embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]> {
+      if (allowedDocumentIds && allowedDocumentIds.length === 0) return [];
       const text = query.trim();
       if (text.length < 2) return [];
       const col = await getCollection();
-      const res = await col.query({ queryEmbeddings: [embedding], nResults: limit, whereDocument: { $contains: text } });
+      const res = await col.query({
+        queryEmbeddings: [embedding],
+        nResults: limit,
+        whereDocument: { $contains: text },
+        ...(allowedDocumentIds ? { where: { documentId: { $in: allowedDocumentIds } } } : {}),
+      });
       return toChunks(res);
     },
   };

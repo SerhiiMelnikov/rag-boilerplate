@@ -68,4 +68,37 @@ describe("chroma store", () => {
     await store.searchKeyword("dog", [0.1], 5);
     expect(col.query.mock.calls[0][0].whereDocument).toEqual({ $contains: "dog" });
   });
+
+  it("searchVector passes the allowlist as a where $in filter", async () => {
+    const col = fakeCollection();
+    await createChromaStore(provide(col)).searchVector([0.1], 5, ["d1", "d2"]);
+    expect(col.query.mock.calls[0][0].where).toEqual({ documentId: { $in: ["d1", "d2"] } });
+  });
+
+  it("searchVector([] allowlist) returns [] without querying", async () => {
+    const col = fakeCollection();
+    const out = await createChromaStore(provide(col)).searchVector([0.1], 5, []);
+    expect(out).toEqual([]);
+    expect(col.query).not.toHaveBeenCalled();
+  });
+
+  it("searchVector(undefined allowlist) omits where", async () => {
+    const col = fakeCollection();
+    await createChromaStore(provide(col)).searchVector([0.1], 5);
+    expect(col.query.mock.calls[0][0].where).toBeUndefined();
+  });
+
+  it("searchKeyword passes both whereDocument and the allowlist where filter", async () => {
+    const col = fakeCollection();
+    await createChromaStore(provide(col)).searchKeyword("dog", [0.1], 5, ["d1"]);
+    expect(col.query.mock.calls[0][0].whereDocument).toEqual({ $contains: "dog" });
+    expect(col.query.mock.calls[0][0].where).toEqual({ documentId: { $in: ["d1"] } });
+  });
+
+  it("searchKeyword([] allowlist) returns [] without querying", async () => {
+    const col = fakeCollection();
+    const out = await createChromaStore(provide(col)).searchKeyword("dog", [0.1], 5, []);
+    expect(out).toEqual([]);
+    expect(col.query).not.toHaveBeenCalled();
+  });
 });

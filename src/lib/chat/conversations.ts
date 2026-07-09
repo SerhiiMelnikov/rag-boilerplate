@@ -82,6 +82,7 @@ export async function addMessage(
     sources?: SourceRef[];
     images?: ImageResultRef[];
     usage?: { promptTokens: number; completionTokens: number } | null;
+    workspaceId?: string | null;
   },
   database = defaultDb,
 ) {
@@ -94,6 +95,7 @@ export async function addMessage(
       sources: input.sources ?? [],
       images: input.images ?? [],
       usage: input.usage ?? null,
+      workspaceId: input.workspaceId ?? null,
     })
     .returning({ id: messages.id });
   return row;

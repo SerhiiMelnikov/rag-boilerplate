@@ -82,4 +82,48 @@ describe("pinecone store", () => {
     expect(out[0].chunkId).toBe("d1#a");
     expect(out[0].score).toBeCloseTo(1);
   });
+
+  it("searchVector passes a $in documentId filter to the dense query", async () => {
+    const dense = fakeDense();
+    await createPineconeStore(() => dense as any, () => fakeSparse() as any).searchVector([0.1], 5, ["d1", "d2"]);
+    expect(dense.query.mock.calls[0][0].filter).toEqual({ documentId: { $in: ["d1", "d2"] } });
+  });
+
+  it("searchVector([] allowlist) returns [] without querying", async () => {
+    const dense = fakeDense();
+    const out = await createPineconeStore(() => dense as any, () => fakeSparse() as any).searchVector([0.1], 5, []);
+    expect(out).toEqual([]);
+    expect(dense.query).not.toHaveBeenCalled();
+  });
+
+  it("searchVector without an allowlist adds no filter", async () => {
+    const dense = fakeDense();
+    await createPineconeStore(() => dense as any, () => fakeSparse() as any).searchVector([0.1], 5);
+    expect(dense.query.mock.calls[0][0].filter).toBeUndefined();
+  });
+
+  it("searchKeyword([] allowlist) returns [] without querying either index", async () => {
+    const dense = fakeDense();
+    const sparse = fakeSparse();
+    const out = await createPineconeStore(() => dense as any, () => sparse as any).searchKeyword("hello", [0.1], 5, []);
+    expect(out).toEqual([]);
+    expect(sparse.searchRecords).not.toHaveBeenCalled();
+    expect(dense.fetch).not.toHaveBeenCalled();
+  });
+
+  it("searchKeyword post-filters hits to the allowlist by documentId", async () => {
+    const dense = fakeDense({
+      fetch: vi.fn(async () => ({
+        records: {
+          "d1#a": { id: "d1#a", values: [0.1], metadata: { documentId: "d1", filename: "f1", content: "c1" } },
+          "d2#b": { id: "d2#b", values: [0.1], metadata: { documentId: "d2", filename: "f2", content: "c2" } },
+        },
+      })),
+    });
+    const sparse = fakeSparse({
+      searchRecords: vi.fn(async () => ({ result: { hits: [{ _id: "d1#a" }, { _id: "d2#b" }] } })),
+    });
+    const out = await createPineconeStore(() => dense as any, () => sparse as any).searchKeyword("hello", [0.1], 5, ["d1"]);
+    expect(out.map((c) => c.documentId)).toEqual(["d1"]);
+  });
 });

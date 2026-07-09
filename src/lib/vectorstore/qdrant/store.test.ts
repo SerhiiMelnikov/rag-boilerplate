@@ -54,4 +54,37 @@ describe("qdrant store", () => {
     const arg = client.delete.mock.calls[0][1];
     expect(JSON.stringify(arg)).toContain("d1");
   });
+
+  it("searchVector applies the allowlist as a documentId any-match filter", async () => {
+    const client = fakeClient({ query: vi.fn(async () => ({ points: [] })) });
+    await createQdrantStore(client, "c").searchVector([0.1], 5, ["d1", "d2"]);
+    const args = client.query.mock.calls[0][1];
+    expect(args.filter).toEqual({ must: [{ key: "documentId", match: { any: ["d1", "d2"] } }] });
+  });
+
+  it("searchVector([] allowlist) returns [] without querying", async () => {
+    const client = fakeClient({ query: vi.fn(async () => ({ points: [] })) });
+    const out = await createQdrantStore(client, "c").searchVector([0.1], 5, []);
+    expect(out).toEqual([]);
+    expect(client.query).not.toHaveBeenCalled();
+  });
+
+  it("searchKeyword adds the allowlist alongside the content match", async () => {
+    const client = fakeClient({ query: vi.fn(async () => ({ points: [] })) });
+    await createQdrantStore(client, "c").searchKeyword("hello", [0.1], 5, ["d1"]);
+    const args = client.query.mock.calls[0][1];
+    expect(args.filter.must).toEqual(
+      expect.arrayContaining([
+        { key: "content", match: { text: "hello" } },
+        { key: "documentId", match: { any: ["d1"] } },
+      ]),
+    );
+  });
+
+  it("searchKeyword([] allowlist) returns [] without querying", async () => {
+    const client = fakeClient({ query: vi.fn(async () => ({ points: [] })) });
+    const out = await createQdrantStore(client, "c").searchKeyword("hello", [0.1], 5, []);
+    expect(out).toEqual([]);
+    expect(client.query).not.toHaveBeenCalled();
+  });
 });

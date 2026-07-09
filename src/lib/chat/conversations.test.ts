@@ -38,6 +38,17 @@ describe("addMessage", () => {
   });
 });
 
+describe("addMessage workspaceId", () => {
+  it("addMessage writes workspaceId when provided", async () => {
+    let inserted: any;
+    const database = {
+      insert: () => ({ values: (v: any) => { inserted = v; return { returning: async () => [{ id: "m1" }] }; } }),
+    } as any;
+    await addMessage({ conversationId: "c1", role: "assistant", content: "hi", workspaceId: "ws-1" }, database);
+    expect(inserted).toMatchObject({ conversationId: "c1", role: "assistant", content: "hi", workspaceId: "ws-1" });
+  });
+});
+
 describe("setRating", () => {
   it("returns true when the owned message was updated", async () => {
     // Two-step: first select+innerJoin for ownership check, then update.

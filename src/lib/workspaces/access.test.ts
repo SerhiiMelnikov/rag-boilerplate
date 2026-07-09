@@ -15,6 +15,8 @@ function fakeRepo(over: Partial<WorkspaceRepo> = {}): WorkspaceRepo {
     isAdmin: async () => false,
     documentIdsIn: async (ids) => ids.flatMap((w) => (w === GENERAL ? ["dG"] : w === "ws-a" ? ["dA"] : [])),
     imageIdsIn: async (ids) => ids.flatMap((w) => (w === GENERAL ? ["iG"] : w === "ws-a" ? ["iA"] : [])),
+    addDocumentToDefault: async () => {},
+    addImageToDefault: async () => {},
     ...over,
   };
 }

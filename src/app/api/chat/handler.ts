@@ -8,6 +8,9 @@ import { getChatModel } from "@/lib/providers";
 import { isProviderError } from "@/lib/providers/types";
 import { routeIntent } from "@/lib/chat/route-intent";
 import { searchImages } from "@/lib/images/search";
+import { createWorkspaceRepo, type WorkspaceRepo } from "@/lib/workspaces/repo";
+import { resolveActiveWorkspaceId, resolveAllowedDocumentIds, resolveAllowedImageIds } from "@/lib/workspaces/access";
+import { parseActiveWorkspaceCookie } from "@/lib/workspaces/cookie";
 
 const NO_CONTEXT_ANSWER =
   "I don't have any relevant information in the knowledge base to answer that.";
@@ -34,6 +37,7 @@ export interface ChatDeps {
   streamTextFn?: StreamTextLike;
   routeIntentFn?: typeof routeIntent;
   searchImagesFn?: typeof searchImages;
+  workspaceRepo?: WorkspaceRepo;
 }
 
 // Testable core: every collaborator is injectable.
@@ -48,6 +52,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   const streamTextFn = deps.streamTextFn ?? (streamText as unknown as StreamTextLike);
   const routeIntentFn = deps.routeIntentFn ?? routeIntent;
   const searchImagesFn = deps.searchImagesFn ?? searchImages;
+  const workspaceRepo = deps.workspaceRepo ?? createWorkspaceRepo();
 
   let user;
   try {
@@ -94,9 +99,18 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Resolve the active workspace from the cookie, sanitized to one the user can
+  // see (else General), then the allowlists that scope retrieval to it + General.
+  const requestedWorkspaceId = parseActiveWorkspaceCookie(request);
+  const workspaceId = await resolveActiveWorkspaceId(requestedWorkspaceId, user.id, workspaceRepo);
+  const [allowedDocumentIds, allowedImageIds] = await Promise.all([
+    resolveAllowedDocumentIds(workspaceId, workspaceRepo),
+    resolveAllowedImageIds(workspaceId, workspaceRepo),
+  ]);
+
   // Set conversation title from the first user message if it's still the default placeholder.
   await setTitleFn(user.id, conversationId, content.slice(0, 60));
-  await addMessageFn({ conversationId, role: "user", content });
+  await addMessageFn({ conversationId, role: "user", content, workspaceId });
 
   const settings = await getSettingsFn();
   // History-aware retrieval: include the last couple of user turns so a
@@ -109,7 +123,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
       .join("\n") || content;
   // Persist an assistant message and stream it verbatim (no model call).
   const replyWithMessage = async (textOut: string, images: Array<{ imageId: string; filename: string; score: number }> = []) => {
-    await addMessageFn({ conversationId, role: "assistant", content: textOut, sources: [], images, usage: null });
+    await addMessageFn({ conversationId, role: "assistant", content: textOut, sources: [], images, usage: null, workspaceId });
     return createDataStreamResponse({
       execute: (dataStream) => {
         dataStream.write(formatDataStreamPart("text", textOut));
@@ -123,7 +137,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   if (intent.kind === "image") {
     let hits;
     try {
-      hits = await searchImagesFn(intent.query, { topN: IMAGE_TOP_N, minScore: settings.minSimilarity }, { settings });
+      hits = await searchImagesFn(intent.query, { topN: IMAGE_TOP_N, minScore: settings.minSimilarity, allowedImageIds }, { settings });
     } catch (err) {
       if (isProviderError(err)) return replyWithMessage((err as Error).message);
       throw err;
@@ -135,7 +149,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
 
   let prepared;
   try {
-    prepared = await prepareContextFn(retrievalQuery, settings);
+    prepared = await prepareContextFn(retrievalQuery, settings, { allowedDocumentIds });
   } catch (err) {
     if (isProviderError(err)) return replyWithMessage((err as Error).message);
     throw err;
@@ -167,6 +181,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
         role: "assistant",
         content: text,
         sources: prepared.sources,
+        workspaceId,
         usage: {
           promptTokens: usage?.promptTokens ?? 0,
           completionTokens: usage?.completionTokens ?? 0,

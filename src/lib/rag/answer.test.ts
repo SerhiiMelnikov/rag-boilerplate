@@ -17,7 +17,7 @@ const chunk = (id: string, score: number): RetrievedChunk => ({ chunkId: id, doc
 
 describe("prepareContext", () => {
   it("returns hasContext=false and empty fields when nothing retrieved", async () => {
-    const out = await prepareContext("q", settings, { embed: async () => [0.1], retrieve: async () => [] });
+    const out = await prepareContext("q", settings, {}, { embed: async () => [0.1], retrieve: async () => [] });
     expect(out.hasContext).toBe(false);
     expect(out.sources).toEqual([]);
     expect(out.context).toBe("");
@@ -25,10 +25,16 @@ describe("prepareContext", () => {
 
   it("builds context and maps sources when chunks are retrieved", async () => {
     const retrieve = vi.fn(async () => [chunk("a", 0.9)]);
-    const out = await prepareContext("q", settings, { embed: async () => [0.1, 0.2], retrieve });
+    const out = await prepareContext("q", settings, {}, { embed: async () => [0.1, 0.2], retrieve });
     expect(retrieve).toHaveBeenCalledWith("q", [0.1, 0.2], { topK: 5, minSimilarity: 0.3, tokenBudget: 3000 });
     expect(out.hasContext).toBe(true);
     expect(out.context).toContain("content a");
     expect(out.sources).toEqual([{ documentId: "da", filename: "a.md", chunkId: "a", score: 0.9 }]);
+  });
+
+  it("forwards allowedDocumentIds into the retrieval opts", async () => {
+    const retrieve = vi.fn(async () => []);
+    await prepareContext("q", settings, { allowedDocumentIds: ["d1"] }, { embed: async () => [0.1], retrieve });
+    expect(retrieve).toHaveBeenCalledWith("q", [0.1], expect.objectContaining({ allowedDocumentIds: ["d1"] }));
   });
 });

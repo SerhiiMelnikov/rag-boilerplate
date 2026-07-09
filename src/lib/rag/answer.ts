@@ -21,6 +21,7 @@ export interface PreparedContext {
 export async function prepareContext(
   question: string,
   settings: RuntimeSettings,
+  retrievalOpts: { allowedDocumentIds?: string[] } = {},
   deps: { embed?: (q: string) => Promise<number[]>; retrieve?: typeof searchChunks } = {},
 ): Promise<PreparedContext> {
   const embed = deps.embed ?? ((q: string) => embedQuery(q, settings));
@@ -30,6 +31,7 @@ export async function prepareContext(
     topK: settings.topK,
     minSimilarity: settings.minSimilarity,
     tokenBudget: settings.contextTokenBudget,
+    allowedDocumentIds: retrievalOpts.allowedDocumentIds,
   });
   if (chunks.length === 0) return { hasContext: false, context: "", sources: [] };
   return {

@@ -8,6 +8,8 @@ const documentRepo = { createDocument: vi.fn(async () => "d1"), setStatus: vi.fn
 const vectorStore = { existingHashes: vi.fn(), upsertChunks: vi.fn(), deleteByDocument: vi.fn(), searchVector: vi.fn(), searchKeyword: vi.fn() };
 vi.mock("@/lib/vectorstore", () => ({ getDocumentRepo: vi.fn(() => documentRepo), getVectorStore: vi.fn(() => vectorStore) }));
 vi.mock("@/lib/documents/service", () => ({ listDocuments: vi.fn() }));
+const workspaceRepo = { addDocumentToDefault: vi.fn(async () => {}) };
+vi.mock("@/lib/workspaces/repo", () => ({ createWorkspaceRepo: vi.fn(() => workspaceRepo) }));
 // Run the scheduled background work synchronously so we can assert on it.
 vi.mock("next/server", () => ({ after: (fn: any) => void fn() }));
 vi.mock("@/lib/config/settings-service", () => ({ getRuntimeSettings: vi.fn(async () => ({})) }));
@@ -60,6 +62,7 @@ describe("POST /api/admin/documents", () => {
     expect(await res.json()).toEqual({ documentId: "d1", status: "processing" });
     expect(documentRepo.createDocument).toHaveBeenCalledWith("a.md");
     expect(documentRepo.setStatus).toHaveBeenCalledWith("d1", "processing");
+    expect(workspaceRepo.addDocumentToDefault).toHaveBeenCalledWith("d1");
     expect(ingestExistingDocument).toHaveBeenCalledWith(
       "d1",
       expect.objectContaining({ filename: "a.md" }),

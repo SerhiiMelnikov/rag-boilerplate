@@ -14,7 +14,7 @@ describe("AppBar / ProfileMenu", () => {
     render(<AppBar email="a@b.com" role="admin" />);
     await userEvent.click(screen.getByRole("button", { name: /profile/i }));
     expect(screen.getByText("a@b.com")).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /documents/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /files/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /settings/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /analytics/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
@@ -23,7 +23,7 @@ describe("AppBar / ProfileMenu", () => {
   it("hides admin links for regular users", async () => {
     render(<AppBar email="u@b.com" role="user" />);
     await userEvent.click(screen.getByRole("button", { name: /profile/i }));
-    expect(screen.queryByRole("menuitem", { name: /documents/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /files/i })).not.toBeInTheDocument();
   });
 
   it("shows the Users link for super-admins", async () => {

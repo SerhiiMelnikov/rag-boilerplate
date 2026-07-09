@@ -17,14 +17,14 @@ export interface SearchDeps {
 export async function searchChunks(
   query: string,
   queryEmbedding: number[],
-  opts: { topK: number; minSimilarity: number; tokenBudget: number },
+  opts: { topK: number; minSimilarity: number; tokenBudget: number; allowedDocumentIds?: string[] },
   deps: SearchDeps = {},
 ): Promise<RetrievedChunk[]> {
   const store = deps.store ?? getVectorStore();
   const pool = Math.max(opts.topK, CANDIDATE_POOL);
   const [vec, kw] = await Promise.all([
-    store.searchVector(queryEmbedding, pool),
-    store.searchKeyword(query, queryEmbedding, pool),
+    store.searchVector(queryEmbedding, pool, opts.allowedDocumentIds),
+    store.searchKeyword(query, queryEmbedding, pool, opts.allowedDocumentIds),
   ]);
   return fuse(vec, kw, opts);
 }

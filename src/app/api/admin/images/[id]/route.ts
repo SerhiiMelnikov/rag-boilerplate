@@ -1,7 +1,13 @@
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
 import { deleteImage } from "@/lib/images/service";
+import { patchImageCaption } from "./handler";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+export async function PATCH(request: Request, ctx: Ctx) {
+  const { id } = await ctx.params;
+  return patchImageCaption(id, request);
+}
 
 export async function DELETE(_request: Request, ctx: Ctx) {
   try {

@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { DocumentsManager } from "@/components/admin/documents-manager";
+import { FilesManager } from "@/components/admin/files-manager";
 
-export default async function DocumentsPage() {
+export default async function FilesPage() {
   const session = await auth();
   if (session?.user?.role !== "admin") redirect("/");
-  return <DocumentsManager />;
+  return <FilesManager />;
 }

@@ -2,8 +2,7 @@
 
 import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/react";
 import { signOut } from "next-auth/react";
-// `Image` collides with the global/DOM Image constructor, so alias the icon import.
-import { UserCircle, FileText, Settings, KeyRound, Users, LogOut, BarChart3, Image as ImageIcon } from "lucide-react";
+import { UserCircle, Files, Settings, KeyRound, Users, LogOut, BarChart3 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 
 // Single header dropdown ("Profile") consolidating account info, admin links,
@@ -35,13 +34,8 @@ export function ProfileMenu({
         {role === "admin" && (
           <>
             <MenuItem>
-              <a href="/admin/documents" className={itemClass}>
-                <FileText className="h-4 w-4" /> Documents
-              </a>
-            </MenuItem>
-            <MenuItem>
-              <a href="/admin/images" className={itemClass}>
-                <ImageIcon className="h-4 w-4" /> Images
+              <a href="/admin/files" className={itemClass}>
+                <Files className="h-4 w-4" /> Files
               </a>
             </MenuItem>
             <MenuItem>

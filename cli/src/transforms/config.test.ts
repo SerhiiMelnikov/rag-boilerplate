@@ -130,6 +130,15 @@ describe("generateEnv", () => {
   });
 });
 
+describe("generateEnv S3", () => {
+  it("always writes the S3 vars regardless of vector store", () => {
+    const env = generateEnv({ vectorStore: "qdrant" }, { authSecret: "a", encryptionKey: "e" });
+    expect(env).toContain("S3_ENDPOINT=http://localhost:9000");
+    expect(env).toContain("S3_BUCKET=rag-images");
+    expect(env).toContain("S3_FORCE_PATH_STYLE=true");
+  });
+});
+
 describe("setDbImage", () => {
   it("rewrites the db service image and leaves other services intact", () => {
     const out = setDbImage(COMPOSE, "postgres:16");

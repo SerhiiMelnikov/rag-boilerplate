@@ -31,10 +31,10 @@ export function generateReadme(o: InstallOptions): string {
       "set provider API keys later in the admin UI (admin → Provider keys). Set " +
       "`ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env` if you want non-default admin credentials.",
   );
-  const composeCmd = `docker compose up -d db${store.dockerService ? ` ${store.dockerService}` : ""}`;
+  const composeCmd = `docker compose up -d db minio${store.dockerService ? ` ${store.dockerService}` : ""}`;
   lines.push(
-    `${step++}. Start services: \`${composeCmd}\` (Postgres, plus the selected self-hosted store if any; ` +
-      "Pinecone is managed → just `db`).",
+    `${step++}. Start services: \`${composeCmd}\` (Postgres + MinIO for image storage, plus the selected ` +
+      "self-hosted store if any; Pinecone is managed → no extra service).",
   );
   if (o.vectorStore !== "pgvector") {
     lines.push(`${step++}. \`npm run db:generate\` (generate the database migrations for your schema)`);

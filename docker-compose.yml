@@ -9,6 +9,27 @@ services:
       - "5432:5432"
     volumes:
       - rag_pgdata:/var/lib/postgresql/data
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - rag_minio:/data
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set local http://minio:9000 minioadmin minioadmin) do echo waiting for minio; sleep 1; done;
+      /usr/bin/mc mb -p local/rag-images;
+      exit 0;
+      "
   qdrant:
     image: qdrant/qdrant:latest
     ports:
@@ -35,6 +56,7 @@ services:
       - rag_weaviate:/var/lib/weaviate
 volumes:
   rag_pgdata:
+  rag_minio:
   rag_qdrant:
   rag_chroma:
   rag_weaviate:

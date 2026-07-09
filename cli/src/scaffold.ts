@@ -8,7 +8,7 @@ import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampl
 import { applySourceTransforms } from "./transforms/source.js";
 import { generateReadme } from "./readme.js";
 
-// Compute the six settings defaults from the chosen default provider + manifest.
+// Compute the ten settings defaults from the chosen default provider + manifest.
 export function settingsDefaultsFor(o: InstallOptions) {
   const chat = PROVIDERS[o.defaultProvider];
   const embProvider = resolveEmbeddingProvider(o.providers, o.defaultProvider);
@@ -17,6 +17,8 @@ export function settingsDefaultsFor(o: InstallOptions) {
     chatProvider: o.defaultProvider, chatModel: chat.defaultChatModel,
     embeddingProvider: embProvider, embeddingModel: emb.defaultEmbeddingModel!,
     parserProvider: o.defaultProvider, parserModel: chat.defaultVisionModel,
+    imageProvider: o.defaultProvider, imageModel: chat.defaultVisionModel,
+    unifiedProvider: o.defaultProvider, unifiedModel: chat.defaultChatModel,
   };
 }
 
@@ -48,11 +50,12 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
   const pkgJson = removeTestTooling(prunePackageJson(await readFile(pkgPath, "utf8"), removeDeps));
   await writeFile(pkgPath, pkgJson);
 
-  // 5. docker-compose: keep db + the selected store's service (if any). When the
-  // chosen store is not pgvector, downgrade the db image to plain Postgres.
+  // 5. docker-compose: keep db + minio/createbuckets (always, for image storage)
+  // + the selected store's service (if any). When the chosen store is not
+  // pgvector, downgrade the db image to plain Postgres.
   const dcPath = join(opts.targetDir, "docker-compose.yml");
   if (existsSync(dcPath)) {
-    const keep = ["db", VECTOR_STORES[o.vectorStore].dockerService].filter((s): s is string => !!s);
+    const keep = ["db", "minio", "createbuckets", VECTOR_STORES[o.vectorStore].dockerService].filter((s): s is string => !!s);
     let dc = pruneDockerCompose(await readFile(dcPath, "utf8"), keep);
     if (cutPgvector) dc = setDbImage(dc, "postgres:16");
     await writeFile(dcPath, dc);

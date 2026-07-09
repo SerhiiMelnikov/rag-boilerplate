@@ -40,6 +40,25 @@ export const chunks = pgTable("chunks", {
   contentHash: text("content_hash").notNull(),
 });
 
+export const images = pgTable("images", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  filename: text("filename").notNull(),
+  storageKey: text("storage_key").notNull().unique(),
+  contentType: text("content_type").notNull(),
+  caption: text("caption").notNull().default(""),
+  status: docStatusEnum("status").notNull().default("pending"),
+  error: text("error"),
+  uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// pgvector-only: image caption embeddings live here ONLY when VECTOR_STORE=pgvector
+// (other stores keep image vectors in their own backend). Mirrors `chunks`.
+export const imageVectors = pgTable("image_vectors", {
+  imageId: uuid("image_id").primaryKey().references(() => images.id, { onDelete: "cascade" }),
+  embedding: vector("embedding", { dimensions: EMBEDDING_DIMENSIONS }).notNull(),
+});
+
 export const conversations = pgTable("conversations", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -53,6 +72,7 @@ export const messages = pgTable("messages", {
   role: msgRoleEnum("role").notNull(),
   content: text("content").notNull(),
   sources: jsonb("sources").$type<Array<{ documentId: string; filename: string; chunkId: string; score: number }>>().notNull().default([]),
+  images: jsonb("images").$type<Array<{ imageId: string; filename: string; score: number }>>().notNull().default([]),
   rating: integer("rating"), // 1 | -1 | null
   usage: jsonb("usage").$type<{ promptTokens: number; completionTokens: number } | null>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -68,6 +88,13 @@ export const settings = pgTable("settings", {
   embeddingModel: text("embedding_model").notNull().default("gemini-embedding-2"),
   parserProvider: text("parser_provider").notNull().default("google"),
   parserModel: text("parser_model").notNull().default("gemini-2.5-flash"),
+  imageProvider: text("image_provider").notNull().default("google"),
+  imageModel: text("image_model").notNull().default("gemini-2.5-flash"),
+  // When on, chat/parser/image all use unifiedProvider/unifiedModel instead of
+  // their individual columns above (embedding is never affected).
+  unifiedMode: boolean("unified_mode").notNull().default(false),
+  unifiedProvider: text("unified_provider").notNull().default("google"),
+  unifiedModel: text("unified_model").notNull().default("gemma-4-31b-it"),
   // Behavior (sampling = temperature only).
   temperature: real("temperature").notNull().default(0.2),
   topK: integer("top_k").notNull().default(5), // retrieval chunk count

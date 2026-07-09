@@ -12,8 +12,14 @@ export function parseActiveWorkspaceCookie(request: Request): string | undefined
     if (eq === -1) continue;
     const key = part.slice(0, eq).trim();
     if (key === ACTIVE_WORKSPACE_COOKIE) {
-      const value = decodeURIComponent(part.slice(eq + 1).trim());
-      return value || undefined;
+      const raw = part.slice(eq + 1).trim();
+      try {
+        const value = decodeURIComponent(raw);
+        return value || undefined;
+      } catch {
+        // Malformed percent-encoding is attacker-controlled input; never throw.
+        return undefined;
+      }
     }
   }
   return undefined;

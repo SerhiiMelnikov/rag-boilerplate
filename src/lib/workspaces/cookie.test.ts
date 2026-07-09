@@ -16,4 +16,8 @@ describe("parseActiveWorkspaceCookie", () => {
     expect(parseActiveWorkspaceCookie(req("theme=dark"))).toBeUndefined();
     expect(parseActiveWorkspaceCookie(req())).toBeUndefined();
   });
+  it("returns undefined for a malformed percent-encoded value (never throws)", () => {
+    expect(parseActiveWorkspaceCookie(req(`${ACTIVE_WORKSPACE_COOKIE}=%`))).toBeUndefined();
+    expect(parseActiveWorkspaceCookie(req(`${ACTIVE_WORKSPACE_COOKIE}=%E0%A4%A`))).toBeUndefined();
+  });
 });

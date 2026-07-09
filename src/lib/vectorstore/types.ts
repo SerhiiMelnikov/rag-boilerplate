@@ -23,8 +23,9 @@ export interface VectorStore {
   upsertChunks(rows: ChunkInput[]): Promise<void>;
   existingHashes(documentId: string): Promise<Set<string>>;
   deleteByDocument(documentId: string): Promise<void>;
-  searchVector(embedding: number[], limit: number): Promise<RetrievedChunk[]>;
-  searchKeyword(query: string, embedding: number[], limit: number): Promise<RetrievedChunk[]>;
+  // allowedDocumentIds: undefined = no filter; [] = no results (empty scope).
+  searchVector(embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]>;
+  searchKeyword(query: string, embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]>;
 }
 
 // Document metadata. Always Postgres, independent of the vector store.

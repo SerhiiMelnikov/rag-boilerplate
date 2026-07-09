@@ -1,4 +1,4 @@
-import { sql, cosineDistance, gt, desc, eq } from "drizzle-orm";
+import { sql, cosineDistance, gt, desc, eq, and, inArray } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { chunks, documents } from "@/lib/db/schema";
 import type { VectorStore, ChunkInput, RetrievedChunk } from "../types";
@@ -28,29 +28,37 @@ export function createPgVectorStore(db = defaultDb): VectorStore {
       await db.delete(chunks).where(eq(chunks.documentId, documentId));
     },
 
-    async searchVector(embedding: number[], limit: number): Promise<RetrievedChunk[]> {
+    async searchVector(embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]> {
+      if (allowedDocumentIds && allowedDocumentIds.length === 0) return [];
       const similarity = cosine(embedding);
+      const where = allowedDocumentIds
+        ? and(gt(similarity, 0), inArray(chunks.documentId, allowedDocumentIds))
+        : gt(similarity, 0);
       return db
         .select({ chunkId: chunks.id, documentId: chunks.documentId, filename: documents.filename, content: chunks.content, score: similarity })
         .from(chunks)
         .innerJoin(documents, eq(documents.id, chunks.documentId))
-        .where(gt(similarity, 0))
+        .where(where)
         .orderBy((t) => desc(t.score))
         .limit(limit);
     },
 
-    async searchKeyword(query: string, embedding: number[], limit: number): Promise<RetrievedChunk[]> {
+    async searchKeyword(query: string, embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]> {
+      if (allowedDocumentIds && allowedDocumentIds.length === 0) return [];
       const tokens = [...new Set((query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((t) => t.length >= 2))];
       if (tokens.length === 0) return [];
       const tsq = tokens.map((t) => `${t}:*`).join(" | ");
       const tsv = sql`to_tsvector('simple', ${chunks.content})`;
       const tsquery = sql`to_tsquery('simple', ${tsq})`;
       const similarity = cosine(embedding);
+      const where = allowedDocumentIds
+        ? and(sql`${tsv} @@ ${tsquery}`, inArray(chunks.documentId, allowedDocumentIds))
+        : sql`${tsv} @@ ${tsquery}`;
       return db
         .select({ chunkId: chunks.id, documentId: chunks.documentId, filename: documents.filename, content: chunks.content, score: similarity })
         .from(chunks)
         .innerJoin(documents, eq(documents.id, chunks.documentId))
-        .where(sql`${tsv} @@ ${tsquery}`)
+        .where(where)
         .orderBy(sql`ts_rank(${tsv}, ${tsquery}) desc`)
         .limit(limit);
     },

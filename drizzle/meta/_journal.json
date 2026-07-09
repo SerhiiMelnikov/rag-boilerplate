@@ -71,6 +71,13 @@
       "when": 1783501208072,
       "tag": "0009_yielding_rage",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783584233721,
+      "tag": "0010_fresh_spirit",
+      "breakpoints": true
     }
   ]
 }

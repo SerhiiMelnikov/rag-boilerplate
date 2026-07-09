@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, timestamp, integer, jsonb, vector, real, pgEnum, boolean,
+  pgTable, uuid, text, timestamp, integer, jsonb, vector, real, pgEnum, boolean, primaryKey,
 } from "drizzle-orm/pg-core";
 
 // Embedding dimension is fixed to the embedding model. We use gemini-embedding-2
@@ -73,6 +73,7 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   sources: jsonb("sources").$type<Array<{ documentId: string; filename: string; chunkId: string; score: number }>>().notNull().default([]),
   images: jsonb("images").$type<Array<{ imageId: string; filename: string; score: number }>>().notNull().default([]),
+  workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "set null" }),
   rating: integer("rating"), // 1 | -1 | null
   usage: jsonb("usage").$type<{ promptTokens: number; completionTokens: number } | null>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -107,3 +108,32 @@ export const settings = pgTable("settings", {
   anthropicKey: text("anthropic_key"),
   ollamaBaseUrl: text("ollama_base_url").notNull().default("http://localhost:11434"),
 });
+
+// Workspaces group documents/images and gate retrieval. "General" (is_default)
+// is seeded once, is undeletable, and is implicitly visible to every user.
+export const workspaces = pgTable("workspaces", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// M:N document <-> workspace membership. Membership lives ONLY here (Postgres),
+// so moving a document between workspaces never rewrites vectors.
+export const documentWorkspaces = pgTable("document_workspaces", {
+  documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+}, (t) => ({ pk: primaryKey({ columns: [t.documentId, t.workspaceId] }) }));
+
+// M:N image <-> workspace membership.
+export const imageWorkspaces = pgTable("image_workspaces", {
+  imageId: uuid("image_id").notNull().references(() => images.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+}, (t) => ({ pk: primaryKey({ columns: [t.imageId, t.workspaceId] }) }));
+
+// M:N user <-> workspace access grant. General access is implicit (no rows).
+export const userWorkspaces = pgTable("user_workspaces", {
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+}, (t) => ({ pk: primaryKey({ columns: [t.userId, t.workspaceId] }) }));

@@ -26,3 +26,28 @@ describe("images schema", () => {
     expect(cols).toEqual(expect.arrayContaining(["imageId", "embedding"]));
   });
 });
+
+import { workspaces, documentWorkspaces, imageWorkspaces, userWorkspaces } from "./schema";
+
+describe("workspaces schema", () => {
+  it("exports the workspace tables", () => {
+    for (const t of ["workspaces", "documentWorkspaces", "imageWorkspaces", "userWorkspaces"]) {
+      expect(schema).toHaveProperty(t);
+    }
+  });
+
+  it("workspaces table has name, description, is_default", () => {
+    const cols = Object.keys(workspaces);
+    expect(cols).toEqual(expect.arrayContaining(["id", "name", "description", "isDefault", "createdAt"]));
+  });
+
+  it("join tables key an entity to a workspace", () => {
+    expect(Object.keys(documentWorkspaces)).toEqual(expect.arrayContaining(["documentId", "workspaceId"]));
+    expect(Object.keys(imageWorkspaces)).toEqual(expect.arrayContaining(["imageId", "workspaceId"]));
+    expect(Object.keys(userWorkspaces)).toEqual(expect.arrayContaining(["userId", "workspaceId"]));
+  });
+
+  it("messages carry an optional workspace_id", () => {
+    expect(Object.keys(schema.messages)).toEqual(expect.arrayContaining(["workspaceId"]));
+  });
+});

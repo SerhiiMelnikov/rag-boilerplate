@@ -11,14 +11,25 @@ export interface WorkspaceRepo {
   isAdmin(userId: string): Promise<boolean>;
   documentIdsIn(workspaceIds: string[]): Promise<string[]>;
   imageIdsIn(workspaceIds: string[]): Promise<string[]>;
+  addDocumentToDefault(documentId: string): Promise<void>;
+}
+
+// Shared by getDefaultId (read) and addDocumentToDefault (write) so both agree
+// on how the default (General) workspace is resolved.
+async function selectDefaultId(db: typeof defaultDb): Promise<string> {
+  const [row] = await db.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.isDefault, true)).limit(1);
+  if (!row) throw new Error("default workspace (General) not found — run migrations");
+  return row.id;
 }
 
 export function createWorkspaceRepo(db = defaultDb): WorkspaceRepo {
   return {
     async getDefaultId() {
-      const [row] = await db.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.isDefault, true)).limit(1);
-      if (!row) throw new Error("default workspace (General) not found — run migrations");
-      return row.id;
+      return selectDefaultId(db);
+    },
+    async addDocumentToDefault(documentId) {
+      const workspaceId = await selectDefaultId(db);
+      await db.insert(documentWorkspaces).values({ documentId, workspaceId }).onConflictDoNothing();
     },
     async listAllIds() {
       const rows = await db.select({ id: workspaces.id }).from(workspaces);

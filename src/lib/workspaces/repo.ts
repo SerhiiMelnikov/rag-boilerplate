@@ -12,6 +12,7 @@ export interface WorkspaceRepo {
   documentIdsIn(workspaceIds: string[]): Promise<string[]>;
   imageIdsIn(workspaceIds: string[]): Promise<string[]>;
   addDocumentToDefault(documentId: string): Promise<void>;
+  addImageToDefault(imageId: string): Promise<void>;
 }
 
 // Shared by getDefaultId (read) and addDocumentToDefault (write) so both agree
@@ -30,6 +31,10 @@ export function createWorkspaceRepo(db = defaultDb): WorkspaceRepo {
     async addDocumentToDefault(documentId) {
       const workspaceId = await selectDefaultId(db);
       await db.insert(documentWorkspaces).values({ documentId, workspaceId }).onConflictDoNothing();
+    },
+    async addImageToDefault(imageId) {
+      const workspaceId = await selectDefaultId(db);
+      await db.insert(imageWorkspaces).values({ imageId, workspaceId }).onConflictDoNothing();
     },
     async listAllIds() {
       const rows = await db.select({ id: workspaces.id }).from(workspaces);

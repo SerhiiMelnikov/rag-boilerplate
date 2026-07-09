@@ -8,6 +8,7 @@ import type { ImageVectorStore } from "@/lib/vectorstore/types";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
 import { ingestImage } from "@/lib/images/ingest";
 import { listImages } from "@/lib/images/service";
+import { createWorkspaceRepo, type WorkspaceRepo } from "@/lib/workspaces/repo";
 
 // Accepted image content types → file extension. Max upload 10 MB.
 const ALLOWED: Record<string, string> = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif" };
@@ -18,6 +19,7 @@ export interface UploadImageDeps {
   objectStore?: ObjectStore;
   imageRepo?: ImageRepo;
   imageVectorStore?: ImageVectorStore;
+  workspaceRepo?: WorkspaceRepo;
   getSettings?: typeof getRuntimeSettings;
   ingest?: typeof ingestImage;
   schedule?: (fn: () => Promise<unknown>) => void;
@@ -29,6 +31,7 @@ export async function uploadImage(request: Request, deps: UploadImageDeps = {}):
   const objectStore = deps.objectStore ?? getObjectStore();
   const imageRepo = deps.imageRepo ?? createImageRepo();
   const imageVectorStore = deps.imageVectorStore ?? getImageVectorStore();
+  const workspaceRepo = deps.workspaceRepo ?? createWorkspaceRepo();
   const getSettings = deps.getSettings ?? getRuntimeSettings;
   const ingest = deps.ingest ?? ingestImage;
   const schedule = deps.schedule ?? ((fn) => after(fn));
@@ -57,6 +60,7 @@ export async function uploadImage(request: Request, deps: UploadImageDeps = {}):
 
   const imageId = await imageRepo.createImage({ filename: file.name, storageKey, contentType: file.type, uploadedBy: admin.id });
   await imageRepo.setStatus(imageId, "processing");
+  await workspaceRepo.addImageToDefault(imageId);
 
   const settings = await getSettings();
   schedule(() => ingest(imageId, { data, contentType: file.type }, { imageRepo, imageVectorStore, settings }));

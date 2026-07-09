@@ -14,6 +14,7 @@ const baseDeps = () => ({
   objectStore: { put: vi.fn(async () => {}), get: vi.fn(), delete: vi.fn() },
   imageRepo: { createImage: vi.fn(async () => "img-1"), setStatus: vi.fn(async () => {}), setCaption: vi.fn(), getByIds: vi.fn() },
   imageVectorStore: { upsertImage: vi.fn(), searchImages: vi.fn(), deleteImage: vi.fn() },
+  workspaceRepo: { addImageToDefault: vi.fn(async () => {}) },
   getSettings: async () => ({}) as never,
   ingest: vi.fn(async () => ({ imageId: "img-1", status: "ready" as const })),
   schedule: (fn: () => Promise<unknown>) => { void fn(); },
@@ -43,5 +44,25 @@ describe("uploadImage", () => {
     const res = await uploadImage(pngRequest("image/png", 11 * 1024 * 1024), deps as never);
     expect(res.status).toBe(400);
     expect(deps.objectStore.put).not.toHaveBeenCalled();
+  });
+
+  it("adds a newly uploaded image to the General workspace", async () => {
+    const addImageToDefault = vi.fn(async () => {});
+    const deps = {
+      getAdmin: vi.fn(async () => ({ id: "admin-1" })),
+      objectStore: { put: vi.fn(async () => {}), get: vi.fn(), delete: vi.fn() },
+      imageRepo: { createImage: vi.fn(async () => "img-1"), setStatus: vi.fn(async () => {}) },
+      imageVectorStore: {} as any,
+      workspaceRepo: { addImageToDefault },
+      getSettings: vi.fn(async () => ({} as any)),
+      ingest: vi.fn(async () => {}),
+      schedule: (fn: () => Promise<unknown>) => { void fn(); },
+      newId: () => "uuid-1",
+    };
+    const f = new FormData();
+    f.set("file", new File(["x"], "bike.png", { type: "image/png" }));
+    const res = await uploadImage(new Request("http://x/api/admin/images", { method: "POST", body: f }), deps as any);
+    expect(res.status).toBe(200);
+    expect(addImageToDefault).toHaveBeenCalledWith("img-1");
   });
 });

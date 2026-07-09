@@ -49,6 +49,7 @@ function baseDeps(over: Partial<any> = {}) {
       documentIdsIn: async () => ["doc-1"],
       imageIdsIn: async () => ["img-1"],
       addDocumentToDefault: async () => {},
+      addImageToDefault: async () => {},
     },
     ...over,
   };

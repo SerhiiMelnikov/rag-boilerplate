@@ -61,21 +61,30 @@ export function createQdrantStore(client: QdrantClient = qdrantClient(), collect
       });
     },
 
-    async searchVector(embedding: number[], limit: number): Promise<RetrievedChunk[]> {
-      const res = await client.query(collection, { query: embedding, limit, with_payload: true });
-      return (res.points as Point[]).map(toChunk);
-    },
-
-    async searchKeyword(query: string, embedding: number[], limit: number): Promise<RetrievedChunk[]> {
-      const text = query.trim();
-      if (text.length < 2) return [];
-      // MatchText requires a full-text payload index on `content` (created at init).
-      // Rank by vector score over the keyword-filtered subset.
+    async searchVector(embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]> {
+      if (allowedDocumentIds && allowedDocumentIds.length === 0) return [];
       const res = await client.query(collection, {
         query: embedding,
         limit,
         with_payload: true,
-        filter: { must: [{ key: "content", match: { text } }] },
+        ...(allowedDocumentIds ? { filter: { must: [{ key: "documentId", match: { any: allowedDocumentIds } }] } } : {}),
+      });
+      return (res.points as Point[]).map(toChunk);
+    },
+
+    async searchKeyword(query: string, embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]> {
+      if (allowedDocumentIds && allowedDocumentIds.length === 0) return [];
+      const text = query.trim();
+      if (text.length < 2) return [];
+      // MatchText requires a full-text payload index on `content` (created at init).
+      // Rank by vector score over the keyword-filtered subset.
+      const must: unknown[] = [{ key: "content", match: { text } }];
+      if (allowedDocumentIds) must.push({ key: "documentId", match: { any: allowedDocumentIds } });
+      const res = await client.query(collection, {
+        query: embedding,
+        limit,
+        with_payload: true,
+        filter: { must },
       });
       return (res.points as Point[]).map(toChunk);
     },

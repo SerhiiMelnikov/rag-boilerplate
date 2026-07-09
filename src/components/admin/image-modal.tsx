@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -15,6 +15,15 @@ interface ImageModalProps {
 export function ImageModal({ image, onClose, onSaved }: ImageModalProps) {
   const [caption, setCaption] = useState(image.caption);
   const [saving, setSaving] = useState(false);
+
+  // Allow closing the modal with the Escape key, as expected for dialogs.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   async function save() {
     setSaving(true);
@@ -31,7 +40,7 @@ export function ImageModal({ image, onClose, onSaved }: ImageModalProps) {
   }
 
   return (
-    <div role="dialog" aria-label={`Image ${image.filename}`} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-label={`Image ${image.filename}`} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-lg bg-white p-4 dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
         <div className="mb-2 flex items-center justify-between">
           <span className="truncate text-sm font-medium">{image.filename}</span>

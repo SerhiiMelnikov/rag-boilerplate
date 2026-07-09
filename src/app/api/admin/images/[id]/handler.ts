@@ -43,6 +43,10 @@ export async function patchImageCaption(id: string, request: Request, deps: Patc
   const [record] = await imageRepo.getByIds([id]);
   if (!record) return Response.json({ error: "Not found" }, { status: 404 });
 
+  // Flip the status synchronously so an immediate client reload sees "processing"
+  // and starts polling; the background job below also sets it (idempotent repeat).
+  await imageRepo.setStatus(id, "processing");
+
   const settings = await getSettings();
   schedule(() => reembed(id, caption, { imageRepo, imageVectorStore, settings }));
   return Response.json({ status: "processing" });

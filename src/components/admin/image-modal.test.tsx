@@ -23,4 +23,11 @@ describe("ImageModal", () => {
     expect(opts.method).toBe("PATCH");
     expect(JSON.parse(opts.body)).toEqual({ caption: "a new caption" });
   });
+
+  it("closes on Escape key", () => {
+    const onClose = vi.fn();
+    render(<ImageModal image={{ id: "img-1", filename: "bike.png", caption: "old caption", status: "ready" }} onClose={onClose} onSaved={() => {}} />);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+  });
 });

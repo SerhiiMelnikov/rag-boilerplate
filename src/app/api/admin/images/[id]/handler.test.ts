@@ -20,6 +20,7 @@ describe("patchImageCaption", () => {
     const res = await patchImageCaption("img-1", req({ caption: "a new caption" }), deps as never);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ status: "processing" });
+    expect(deps.imageRepo.setStatus).toHaveBeenCalledWith("img-1", "processing");
     expect(deps.reembed).toHaveBeenCalledWith("img-1", "a new caption", expect.anything());
   });
 
@@ -27,6 +28,7 @@ describe("patchImageCaption", () => {
     const deps = baseDeps();
     const res = await patchImageCaption("img-1", req({ caption: "   " }), deps as never);
     expect(res.status).toBe(400);
+    expect(deps.imageRepo.setStatus).not.toHaveBeenCalled();
     expect(deps.reembed).not.toHaveBeenCalled();
   });
 
@@ -35,6 +37,7 @@ describe("patchImageCaption", () => {
     deps.imageRepo.getByIds = vi.fn(async () => []);
     const res = await patchImageCaption("nope", req({ caption: "x" }), deps as never);
     expect(res.status).toBe(404);
+    expect(deps.imageRepo.setStatus).not.toHaveBeenCalled();
     expect(deps.reembed).not.toHaveBeenCalled();
   });
 });

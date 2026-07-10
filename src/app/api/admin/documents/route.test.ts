@@ -4,12 +4,14 @@ vi.mock("@/lib/auth/guards", async () => {
   return { ...actual, requireAdmin: vi.fn() };
 });
 vi.mock("@/lib/rag/ingest", () => ({ ingestExistingDocument: vi.fn() }));
-const documentRepo = { createDocument: vi.fn(async () => "d1"), setStatus: vi.fn(async () => {}) };
+const documentRepo = { createDocument: vi.fn(async () => ({ id: "d1", created: true })), setStatus: vi.fn(async () => {}) };
 const vectorStore = { existingHashes: vi.fn(), upsertChunks: vi.fn(), deleteByDocument: vi.fn(), searchVector: vi.fn(), searchKeyword: vi.fn() };
 vi.mock("@/lib/vectorstore", () => ({ getDocumentRepo: vi.fn(() => documentRepo), getVectorStore: vi.fn(() => vectorStore) }));
 vi.mock("@/lib/documents/service", () => ({ listDocuments: vi.fn() }));
-const workspaceRepo = { addDocumentToDefault: vi.fn(async () => {}) };
+const workspaceRepo = { getDefaultId: vi.fn(async () => "ws-general") };
 vi.mock("@/lib/workspaces/repo", () => ({ createWorkspaceRepo: vi.fn(() => workspaceRepo) }));
+const { setDocumentWorkspaces } = vi.hoisted(() => ({ setDocumentWorkspaces: vi.fn(async () => {}) }));
+vi.mock("@/lib/workspaces/membership", () => ({ setDocumentWorkspaces }));
 // Run the scheduled background work synchronously so we can assert on it.
 vi.mock("next/server", () => ({ after: (fn: any) => void fn() }));
 vi.mock("@/lib/config/settings-service", () => ({ getRuntimeSettings: vi.fn(async () => ({})) }));
@@ -19,7 +21,7 @@ import { ingestExistingDocument } from "@/lib/rag/ingest";
 import { listDocuments } from "@/lib/documents/service";
 beforeEach(() => {
   vi.clearAllMocks();
-  documentRepo.createDocument.mockResolvedValue("d1");
+  documentRepo.createDocument.mockResolvedValue({ id: "d1", created: true });
 });
 
 function uploadReq(filename = "a.md", content = "hello") {
@@ -62,7 +64,7 @@ describe("POST /api/admin/documents", () => {
     expect(await res.json()).toEqual({ documentId: "d1", status: "processing" });
     expect(documentRepo.createDocument).toHaveBeenCalledWith("a.md");
     expect(documentRepo.setStatus).toHaveBeenCalledWith("d1", "processing");
-    expect(workspaceRepo.addDocumentToDefault).toHaveBeenCalledWith("d1");
+    expect(setDocumentWorkspaces).toHaveBeenCalledWith("d1", ["ws-general"]);
     expect(ingestExistingDocument).toHaveBeenCalledWith(
       "d1",
       expect.objectContaining({ filename: "a.md" }),

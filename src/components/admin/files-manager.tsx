@@ -5,7 +5,9 @@ import { Upload, Trash2, ArrowUpDown } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select } from "@/components/ui/select";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { ImageModal } from "./image-modal";
+import { FileWorkspacesModal } from "./file-workspaces-modal";
 
 interface FileRow {
   id: string;
@@ -16,6 +18,7 @@ interface FileRow {
   error?: string | null;
   caption?: string | null;
   createdAt: string;
+  workspaces: { id: string; name: string; isDefault: boolean }[];
 }
 
 const POLL_INTERVAL_MS = 2500;
@@ -35,6 +38,10 @@ export function FilesManager() {
   const [pendingDelete, setPendingDelete] = useState<FileRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [modalImage, setModalImage] = useState<FileRow | null>(null);
+  const [wsFor, setWsFor] = useState<FileRow | null>(null);
+  const [allWorkspaces, setAllWorkspaces] = useState<{ id: string; name: string; isDefault: boolean }[]>([]);
+  const [uploadWorkspaceIds, setUploadWorkspaceIds] = useState<string[]>([]);
+  const [workspaceFilter, setWorkspaceFilter] = useState("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -42,6 +49,17 @@ export function FilesManager() {
     if (res.ok) setFiles((await res.json()).files);
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    void (async () => {
+      const res = await fetch("/api/admin/workspaces");
+      if (!res.ok) return;
+      const list: { id: string; name: string; isDefault: boolean }[] = (await res.json()).workspaces;
+      setAllWorkspaces(list);
+      const def = list.find((w) => w.isDefault);
+      if (def) setUploadWorkspaceIds([def.id]);
+    })();
+  }, []);
 
   const hasProcessing = files.some((f) => f.status === "processing" || f.status === "pending");
   useEffect(() => {
@@ -53,13 +71,18 @@ export function FilesManager() {
   const exts = useMemo(() => [...new Set(files.map((f) => f.ext).filter(Boolean))].sort(), [files]);
   const visible = useMemo(() => {
     const filtered = extFilter === "all" ? files : files.filter((f) => f.ext === extFilter);
-    const sorted = [...filtered].sort((a, b) =>
+    const byWorkspace = workspaceFilter === "all"
+      ? filtered
+      : workspaceFilter === "unassigned"
+        ? filtered.filter((f) => f.workspaces.length === 0)
+        : filtered.filter((f) => f.workspaces.some((w) => w.name === workspaceFilter));
+    const sorted = [...byWorkspace].sort((a, b) =>
       sortKey === "name"
         ? a.filename.localeCompare(b.filename)
         : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
     return sortAsc ? sorted : sorted.reverse();
-  }, [files, extFilter, sortKey, sortAsc]);
+  }, [files, extFilter, workspaceFilter, sortKey, sortAsc]);
 
   async function upload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -69,6 +92,10 @@ export function FilesManager() {
       const endpoint = IMAGE_MIME.has(file.type) ? "/api/admin/images" : "/api/admin/documents";
       const form = new FormData();
       form.set("file", file);
+      // One entry per id; a single empty entry means "explicitly no workspaces",
+      // which the handler distinguishes from the field being absent.
+      if (uploadWorkspaceIds.length === 0) form.append("workspaceIds", "");
+      else for (const id of uploadWorkspaceIds) form.append("workspaceIds", id);
       await fetch(endpoint, { method: "POST", body: form });
       await load();
     } finally {
@@ -111,6 +138,26 @@ export function FilesManager() {
           <span>Type</span>
           <Select ariaLabel="Filter by type" value={extFilter} onChange={setExtFilter} options={["all", ...exts]} className="min-w-28" />
         </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span>Upload to</span>
+          <MultiSelect
+            ariaLabel="Workspaces for upload"
+            value={uploadWorkspaceIds}
+            onChange={setUploadWorkspaceIds}
+            options={allWorkspaces.map((w) => ({ value: w.id, label: w.name, hint: w.isDefault ? "everyone" : undefined }))}
+            className="min-w-36"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span>Workspace</span>
+          <Select
+            ariaLabel="Filter by workspace"
+            value={workspaceFilter}
+            onChange={setWorkspaceFilter}
+            options={["all", ...allWorkspaces.map((w) => w.name), "unassigned"]}
+            className="min-w-32"
+          />
+        </div>
       </div>
       <table className="w-full text-left text-sm">
         <thead>
@@ -119,6 +166,7 @@ export function FilesManager() {
             <th>Type</th>
             <th>Status</th>
             <th><button type="button" onClick={() => toggleSort("date")} className="inline-flex items-center gap-1">Date <ArrowUpDown className="h-3 w-3" /></button></th>
+            <th>Workspaces</th>
             <th />
           </tr>
         </thead>
@@ -135,6 +183,22 @@ export function FilesManager() {
               <td><span className="rounded bg-zinc-100 px-2 py-0.5 text-xs dark:bg-zinc-800">{f.ext || "—"}</span></td>
               <td><StatusBadge status={f.status} error={f.error} /></td>
               <td className="text-xs text-zinc-500">{new Date(f.createdAt).toLocaleDateString()}</td>
+              <td>
+                <button
+                  type="button"
+                  aria-label={`Edit workspaces of ${f.filename}`}
+                  onClick={() => setWsFor(f)}
+                  className="flex flex-wrap items-center gap-1"
+                >
+                  {f.workspaces.length === 0 ? (
+                    <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">unassigned</span>
+                  ) : (
+                    f.workspaces.map((w) => (
+                      <span key={w.id} className="rounded bg-zinc-100 px-2 py-0.5 text-xs dark:bg-zinc-800">{w.name}</span>
+                    ))
+                  )}
+                </button>
+              </td>
               <td className="text-right">
                 <button type="button" aria-label={`Delete ${f.filename}`} onClick={() => setPendingDelete(f)} className="text-zinc-400 transition-colors hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
               </td>
@@ -156,6 +220,13 @@ export function FilesManager() {
           image={{ id: modalImage.id, filename: modalImage.filename, caption: modalImage.caption ?? "", status: modalImage.status }}
           onClose={() => setModalImage(null)}
           onSaved={() => { setModalImage(null); void load(); }}
+        />
+      )}
+      {wsFor && (
+        <FileWorkspacesModal
+          file={{ id: wsFor.id, kind: wsFor.kind, filename: wsFor.filename, workspaces: wsFor.workspaces }}
+          onClose={() => setWsFor(null)}
+          onSaved={() => { setWsFor(null); void load(); }}
         />
       )}
     </div>

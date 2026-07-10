@@ -20,6 +20,7 @@ import { ingestDocument } from "./ingest";
 import { searchChunks } from "./retrieve";
 import { createDocumentRepo } from "@/lib/vectorstore/document-repo";
 import { createPgVectorStore } from "@/lib/vectorstore/pgvector/store";
+import { createWorkspaceRepo } from "@/lib/workspaces/repo";
 import type { RuntimeSettings } from "@/lib/config/settings-service";
 
 // Unused at runtime (embed is injected via fakeEmbedder below) but required to
@@ -77,9 +78,10 @@ describe.runIf(process.env.RUN_INTEGRATION === "1")("ingestDocument — real DB 
     // singleton from @/lib/db/client that vitest config overwrites.
     const documentRepo = createDocumentRepo(testDb);
     const vectorStore = createPgVectorStore(testDb);
+    const workspaceRepo = createWorkspaceRepo(testDb);
     const result = await ingestDocument(
       { filename: testFilename, data: Buffer.from(testContent, "utf-8") },
-      { documentRepo, vectorStore, embed: fakeEmbedder, settings },
+      { documentRepo, vectorStore, embed: fakeEmbedder, settings, workspaceRepo },
     );
 
     expect(result.status).toBe("ready");
@@ -91,9 +93,10 @@ describe.runIf(process.env.RUN_INTEGRATION === "1")("ingestDocument — real DB 
   it("re-ingest identical file: chunkCount 0, skipped == prior count, exactly one document row", async () => {
     const documentRepo = createDocumentRepo(testDb);
     const vectorStore = createPgVectorStore(testDb);
+    const workspaceRepo = createWorkspaceRepo(testDb);
     const result = await ingestDocument(
       { filename: testFilename, data: Buffer.from(testContent, "utf-8") },
-      { documentRepo, vectorStore, embed: fakeEmbedder, settings },
+      { documentRepo, vectorStore, embed: fakeEmbedder, settings, workspaceRepo },
     );
 
     expect(result.status).toBe("ready");

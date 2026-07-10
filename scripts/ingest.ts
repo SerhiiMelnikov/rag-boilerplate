@@ -4,6 +4,7 @@ import { join, basename } from "node:path";
 import { ingestDocument } from "@/lib/rag/ingest";
 import { getVectorStore, getDocumentRepo } from "@/lib/vectorstore";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
+import { createWorkspaceRepo } from "@/lib/workspaces/repo";
 
 const SUPPORTED = [".pdf", ".docx", ".md", ".markdown", ".txt"];
 
@@ -48,7 +49,7 @@ async function main() {
   console.log(`Found ${files.length} supported file(s).`);
   for (const file of files) {
     const data = await readFile(file);
-    const result = await ingestDocument({ filename: basename(file), data }, { documentRepo, vectorStore, settings });
+    const result = await ingestDocument({ filename: basename(file), data }, { documentRepo, vectorStore, settings, workspaceRepo: createWorkspaceRepo() });
     console.log(`${file}: ${result.status} (${result.chunkCount} new, ${result.skipped} skipped)${result.error ? " - " + String(result.error) : ""}`);
   }
   process.exit(0);

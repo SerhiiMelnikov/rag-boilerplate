@@ -5,12 +5,13 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { FilesManager } from "./files-manager";
 
 const FILES = [
-  { id: "d1", kind: "document", filename: "report.pdf", ext: "pdf", status: "ready", error: null, caption: null, createdAt: "2026-01-02T00:00:00Z" },
-  { id: "i1", kind: "image", filename: "bike.png", ext: "png", status: "ready", error: null, caption: "a red bicycle", createdAt: "2026-01-01T00:00:00Z" },
+  { id: "d1", kind: "document", filename: "report.pdf", ext: "pdf", status: "ready", error: null, caption: null, createdAt: "2026-01-02T00:00:00Z", workspaces: [{ id: "w1", name: "General", isDefault: true }] },
+  { id: "i1", kind: "image", filename: "bike.png", ext: "png", status: "ready", error: null, caption: "a red bicycle", createdAt: "2026-01-01T00:00:00Z", workspaces: [] },
 ];
+const WORKSPACES = [{ id: "w1", name: "General", description: null, isDefault: true, createdAt: "2026-01-01T00:00:00Z" }];
 
 beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ files: FILES }) })) as never);
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ files: FILES, workspaces: WORKSPACES }) })) as never);
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -34,5 +35,18 @@ describe("FilesManager", () => {
     render(<FilesManager />);
     fireEvent.click(await screen.findByText("bike.png"));
     await waitFor(() => expect(screen.getByRole("dialog", { name: /bike\.png/ })).toBeInTheDocument());
+  });
+
+  it("renders workspace chips and an unassigned badge", async () => {
+    render(<FilesManager />);
+    expect(await screen.findByText("General")).toBeInTheDocument();
+    expect(screen.getByText("unassigned")).toBeInTheDocument();
+  });
+
+  it("opens the workspaces modal from the chips cell", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.click(screen.getByLabelText("Edit workspaces of report.pdf"));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /Workspaces for report\.pdf/ })).toBeInTheDocument());
   });
 });

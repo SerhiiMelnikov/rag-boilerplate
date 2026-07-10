@@ -38,6 +38,9 @@ function baseDeps(over: Partial<any> = {}) {
     // Default to the TEXT intent so existing (pre-routing) tests keep exercising the
     // document-RAG path deterministically instead of hitting the real router/model.
     routeIntentFn: vi.fn(async () => ({ kind: "text" }) as const),
+    // Default verifier: vouches for every candidate, so the image tests that don't
+    // care about relevance keep asserting on what searchImagesFn returned.
+    verifyImageMatchesFn: vi.fn(async (_q: string, hits: any[]) => hits),
     // Fake workspace repo: user sees only General (ws-general), which resolves to
     // doc-1/img-1 allowlists. No cookie is set in these tests, so the handler
     // always falls back to General via resolveActiveWorkspaceId.
@@ -157,6 +160,82 @@ describe("handleChat", () => {
       searchImagesFn: vi.fn(async () => []),
     });
     await handleChat(body(msg("show me a unicorn")), deps);
+    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    expect(assistantCall?.[0].content).toMatch(/couldn't find/i);
+    expect(assistantCall?.[0].images ?? []).toEqual([]);
+  });
+
+  it("IMAGE intent: gates candidates on its own floor, not the text minSimilarity", async () => {
+    const searchImagesFn = vi.fn(async (_q: string, _opts: { topN: number; minScore: number }) => []);
+    const deps = baseDeps({
+      routeIntentFn: vi.fn(async () => ({ kind: "image", query: "a young man" }) as const),
+      searchImagesFn,
+    });
+    await handleChat(body(msg("a young man")), deps);
+    // A caption's cosine similarity to a short query never reaches the text threshold
+    // (0.3 here), so reusing it would drop every image. Candidates are over-fetched
+    // for the verifier, then trimmed to the display count.
+    const opts = searchImagesFn.mock.calls[0][1];
+    expect(opts.minScore).toBeLessThan(settings.minSimilarity);
+    expect(opts.topN).toBeGreaterThan(3);
+  });
+
+  it("IMAGE intent: returns only the images the verifier vouched for", async () => {
+    const hits = [
+      { imageId: "img-1", filename: "man.png", caption: "a young man", score: 0.26 },
+      { imageId: "img-2", filename: "ui.png", caption: "a dark user interface", score: 0.19 },
+    ];
+    const verifyImageMatchesFn = vi.fn(async () => [hits[0]]);
+    const deps = baseDeps({
+      routeIntentFn: vi.fn(async () => ({ kind: "image", query: "a young man" }) as const),
+      searchImagesFn: vi.fn(async () => hits),
+      verifyImageMatchesFn,
+    });
+    await handleChat(body(msg("a young man")), deps);
+    expect(verifyImageMatchesFn).toHaveBeenCalledWith("a young man", hits, expect.anything());
+    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", filename: "man.png", score: 0.26 }]);
+  });
+
+  // The verifier's relevance order must survive the trim — a future refactor that
+  // re-sorts by cosine score before slicing would silently drop the best matches.
+  it("IMAGE intent: keeps the verifier's order when trimming to the display count", async () => {
+    const hits = [
+      { imageId: "i1", filename: "1.png", caption: "c1", score: 0.30 },
+      { imageId: "i2", filename: "2.png", caption: "c2", score: 0.25 },
+      { imageId: "i3", filename: "3.png", caption: "c3", score: 0.20 },
+      { imageId: "i4", filename: "4.png", caption: "c4", score: 0.15 },
+    ];
+    const deps = baseDeps({
+      routeIntentFn: vi.fn(async () => ({ kind: "image", query: "q" }) as const),
+      searchImagesFn: vi.fn(async () => hits),
+      // Deliberately NOT score order: the two weakest cosine hits are the best matches.
+      verifyImageMatchesFn: vi.fn(async () => [hits[3], hits[2], hits[1], hits[0]]),
+    });
+    await handleChat(body(msg("q")), deps);
+    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    expect(assistantCall?.[0].images.map((i: any) => i.imageId)).toEqual(["i4", "i3", "i2"]);
+  });
+
+  it("IMAGE intent: reports a provider error from the verifier instead of 'not found'", async () => {
+    const deps = baseDeps({
+      routeIntentFn: vi.fn(async () => ({ kind: "image", query: "q" }) as const),
+      searchImagesFn: vi.fn(async () => [{ imageId: "i1", filename: "1.png", caption: "c1", score: 0.2 }]),
+      verifyImageMatchesFn: vi.fn(async () => { throw new MissingProviderKeyError("Chat", "openai"); }),
+    });
+    await handleChat(body(msg("q")), deps);
+    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    expect(assistantCall?.[0].content).toMatch(/no API key for provider "openai"/);
+    expect(assistantCall?.[0].content).not.toMatch(/couldn't find/i);
+  });
+
+  it("IMAGE intent: says nothing was found when the verifier rejects every candidate", async () => {
+    const deps = baseDeps({
+      routeIntentFn: vi.fn(async () => ({ kind: "image", query: "a red bicycle" }) as const),
+      searchImagesFn: vi.fn(async () => [{ imageId: "img-1", filename: "man.png", caption: "a young man", score: 0.19 }]),
+      verifyImageMatchesFn: vi.fn(async () => []),
+    });
+    await handleChat(body(msg("a red bicycle")), deps);
     const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
     expect(assistantCall?.[0].content).toMatch(/couldn't find/i);
     expect(assistantCall?.[0].images ?? []).toEqual([]);

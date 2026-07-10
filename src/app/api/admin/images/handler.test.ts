@@ -14,7 +14,8 @@ const baseDeps = () => ({
   objectStore: { put: vi.fn(async () => {}), get: vi.fn(), delete: vi.fn() },
   imageRepo: { createImage: vi.fn(async () => "img-1"), setStatus: vi.fn(async () => {}), setCaption: vi.fn(), getByIds: vi.fn() },
   imageVectorStore: { upsertImage: vi.fn(), searchImages: vi.fn(), deleteImage: vi.fn() },
-  workspaceRepo: { addImageToDefault: vi.fn(async () => {}) },
+  workspaceRepo: { getDefaultId: vi.fn(async () => "ws-general") },
+  setImageWorkspacesFn: vi.fn(async () => {}),
   getSettings: async () => ({}) as never,
   ingest: vi.fn(async () => ({ imageId: "img-1", status: "ready" as const })),
   schedule: (fn: () => Promise<unknown>) => { void fn(); },
@@ -46,14 +47,15 @@ describe("uploadImage", () => {
     expect(deps.objectStore.put).not.toHaveBeenCalled();
   });
 
-  it("adds a newly uploaded image to the General workspace", async () => {
-    const addImageToDefault = vi.fn(async () => {});
+  it("assigns a newly uploaded image to the General workspace by default", async () => {
+    const setImageWorkspacesFn = vi.fn(async () => {});
     const deps = {
       getAdmin: vi.fn(async () => ({ id: "admin-1" })),
       objectStore: { put: vi.fn(async () => {}), get: vi.fn(), delete: vi.fn() },
       imageRepo: { createImage: vi.fn(async () => "img-1"), setStatus: vi.fn(async () => {}) },
       imageVectorStore: {} as any,
-      workspaceRepo: { addImageToDefault },
+      workspaceRepo: { getDefaultId: async () => "ws-general" },
+      setImageWorkspacesFn,
       getSettings: vi.fn(async () => ({} as any)),
       ingest: vi.fn(async () => {}),
       schedule: (fn: () => Promise<unknown>) => { void fn(); },
@@ -63,6 +65,29 @@ describe("uploadImage", () => {
     f.set("file", new File(["x"], "bike.png", { type: "image/png" }));
     const res = await uploadImage(new Request("http://x/api/admin/images", { method: "POST", body: f }), deps as any);
     expect(res.status).toBe(200);
-    expect(addImageToDefault).toHaveBeenCalledWith("img-1");
+    expect(setImageWorkspacesFn).toHaveBeenCalledWith("img-1", ["ws-general"]);
+  });
+
+  it("uses the posted workspaceIds", async () => {
+    const setImageWorkspacesFn = vi.fn(async () => {});
+    const f = new FormData();
+    f.set("file", new File(["x"], "bike.png", { type: "image/png" }));
+    f.append("workspaceIds", "w1");
+    f.append("workspaceIds", "w2");
+    const req = new Request("http://x/api/admin/images", { method: "POST", body: f });
+    const deps = { ...baseDeps(), setImageWorkspacesFn };
+    await uploadImage(req, deps as never);
+    expect(setImageWorkspacesFn).toHaveBeenCalledWith("img-1", ["w1", "w2"]);
+  });
+
+  it("an explicitly empty workspaceIds field leaves the file unassigned", async () => {
+    const setImageWorkspacesFn = vi.fn(async () => {});
+    const f = new FormData();
+    f.set("file", new File(["x"], "bike.png", { type: "image/png" }));
+    f.append("workspaceIds", ""); // sentinel for "explicitly none"
+    const req = new Request("http://x/api/admin/images", { method: "POST", body: f });
+    const deps = { ...baseDeps(), setImageWorkspacesFn };
+    await uploadImage(req, deps as never);
+    expect(setImageWorkspacesFn).toHaveBeenCalledWith("img-1", []);
   });
 });

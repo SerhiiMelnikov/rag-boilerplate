@@ -54,4 +54,39 @@ describe("WorkspacesManager", () => {
       expect(patch![0]).toBe("/api/admin/workspaces/w2");
     });
   });
+
+  it("clears a stale error banner once a subsequent delete succeeds", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { method?: string }) => {
+        // The create request 409s (duplicate name) so an error banner appears first.
+        if (init?.method === "POST") {
+          return { ok: false, status: 409, json: async () => ({ error: "A workspace with that name already exists." }) };
+        }
+        // The delete request that follows succeeds.
+        if (init?.method === "DELETE") {
+          return { ok: true, status: 200, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({ workspaces: WORKSPACES }) };
+      }) as never,
+    );
+
+    render(<WorkspacesManager />);
+    await screen.findByDisplayValue("Marketing");
+
+    // Trigger the create failure that leaves an error banner on screen.
+    fireEvent.change(screen.getByLabelText("New workspace name"), { target: { value: "General" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("A workspace with that name already exists.");
+
+    // Delete a workspace successfully; the stale error banner must not survive.
+    fireEvent.click(screen.getByLabelText("Delete Marketing"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    // Query with { hidden: true }: while the confirm dialog is open (and during its
+    // jsdom-never-completing leave transition), Headless UI marks the rest of the
+    // page aria-hidden, which would otherwise hide the banner from role queries
+    // regardless of whether the error state was actually cleared.
+    await waitFor(() => expect(screen.queryByRole("alert", { hidden: true })).not.toBeInTheDocument());
+  });
 });

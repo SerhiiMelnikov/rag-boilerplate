@@ -80,9 +80,10 @@ export function WorkspacesManager() {
   async function confirmDelete() {
     if (!pendingDelete) return;
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch(`/api/admin/workspaces/${pendingDelete.id}`, { method: "DELETE" });
-      if (!res.ok) setError((await res.json()).error ?? "Could not delete the workspace.");
+      if (!res.ok) { setError((await res.json()).error ?? "Could not delete the workspace."); return; }
       await load();
     } finally {
       setBusy(false);

@@ -8,6 +8,7 @@ import { getChatModel } from "@/lib/providers";
 import { isProviderError } from "@/lib/providers/types";
 import { routeIntent } from "@/lib/chat/route-intent";
 import { searchImages } from "@/lib/images/search";
+import { verifyImageMatches } from "@/lib/images/verify";
 import { createWorkspaceRepo, type WorkspaceRepo } from "@/lib/workspaces/repo";
 import { resolveActiveWorkspaceId, resolveAllowedDocumentIds, resolveAllowedImageIds } from "@/lib/workspaces/access";
 import { parseActiveWorkspaceCookie } from "@/lib/workspaces/cookie";
@@ -15,6 +16,16 @@ import { parseActiveWorkspaceCookie } from "@/lib/workspaces/cookie";
 const NO_CONTEXT_ANSWER =
   "I don't have any relevant information in the knowledge base to answer that.";
 const IMAGE_TOP_N = 3;
+// Candidates handed to the relevance verifier before trimming to IMAGE_TOP_N.
+const IMAGE_CANDIDATES = 8;
+// Image relevance is decided by the verifier, not by cosine similarity: a caption is a
+// verbose paragraph and a query is a few words, so a genuinely matching caption can
+// score below an unrelated one and no absolute threshold separates them (measured: a
+// matching "a woman" scored 0.155, an unrelated "database schema diagram" 0.190). The
+// text retrieval threshold (settings.minSimilarity, 0.3 by default) is far too high —
+// nothing ever reached it. This floor sits well under the observed true-positive range
+// and only exists to skip a model call when nothing is even remotely close.
+const IMAGE_MIN_SCORE = 0.1;
 const IMAGE_INTRO = "Here are the images that best match your description:";
 const NO_IMAGE_ANSWER = "I couldn't find any image matching that description.";
 
@@ -37,6 +48,7 @@ export interface ChatDeps {
   streamTextFn?: StreamTextLike;
   routeIntentFn?: typeof routeIntent;
   searchImagesFn?: typeof searchImages;
+  verifyImageMatchesFn?: typeof verifyImageMatches;
   workspaceRepo?: WorkspaceRepo;
 }
 
@@ -52,6 +64,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   const streamTextFn = deps.streamTextFn ?? (streamText as unknown as StreamTextLike);
   const routeIntentFn = deps.routeIntentFn ?? routeIntent;
   const searchImagesFn = deps.searchImagesFn ?? searchImages;
+  const verifyImageMatchesFn = deps.verifyImageMatchesFn ?? verifyImageMatches;
   const workspaceRepo = deps.workspaceRepo ?? createWorkspaceRepo();
 
   let user;
@@ -135,15 +148,22 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   // falls through to the normal document-RAG answer below.
   const intent = await routeIntentFn(content, settings);
   if (intent.kind === "image") {
-    let hits;
+    let matches;
     try {
-      hits = await searchImagesFn(intent.query, { topN: IMAGE_TOP_N, minScore: settings.minSimilarity, allowedImageIds }, { settings });
+      // searchImages applies the workspace allowlist, so the verifier only ever sees
+      // in-scope captions. Keep that order: it is what stops an injected caption from
+      // pulling in another workspace's image.
+      const hits = await searchImagesFn(intent.query, { topN: IMAGE_CANDIDATES, minScore: IMAGE_MIN_SCORE, allowedImageIds }, { settings });
+      // The vector search only ranks; the verifier decides which captions actually
+      // answer the request, so we never present an image we cannot vouch for. Its
+      // relevance order wins over cosine order, hence the trim happens after it.
+      matches = (await verifyImageMatchesFn(intent.query, hits, settings)).slice(0, IMAGE_TOP_N);
     } catch (err) {
       if (isProviderError(err)) return replyWithMessage((err as Error).message);
       throw err;
     }
-    if (hits.length === 0) return replyWithMessage(NO_IMAGE_ANSWER);
-    const images = hits.map((h) => ({ imageId: h.imageId, filename: h.filename, score: h.score }));
+    if (matches.length === 0) return replyWithMessage(NO_IMAGE_ANSWER);
+    const images = matches.map((h) => ({ imageId: h.imageId, filename: h.filename, score: h.score }));
     return replyWithMessage(IMAGE_INTRO, images);
   }
 

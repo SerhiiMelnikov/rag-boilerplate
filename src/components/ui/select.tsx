@@ -9,18 +9,22 @@ import { Check, ChevronDown } from "lucide-react";
 // from Headless UI; `aria-label` is forwarded to the button so screen readers and
 // tests can find it by label. Options are absolutely positioned under the button
 // (no floating-ui) — fine for the short, fixed provider lists this is used for.
-export function Select({ value, onChange, options, ariaLabel, className = "" }: {
+export function Select({ value, onChange, options, ariaLabel, className = "", compact = false }: {
   value: string;
   onChange: (value: string) => void;
   options: string[];
   ariaLabel: string;
   className?: string;
+  // Matches the app-bar button metrics (px-2 py-1 text-sm) so the switcher lines
+  // up with the profile menu. Admin forms keep the roomier default.
+  compact?: boolean;
 }) {
+  const buttonSize = compact ? "px-2 py-1 text-sm" : "px-3 py-2";
   return (
     <Listbox value={value} onChange={onChange} as="div" className={`relative ${className}`}>
       <ListboxButton
         aria-label={ariaLabel}
-        className="flex w-full items-center justify-between gap-2 rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-left dark:border-zinc-700"
+        className={`flex w-full items-center justify-between gap-2 rounded-md border border-zinc-300 bg-transparent ${buttonSize} text-left dark:border-zinc-700`}
       >
         <span>{value}</span>
         <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden="true" />

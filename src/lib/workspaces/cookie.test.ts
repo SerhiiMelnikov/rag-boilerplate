@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseActiveWorkspaceCookie, ACTIVE_WORKSPACE_COOKIE } from "./cookie";
+import { parseActiveWorkspaceCookie, ACTIVE_WORKSPACE_COOKIE, readActiveWorkspaceFromCookieString } from "./cookie";
 
 function req(cookie?: string): Request {
   return new Request("http://x/api/chat", { headers: cookie ? { cookie } : {} });
@@ -19,5 +19,18 @@ describe("parseActiveWorkspaceCookie", () => {
   it("returns undefined for a malformed percent-encoded value (never throws)", () => {
     expect(parseActiveWorkspaceCookie(req(`${ACTIVE_WORKSPACE_COOKIE}=%`))).toBeUndefined();
     expect(parseActiveWorkspaceCookie(req(`${ACTIVE_WORKSPACE_COOKIE}=%E0%A4%A`))).toBeUndefined();
+  });
+});
+
+describe("readActiveWorkspaceFromCookieString", () => {
+  it("reads the value from a raw cookie string", () => {
+    expect(readActiveWorkspaceFromCookieString(`theme=dark; ${ACTIVE_WORKSPACE_COOKIE}=ws-7`)).toBe("ws-7");
+  });
+  it("returns undefined for an empty or null string", () => {
+    expect(readActiveWorkspaceFromCookieString("")).toBeUndefined();
+    expect(readActiveWorkspaceFromCookieString(null)).toBeUndefined();
+  });
+  it("returns undefined for a malformed percent-encoded value (never throws)", () => {
+    expect(readActiveWorkspaceFromCookieString(`${ACTIVE_WORKSPACE_COOKIE}=%`)).toBeUndefined();
   });
 });

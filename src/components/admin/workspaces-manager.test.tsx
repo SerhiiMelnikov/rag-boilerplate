@@ -10,7 +10,7 @@ const WORKSPACES = [
 ];
 
 beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ workspaces: WORKSPACES }) })) as never);
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ workspaces: WORKSPACES, users: [] }) })) as never);
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -88,5 +88,12 @@ describe("WorkspacesManager", () => {
     // page aria-hidden, which would otherwise hide the banner from role queries
     // regardless of whether the error state was actually cleared.
     await waitFor(() => expect(screen.queryByRole("alert", { hidden: true })).not.toBeInTheDocument());
+  });
+
+  it("opens the access modal for a workspace", async () => {
+    render(<WorkspacesManager />);
+    await screen.findByDisplayValue("Marketing");
+    fireEvent.click(screen.getByLabelText("Manage access to Marketing"));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /Access to Marketing/ })).toBeInTheDocument());
   });
 });

@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Trash2, Plus, Save } from "lucide-react";
+import { Trash2, Plus, Save, Users } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { WorkspaceAccessModal } from "./workspace-access-modal";
 
 interface Row {
   id: string;
@@ -23,6 +24,7 @@ export function WorkspacesManager() {
   const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Row | null>(null);
   const [busy, setBusy] = useState(false);
+  const [accessFor, setAccessFor] = useState<Row | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/workspaces");
@@ -136,6 +138,9 @@ export function WorkspacesManager() {
               <button type="button" aria-label={`Save ${d.name}`} onClick={() => save(w)} disabled={busy} className={buttonClass}>
                 <Save className="h-4 w-4" /> Save
               </button>
+              <button type="button" aria-label={`Manage access to ${w.name}`} onClick={() => setAccessFor(w)} className={buttonClass}>
+                <Users className="h-4 w-4" /> Access
+              </button>
               {!w.isDefault && (
                 <button type="button" aria-label={`Delete ${w.name}`} onClick={() => setPendingDelete(w)} className="text-zinc-400 transition-colors hover:text-red-600">
                   <Trash2 className="h-4 w-4" />
@@ -155,6 +160,13 @@ export function WorkspacesManager() {
         onConfirm={confirmDelete}
         onCancel={() => setPendingDelete(null)}
       />
+
+      {accessFor && (
+        <WorkspaceAccessModal
+          workspace={{ id: accessFor.id, name: accessFor.name, isDefault: accessFor.isDefault }}
+          onClose={() => setAccessFor(null)}
+        />
+      )}
     </div>
   );
 }

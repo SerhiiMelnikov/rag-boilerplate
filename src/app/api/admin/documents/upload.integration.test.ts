@@ -4,6 +4,7 @@ import { db } from "@/lib/db/client";
 import { documents } from "@/lib/db/schema";
 import { ingestDocument } from "@/lib/rag/ingest";
 import { getDocumentRepo, getVectorStore } from "@/lib/vectorstore";
+import { createWorkspaceRepo } from "@/lib/workspaces/repo";
 import type { RuntimeSettings } from "@/lib/config/settings-service";
 
 const PREFIX = "__itest_upload__";
@@ -33,16 +34,17 @@ describe.runIf(process.env.RUN_INTEGRATION === "1")("admin document upload (real
   it("ingests via the real store with an injected embedder and is re-upload safe", async () => {
     const filename = `${PREFIX}doc.md`;
     const fakeEmbed = async (texts: string[]) => texts.map(() => Array(768).fill(0.02));
+    const workspaceRepo = createWorkspaceRepo();
     const first = await ingestDocument(
       { filename, data: Buffer.from("Hello world. This is a test document about scattering.") },
-      { documentRepo: getDocumentRepo(), vectorStore: getVectorStore(), embed: fakeEmbed, settings },
+      { documentRepo: getDocumentRepo(), vectorStore: getVectorStore(), embed: fakeEmbed, settings, workspaceRepo },
     );
     expect(first.status).toBe("ready");
     expect(first.chunkCount).toBeGreaterThan(0);
 
     const second = await ingestDocument(
       { filename, data: Buffer.from("Hello world. This is a test document about scattering.") },
-      { documentRepo: getDocumentRepo(), vectorStore: getVectorStore(), embed: fakeEmbed, settings },
+      { documentRepo: getDocumentRepo(), vectorStore: getVectorStore(), embed: fakeEmbed, settings, workspaceRepo },
     );
     expect(second.chunkCount).toBe(0);
     expect(second.skipped).toBe(first.chunkCount);

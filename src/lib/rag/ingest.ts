@@ -4,6 +4,8 @@ import { hashContent } from "./hash";
 import { embedDocuments } from "./embeddings";
 import type { RuntimeSettings } from "@/lib/config/settings-service";
 import type { DocumentRepo, VectorStore, ChunkInput } from "@/lib/vectorstore/types";
+import type { WorkspaceRepo } from "@/lib/workspaces/repo";
+import { setDocumentWorkspaces } from "@/lib/workspaces/membership";
 
 export interface IngestDeps {
   parse?: typeof parseDocument;
@@ -12,6 +14,17 @@ export interface IngestDeps {
   documentRepo: DocumentRepo;
   vectorStore: VectorStore;
   settings: RuntimeSettings;
+}
+
+// Deps for ingestDocument (the CLI path): workspaceRepo is required, not
+// optional, so the compiler — not a caller's discipline — prevents a new
+// document from ever being created without default-workspace membership.
+// This is exactly how the original regression happened: an optional dep
+// that scripts/ingest.ts simply forgot to pass.
+export interface IngestDocumentDeps extends IngestDeps {
+  workspaceRepo: WorkspaceRepo;
+  // Injectable for tests; defaults to the real membership writer.
+  setWorkspaces?: typeof setDocumentWorkspaces;
 }
 
 export interface IngestResult {
@@ -69,13 +82,17 @@ export async function ingestExistingDocument(
   }
 }
 
-// Synchronous convenience used by the CLI: create the row, then process it
-// in-line. The web upload path instead creates the row and calls
+// Synchronous convenience used by the CLI: create the row, put it in the
+// default workspace, then process it in-line. The web upload path instead
+// creates the row, writes its chosen membership, and calls
 // ingestExistingDocument in the background.
 export async function ingestDocument(
   input: { filename: string; data: Buffer },
-  deps: IngestDeps,
+  deps: IngestDocumentDeps,
 ): Promise<IngestResult> {
   const documentId = await deps.documentRepo.createDocument(input.filename);
+  const setWorkspaces = deps.setWorkspaces ?? setDocumentWorkspaces;
+  // A new document must join the default workspace, or retrieval will never see it.
+  await setWorkspaces(documentId, [await deps.workspaceRepo.getDefaultId()]);
   return ingestExistingDocument(documentId, input, deps);
 }

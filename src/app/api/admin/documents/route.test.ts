@@ -4,7 +4,7 @@ vi.mock("@/lib/auth/guards", async () => {
   return { ...actual, requireAdmin: vi.fn() };
 });
 vi.mock("@/lib/rag/ingest", () => ({ ingestExistingDocument: vi.fn() }));
-const documentRepo = { createDocument: vi.fn(async () => "d1"), setStatus: vi.fn(async () => {}) };
+const documentRepo = { createDocument: vi.fn(async () => ({ id: "d1", created: true })), setStatus: vi.fn(async () => {}) };
 const vectorStore = { existingHashes: vi.fn(), upsertChunks: vi.fn(), deleteByDocument: vi.fn(), searchVector: vi.fn(), searchKeyword: vi.fn() };
 vi.mock("@/lib/vectorstore", () => ({ getDocumentRepo: vi.fn(() => documentRepo), getVectorStore: vi.fn(() => vectorStore) }));
 vi.mock("@/lib/documents/service", () => ({ listDocuments: vi.fn() }));
@@ -21,7 +21,7 @@ import { ingestExistingDocument } from "@/lib/rag/ingest";
 import { listDocuments } from "@/lib/documents/service";
 beforeEach(() => {
   vi.clearAllMocks();
-  documentRepo.createDocument.mockResolvedValue("d1");
+  documentRepo.createDocument.mockResolvedValue({ id: "d1", created: true });
 });
 
 function uploadReq(filename = "a.md", content = "hello") {

@@ -90,9 +90,14 @@ export async function ingestDocument(
   input: { filename: string; data: Buffer },
   deps: IngestDocumentDeps,
 ): Promise<IngestResult> {
-  const documentId = await deps.documentRepo.createDocument(input.filename);
-  const setWorkspaces = deps.setWorkspaces ?? setDocumentWorkspaces;
-  // A new document must join the default workspace, or retrieval will never see it.
-  await setWorkspaces(documentId, [await deps.workspaceRepo.getDefaultId()]);
+  const { id: documentId, created } = await deps.documentRepo.createDocument(input.filename);
+  // Membership is decided once, at creation. A new document must join the
+  // default workspace, or retrieval will never see it. Re-ingesting an
+  // existing document (createDocument found it, didn't insert it) must never
+  // clobber an assignment an admin made afterward in the admin UI.
+  if (created) {
+    const setWorkspaces = deps.setWorkspaces ?? setDocumentWorkspaces;
+    await setWorkspaces(documentId, [await deps.workspaceRepo.getDefaultId()]);
+  }
   return ingestExistingDocument(documentId, input, deps);
 }

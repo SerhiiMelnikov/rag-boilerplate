@@ -9,7 +9,7 @@ function form(file: File) {
 
 const baseDeps = () => ({
   getAdmin: vi.fn(async () => ({ id: "admin-1" })),
-  documentRepo: { createDocument: vi.fn(async () => "doc-1"), setStatus: vi.fn(async () => {}) },
+  documentRepo: { createDocument: vi.fn(async () => ({ id: "doc-1", created: true })), setStatus: vi.fn(async () => {}) },
   vectorStore: {} as any,
   workspaceRepo: { getDefaultId: vi.fn(async () => "ws-general") },
   setDocumentWorkspacesFn: vi.fn(async () => {}),

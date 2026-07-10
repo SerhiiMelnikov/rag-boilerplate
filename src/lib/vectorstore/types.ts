@@ -30,7 +30,10 @@ export interface VectorStore {
 
 // Document metadata. Always Postgres, independent of the vector store.
 export interface DocumentRepo {
-  createDocument(filename: string): Promise<string>;
+  // created: true only when this call inserted the row. Callers that assign
+  // default workspace membership on creation must gate on it — re-ingesting
+  // an already-existing document must never touch its membership.
+  createDocument(filename: string): Promise<{ id: string; created: boolean }>;
   setStatus(id: string, status: string, error?: string): Promise<void>;
 }
 

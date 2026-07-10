@@ -46,8 +46,11 @@ export async function uploadDocument(request: Request, deps: UploadDocumentDeps 
 
   // Create the row synchronously so it appears in the list immediately, assign it
   // to the chosen workspaces (defaulting to General) so scoping keeps it visible,
-  // then ingest in the background.
-  const documentId = await documentRepo.createDocument(file.name);
+  // then ingest in the background. Unlike the CLI path, this always writes the
+  // admin's explicitly chosen workspaces, whether the row was new or already
+  // existed (re-uploading the same filename is an explicit admin action, not an
+  // unattended batch re-run).
+  const { id: documentId } = await documentRepo.createDocument(file.name);
   await documentRepo.setStatus(documentId, "processing");
   await setDocumentWorkspacesFn(documentId, await resolveUploadWorkspaceIds(form, workspaceRepo));
 

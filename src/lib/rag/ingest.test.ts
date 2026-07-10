@@ -13,9 +13,9 @@ const settings = {
   keys: { google: "gk", openai: null, anthropic: null },
 } satisfies RuntimeSettings;
 
-function makeDocumentRepo() {
+function makeDocumentRepo(id = "doc-1", created = true) {
   return {
-    createDocument: vi.fn(async () => "doc-1"),
+    createDocument: vi.fn(async () => ({ id, created })),
     setStatus: vi.fn(async () => {}),
   };
 }
@@ -102,9 +102,9 @@ describe("ingestDocument", () => {
     expect(documentRepo.setStatus).toHaveBeenLastCalledWith("doc-1", "error", expect.stringContaining("boom"));
   });
 
-  it("ingestDocument assigns the default workspace to the new document", async () => {
+  it("ingestDocument assigns the default workspace when createDocument reports created: true (new document)", async () => {
     const setWorkspaces = vi.fn(async () => {});
-    const documentRepo = { createDocument: vi.fn(async () => "doc-9"), setStatus: vi.fn(async () => {}) };
+    const documentRepo = { createDocument: vi.fn(async () => ({ id: "doc-9", created: true })), setStatus: vi.fn(async () => {}) };
     await ingestDocument(
       { filename: "a.md", data: Buffer.from("hello world") },
       {
@@ -119,5 +119,35 @@ describe("ingestDocument", () => {
       },
     );
     expect(setWorkspaces).toHaveBeenCalledWith("doc-9", ["ws-general"]);
+  });
+
+  it("ingestDocument does NOT touch workspace membership when createDocument reports created: false (re-ingest of an existing document)", async () => {
+    const setWorkspaces = vi.fn(async () => {});
+    const upsertChunks = vi.fn(async () => {});
+    const setStatus = vi.fn(async () => {});
+    const documentRepo = {
+      createDocument: vi.fn(async () => ({ id: "doc-existing", created: false })),
+      setStatus,
+    };
+    const result = await ingestDocument(
+      { filename: "a.md", data: Buffer.from("hello world") },
+      {
+        documentRepo: documentRepo as never,
+        vectorStore: { upsertChunks, existingHashes: vi.fn(async () => new Set<string>()) } as never,
+        settings: {} as never,
+        parse: async () => "hello world",
+        chunk: () => ["hello world"],
+        embed: async () => [[0.1]],
+        workspaceRepo: { getDefaultId: async () => "ws-general" } as never,
+        setWorkspaces,
+      },
+    );
+    // The core regression guard: re-running ingest over an already-existing
+    // document must never reset an admin's chosen workspace assignment.
+    expect(setWorkspaces).not.toHaveBeenCalled();
+    // But the document must still be (re-)processed normally.
+    expect(result.status).toBe("ready");
+    expect(upsertChunks).toHaveBeenCalledOnce();
+    expect(setStatus).toHaveBeenLastCalledWith("doc-existing", "ready");
   });
 });

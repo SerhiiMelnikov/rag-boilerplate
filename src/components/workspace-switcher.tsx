@@ -54,11 +54,12 @@ export function WorkspaceSwitcher() {
 
   return (
     <Select
+      compact
       ariaLabel="Active workspace"
       value={activeName}
       onChange={onChange}
       options={workspaces.map((w) => w.name)}
-      className="min-w-40"
+      className="min-w-32"
     />
   );
 }

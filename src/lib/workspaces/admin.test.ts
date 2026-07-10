@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   createWorkspace, updateWorkspace, deleteWorkspace,
+  listWorkspaceUsers, setWorkspaceGrant,
   WorkspaceNotFoundError, DefaultWorkspaceProtectedError, DuplicateWorkspaceNameError,
 } from "./admin";
 
@@ -74,5 +75,62 @@ describe("deleteWorkspace", () => {
     const db = fakeDb();
     await deleteWorkspace("w1", db);
     expect((db as any)._delete).toHaveBeenCalled();
+  });
+});
+
+// Fake db for the grant paths: loadWorkspace() reads `found`, then the users
+// left-join yields `joined` rows ({ id, email, grantId }).
+function fakeGrantDb(opts: { found: { id: string; isDefault: boolean }; joined?: { id: string; email: string; grantId: string | null }[] }) {
+  const insertValues = vi.fn(() => ({ onConflictDoNothing: async () => {} }));
+  const del = vi.fn(() => ({ where: async () => {} }));
+  return {
+    _insertValues: insertValues,
+    _delete: del,
+    select: () => ({
+      from: () => ({
+        where: () => ({ limit: async () => [opts.found] }),          // loadWorkspace
+        leftJoin: () => ({ orderBy: async () => opts.joined ?? [] }), // users join
+      }),
+    }),
+    insert: () => ({ values: insertValues }),
+    delete: del,
+  } as never;
+}
+
+describe("listWorkspaceUsers", () => {
+  it("marks a user granted when a grant row exists", async () => {
+    const db = fakeGrantDb({
+      found: { id: "w1", isDefault: false },
+      joined: [{ id: "u1", email: "a@x", grantId: "u1" }, { id: "u2", email: "b@x", grantId: null }],
+    });
+    expect(await listWorkspaceUsers("w1", db)).toEqual([
+      { id: "u1", email: "a@x", granted: true },
+      { id: "u2", email: "b@x", granted: false },
+    ]);
+  });
+
+  it("reports everyone as granted for the General workspace (implicit access)", async () => {
+    const db = fakeGrantDb({
+      found: { id: "w1", isDefault: true },
+      joined: [{ id: "u1", email: "a@x", grantId: null }],
+    });
+    expect(await listWorkspaceUsers("w1", db)).toEqual([{ id: "u1", email: "a@x", granted: true }]);
+  });
+});
+
+describe("setWorkspaceGrant", () => {
+  it("inserts a grant when granting", async () => {
+    const db = fakeGrantDb({ found: { id: "w1", isDefault: false } });
+    await setWorkspaceGrant("w1", "u1", true, db);
+    expect((db as any)._insertValues).toHaveBeenCalledWith({ userId: "u1", workspaceId: "w1" });
+  });
+  it("deletes the grant when revoking", async () => {
+    const db = fakeGrantDb({ found: { id: "w1", isDefault: false } });
+    await setWorkspaceGrant("w1", "u1", false, db);
+    expect((db as any)._delete).toHaveBeenCalled();
+  });
+  it("refuses to change grants on the General workspace", async () => {
+    const db = fakeGrantDb({ found: { id: "w1", isDefault: true } });
+    await expect(setWorkspaceGrant("w1", "u1", true, db)).rejects.toBeInstanceOf(DefaultWorkspaceProtectedError);
   });
 });

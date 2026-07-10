@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, ne } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
-import { workspaces } from "@/lib/db/schema";
+import { workspaces, userWorkspaces, users } from "@/lib/db/schema";
 
 export class WorkspaceNotFoundError extends Error {
   constructor() { super("Workspace not found."); this.name = "WorkspaceNotFoundError"; }
@@ -81,4 +81,33 @@ export async function deleteWorkspace(id: string, database = defaultDb): Promise
   const target = await loadWorkspace(id, database);
   if (target.isDefault) throw new DefaultWorkspaceProtectedError("The General workspace cannot be deleted.");
   await database.delete(workspaces).where(eq(workspaces.id, id));
+}
+
+export interface WorkspaceUserRow { id: string; email: string; granted: boolean }
+
+// Every user, flagged with whether this workspace is granted to them. General's
+// access is implicit for everyone, so all rows come back granted.
+export async function listWorkspaceUsers(workspaceId: string, database = defaultDb): Promise<WorkspaceUserRow[]> {
+  const target = await loadWorkspace(workspaceId, database);
+  const rows = await database
+    .select({ id: users.id, email: users.email, grantId: userWorkspaces.userId })
+    .from(users)
+    .leftJoin(userWorkspaces, and(eq(userWorkspaces.userId, users.id), eq(userWorkspaces.workspaceId, workspaceId)))
+    .orderBy(asc(users.email));
+  return rows.map((r) => ({ id: r.id, email: r.email, granted: target.isDefault || r.grantId !== null }));
+}
+
+export async function setWorkspaceGrant(
+  workspaceId: string,
+  userId: string,
+  granted: boolean,
+  database = defaultDb,
+): Promise<void> {
+  const target = await loadWorkspace(workspaceId, database);
+  if (target.isDefault) throw new DefaultWorkspaceProtectedError("Everyone already has access to the General workspace.");
+  if (granted) {
+    await database.insert(userWorkspaces).values({ userId, workspaceId }).onConflictDoNothing();
+  } else {
+    await database.delete(userWorkspaces).where(and(eq(userWorkspaces.userId, userId), eq(userWorkspaces.workspaceId, workspaceId)));
+  }
 }

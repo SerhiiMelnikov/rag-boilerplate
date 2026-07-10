@@ -5,6 +5,7 @@ import { Upload, Trash2, ArrowUpDown } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select } from "@/components/ui/select";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { ImageModal } from "./image-modal";
 import { FileWorkspacesModal } from "./file-workspaces-modal";
 
@@ -38,6 +39,9 @@ export function FilesManager() {
   const [deleting, setDeleting] = useState(false);
   const [modalImage, setModalImage] = useState<FileRow | null>(null);
   const [wsFor, setWsFor] = useState<FileRow | null>(null);
+  const [allWorkspaces, setAllWorkspaces] = useState<{ id: string; name: string; isDefault: boolean }[]>([]);
+  const [uploadWorkspaceIds, setUploadWorkspaceIds] = useState<string[]>([]);
+  const [workspaceFilter, setWorkspaceFilter] = useState("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -45,6 +49,17 @@ export function FilesManager() {
     if (res.ok) setFiles((await res.json()).files);
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    void (async () => {
+      const res = await fetch("/api/admin/workspaces");
+      if (!res.ok) return;
+      const list: { id: string; name: string; isDefault: boolean }[] = (await res.json()).workspaces;
+      setAllWorkspaces(list);
+      const def = list.find((w) => w.isDefault);
+      if (def) setUploadWorkspaceIds([def.id]);
+    })();
+  }, []);
 
   const hasProcessing = files.some((f) => f.status === "processing" || f.status === "pending");
   useEffect(() => {
@@ -56,13 +71,18 @@ export function FilesManager() {
   const exts = useMemo(() => [...new Set(files.map((f) => f.ext).filter(Boolean))].sort(), [files]);
   const visible = useMemo(() => {
     const filtered = extFilter === "all" ? files : files.filter((f) => f.ext === extFilter);
-    const sorted = [...filtered].sort((a, b) =>
+    const byWorkspace = workspaceFilter === "all"
+      ? filtered
+      : workspaceFilter === "unassigned"
+        ? filtered.filter((f) => f.workspaces.length === 0)
+        : filtered.filter((f) => f.workspaces.some((w) => w.name === workspaceFilter));
+    const sorted = [...byWorkspace].sort((a, b) =>
       sortKey === "name"
         ? a.filename.localeCompare(b.filename)
         : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
     return sortAsc ? sorted : sorted.reverse();
-  }, [files, extFilter, sortKey, sortAsc]);
+  }, [files, extFilter, workspaceFilter, sortKey, sortAsc]);
 
   async function upload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -72,6 +92,10 @@ export function FilesManager() {
       const endpoint = IMAGE_MIME.has(file.type) ? "/api/admin/images" : "/api/admin/documents";
       const form = new FormData();
       form.set("file", file);
+      // One entry per id; a single empty entry means "explicitly no workspaces",
+      // which the handler distinguishes from the field being absent.
+      if (uploadWorkspaceIds.length === 0) form.append("workspaceIds", "");
+      else for (const id of uploadWorkspaceIds) form.append("workspaceIds", id);
       await fetch(endpoint, { method: "POST", body: form });
       await load();
     } finally {
@@ -113,6 +137,26 @@ export function FilesManager() {
         <div className="flex items-center gap-2 text-sm">
           <span>Type</span>
           <Select ariaLabel="Filter by type" value={extFilter} onChange={setExtFilter} options={["all", ...exts]} className="min-w-28" />
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span>Upload to</span>
+          <MultiSelect
+            ariaLabel="Workspaces for upload"
+            value={uploadWorkspaceIds}
+            onChange={setUploadWorkspaceIds}
+            options={allWorkspaces.map((w) => ({ value: w.id, label: w.name, hint: w.isDefault ? "everyone" : undefined }))}
+            className="min-w-36"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span>Workspace</span>
+          <Select
+            ariaLabel="Filter by workspace"
+            value={workspaceFilter}
+            onChange={setWorkspaceFilter}
+            options={["all", ...allWorkspaces.map((w) => w.name), "unassigned"]}
+            className="min-w-32"
+          />
         </div>
       </div>
       <table className="w-full text-left text-sm">

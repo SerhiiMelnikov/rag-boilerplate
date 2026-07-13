@@ -31,3 +31,16 @@ describe("ImageModal", () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe("ImageModal regenerate", () => {
+  it("re-runs the analyzer on the stored image without re-uploading", async () => {
+    const onSaved = vi.fn();
+    render(<ImageModal image={{ id: "i1", filename: "a.png", caption: "old", status: "ready" }} onClose={() => {}} onSaved={onSaved} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /regenerate/i }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    // POST only — the bytes already live in object storage.
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/admin/images/i1/recaption", { method: "POST" });
+  });
+});

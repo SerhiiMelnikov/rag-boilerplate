@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { X, Sparkles } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 
 interface ImageModalProps {
@@ -39,6 +39,18 @@ export function ImageModal({ image, onClose, onSaved }: ImageModalProps) {
     }
   }
 
+  // Re-run the vision model on the stored image. Nothing is re-uploaded — this is how
+  // an image captioned under an older prompt gets a fresh description.
+  async function regenerate() {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/images/${image.id}/recaption`, { method: "POST" });
+      if (res.ok) onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div role="dialog" aria-modal="true" aria-label={`Image ${image.filename}`} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-lg bg-white p-4 dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
@@ -55,6 +67,9 @@ export function ImageModal({ image, onClose, onSaved }: ImageModalProps) {
         <div className="mt-3 flex items-center gap-3">
           <button type="button" disabled={saving || caption.trim().length === 0} onClick={save} className="rounded-md bg-zinc-900 px-4 py-2 text-white transition-opacity disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900">
             {saving ? "Saving..." : "Save caption"}
+          </button>
+          <button type="button" disabled={saving} onClick={regenerate} title="Re-run the image analyzer on this image" className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 px-3 py-2 text-sm transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">
+            <Sparkles className="h-4 w-4" /> Regenerate
           </button>
           {image.status === "processing" && (
             <span className="flex items-center gap-1.5 text-sm text-zinc-500"><Spinner label="Re-embedding" /> re-embedding…</span>

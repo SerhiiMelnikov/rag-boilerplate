@@ -48,3 +48,56 @@ describe("generateReadme", () => {
     expect(readme).toContain("db:migrate");
   });
 });
+
+describe("generateReadme setup steps", () => {
+  // A non-pgvector project has no shipped migrations and builds its schema with
+  // db:generate, which emits DDL only — the seed step is the only thing that creates
+  // the General workspace there, and every workspace lookup resolves through it.
+  it("tells a non-pgvector user that seed:admin creates the default workspace", () => {
+    const readme = generateReadme(opts({ vectorStore: "qdrant" }));
+    expect(readme).toContain("npm run db:generate");
+    expect(readme).toMatch(/npm run seed:admin.*General/);
+  });
+
+  it("says the same for pgvector, where the migration already seeded it", () => {
+    expect(generateReadme(opts({ vectorStore: "pgvector" }))).toMatch(/npm run seed:admin.*General/);
+  });
+});
+
+describe("generateReadme guidance", () => {
+  // The generated README is the first thing a user reads. It must explain what the
+  // features are FOR, not just list the admin pages.
+  it("explains how to actually use workspaces", () => {
+    const readme = generateReadme(opts());
+    expect(readme).toContain("## Workspaces");
+    expect(readme).toMatch(/always has access to/i);   // General is implicit
+    expect(readme).toMatch(/unassigned/);              // the trap: hidden from the assistant
+    expect(readme).toMatch(/switcher/i);               // how a user changes workspace
+  });
+
+  it("explains the image workflow, including regenerating a caption", () => {
+    const readme = generateReadme(opts());
+    expect(readme).toContain("## Images");
+    expect(readme).toMatch(/lightbox/i);
+    expect(readme).toMatch(/Regenerate/);
+    expect(readme).toMatch(/re-uploaded/i);            // the point: bytes are already stored
+  });
+
+  it("tells the admin to set provider keys before anything else", () => {
+    expect(generateReadme(opts())).toMatch(/keys.*first|first.*keys/is);
+  });
+});
+
+describe("generateReadme secrets", () => {
+  // The scaffolder writes both secrets, but rotating the encryption key silently
+  // orphans every provider key already stored in the DB — that must be stated.
+  it("explains both secrets and warns against rotating the encryption key", () => {
+    const readme = generateReadme(opts());
+    expect(readme).toContain("## Secrets");
+    expect(readme).toContain("SETTINGS_ENCRYPTION_KEY");
+    expect(readme).toContain("AUTH_SECRET");
+    expect(readme).toMatch(/32 bytes/);
+    expect(readme).toMatch(/Do not change `SETTINGS_ENCRYPTION_KEY`/);
+    expect(readme).toMatch(/openssl rand -base64 32/);
+  });
+});

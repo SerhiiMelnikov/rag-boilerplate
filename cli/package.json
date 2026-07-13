@@ -1,7 +1,7 @@
 {
   "name": "rag-boilerplate",
-  "version": "0.1.4",
-  "description": "Scaffold a full-stack Next.js RAG (retrieval-augmented generation) chat app — create-next-app style, tailored to the AI providers and vector store you choose.",
+  "version": "0.2.0",
+  "description": "Scaffold a full-stack Next.js RAG (retrieval-augmented generation) chat app — create-next-app style, with workspaces, image retrieval and an admin panel, tailored to the AI providers and vector store you choose.",
   "type": "module",
   "bin": { "rag-boilerplate": "dist/index.js" },
   "files": ["dist", "template"],
@@ -18,6 +18,8 @@
     "ai",
     "chatbot",
     "llm",
+    "workspaces",
+    "multi-tenant",
     "openai",
     "anthropic",
     "gemini",

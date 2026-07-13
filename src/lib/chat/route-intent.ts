@@ -1,6 +1,7 @@
 import { generateText } from "ai";
 import type { RuntimeSettings } from "@/lib/config/settings-service";
 import { getChatModel } from "@/lib/providers";
+import { isProviderError } from "@/lib/providers/types";
 
 export type Intent = { kind: "image"; query: string } | { kind: "text" };
 
@@ -15,8 +16,14 @@ export interface RouteIntentDeps {
 }
 
 // One cheap classification call before answering. Provider-agnostic (plain text
-// out), so it works with every configured chat provider. Any failure or
-// unparseable output falls back to the normal document-RAG path.
+// out), so it works with every configured chat provider. Unparseable output falls
+// back to the normal document-RAG path.
+//
+// Provider errors propagate so the caller can report them: a missing key or an
+// exhausted quota is an operator problem, not a "this request was about text"
+// classification. Any other failure still degrades to the text path (the safe
+// default) but is logged — silently answering with text is how an exhausted quota
+// looked exactly like a user asking a non-image question.
 export async function routeIntent(
   userMessage: string,
   settings: RuntimeSettings,
@@ -36,14 +43,18 @@ export async function routeIntent(
       return text;
     });
 
+  let out: string;
   try {
-    const out = (await generate(userMessage)).trim();
-    if (/^IMAGE:/i.test(out)) {
-      const query = out.replace(/^IMAGE:/i, "").trim();
-      return { kind: "image", query: query.length > 0 ? query : userMessage };
-    }
-    return { kind: "text" };
-  } catch {
+    out = (await generate(userMessage)).trim();
+  } catch (err) {
+    if (isProviderError(err)) throw err;
+    console.error("Intent routing failed; falling back to the text path.", err);
     return { kind: "text" };
   }
+
+  if (/^IMAGE:/i.test(out)) {
+    const query = out.replace(/^IMAGE:/i, "").trim();
+    return { kind: "image", query: query.length > 0 ? query : userMessage };
+  }
+  return { kind: "text" };
 }

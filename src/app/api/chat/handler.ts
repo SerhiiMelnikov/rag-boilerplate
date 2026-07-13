@@ -146,7 +146,13 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
 
   // Hybrid routing: an image request returns matching images; anything else
   // falls through to the normal document-RAG answer below.
-  const intent = await routeIntentFn(content, settings);
+  let intent;
+  try {
+    intent = await routeIntentFn(content, settings);
+  } catch (err) {
+    if (isProviderError(err)) return replyWithMessage((err as Error).message);
+    throw err;
+  }
   if (intent.kind === "image") {
     let matches;
     try {

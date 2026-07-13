@@ -139,6 +139,20 @@ describe("handleChat", () => {
     }));
   });
 
+  // A broken provider must not masquerade as "your question wasn't about images":
+  // the router failing is an operator problem, and the user is told so.
+  it("reports a provider error from the intent router instead of silently answering with text", async () => {
+    const deps = baseDeps({
+      routeIntentFn: vi.fn(async () => { throw new MissingProviderKeyError("Chat", "openai"); }),
+    });
+    const res = await handleChat(body(msg("show me a bike")), deps);
+    expect(res.status).toBe(200);
+    expect(deps.prepareContextFn).not.toHaveBeenCalled();
+    expect(deps.streamTextFn).not.toHaveBeenCalled();
+    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    expect(assistantCall?.[0].content).toMatch(/no API key for provider "openai"/);
+  });
+
   it("IMAGE intent: persists images + streams the intro, skips prepareContext", async () => {
     const prepareContextFn = vi.fn();
     const deps = baseDeps({

@@ -81,5 +81,32 @@ built from — it's a normal Next.js app you can run directly for developing
 the installer itself, but it is not the product `npx rag-boilerplate`
 installs.
 
+### Running this repo locally
+
+`npx rag-boilerplate` writes a `.env` with freshly generated secrets for you.
+Working on **this repo** you have to do that yourself:
+
+```bash
+cp .env.example .env
+
+# Both are required, and both must be replaced — the placeholders will not work.
+# AUTH_SECRET signs the session JWTs; SETTINGS_ENCRYPTION_KEY is the AES-256-GCM
+# master key that encrypts the provider API keys stored in the database, so it
+# must decode to exactly 32 bytes.
+openssl rand -base64 32   # → AUTH_SECRET
+openssl rand -base64 32   # → SETTINGS_ENCRYPTION_KEY
+
+docker compose up -d db minio   # + your vector store's service, if self-hosted
+npm install
+npm run db:migrate
+npm run seed:admin              # admin user + the default "General" workspace
+npm run dev                     # → http://localhost:3000
+```
+
+Leaving `SETTINGS_ENCRYPTION_KEY` unset (or not 32 bytes once base64-decoded)
+fails fast on the first settings read, with a message saying which of the two it
+is. Changing it later makes the already-encrypted provider keys unreadable — you
+would have to re-enter them in the admin panel.
+
 For building, testing, and publishing the installer package, see
 [`cli/README.md`](cli/README.md).

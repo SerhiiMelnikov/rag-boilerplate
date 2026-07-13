@@ -87,3 +87,17 @@ describe("generateReadme guidance", () => {
     expect(generateReadme(opts())).toMatch(/keys.*first|first.*keys/is);
   });
 });
+
+describe("generateReadme secrets", () => {
+  // The scaffolder writes both secrets, but rotating the encryption key silently
+  // orphans every provider key already stored in the DB — that must be stated.
+  it("explains both secrets and warns against rotating the encryption key", () => {
+    const readme = generateReadme(opts());
+    expect(readme).toContain("## Secrets");
+    expect(readme).toContain("SETTINGS_ENCRYPTION_KEY");
+    expect(readme).toContain("AUTH_SECRET");
+    expect(readme).toMatch(/32 bytes/);
+    expect(readme).toMatch(/Do not change `SETTINGS_ENCRYPTION_KEY`/);
+    expect(readme).toMatch(/openssl rand -base64 32/);
+  });
+});

@@ -52,6 +52,21 @@ export function generateReadme(o: InstallOptions): string {
     lines.push("### Notes", "", ...notes, "");
   }
 
+  lines.push("## Secrets", "");
+  lines.push("Your `.env` was generated with two fresh secrets — you do not need to create them:", "");
+  lines.push("- `AUTH_SECRET` — signs the session JWTs.");
+  lines.push("- `SETTINGS_ENCRYPTION_KEY` — the AES-256-GCM master key that encrypts the");
+  lines.push("  provider API keys you enter in the admin panel, so they are never stored in");
+  lines.push("  plaintext in the database. It must decode to exactly 32 bytes.", "");
+  lines.push("**Do not change `SETTINGS_ENCRYPTION_KEY` after you have saved provider keys** —");
+  lines.push("the stored keys are encrypted with it and would become unreadable; you would have");
+  lines.push("to re-enter them. Keep `.env` out of version control (it already is), and set both");
+  lines.push("secrets as real environment variables when you deploy. To generate one yourself:", "");
+  lines.push("```bash");
+  lines.push("openssl rand -base64 32");
+  lines.push("```");
+  lines.push("");
+
   lines.push("## Admin", "");
   lines.push("Sign in with the `ADMIN_EMAIL` / `ADMIN_PASSWORD` from your `.env`. Under the");
   lines.push("profile menu you can:", "");

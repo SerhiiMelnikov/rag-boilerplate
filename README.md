@@ -52,13 +52,21 @@ must be one of the selected providers.
 
 The generated app includes:
 
-- A chat UI with streaming answers, source citations, and 👍/👎 rating
-- An admin panel: document upload/management, provider API keys (encrypted
-  at rest), retrieval settings, user management, rating analytics
+- A chat UI with streaming answers, source citations, 👍/👎 rating, and a
+  workspace switcher; retrieved images open in a lightbox
+- Workspaces: group documents and images, grant users access, and scope the
+  assistant's answers to the active workspace plus the always-available General
+  one (a file can belong to several workspaces)
+- Image RAG: a vision model captions each uploaded image (describing people and
+  animals in depth), and the model decides which images actually answer a request
+- An admin panel: a unified Files list (documents + images, with workspace
+  membership), workspaces and user access, provider API keys (encrypted at rest),
+  retrieval settings, user management, rating analytics
 - A hand-rolled RAG engine: chunking, parsing (PDF/DOCX/Markdown/text),
   embeddings, hybrid (vector + keyword) retrieval, ingestion
 - Auth.js-based authentication with admin/user roles
-- Drizzle ORM + Postgres for documents, users, chat history, and settings
+- Drizzle ORM + Postgres for documents, users, chat history, and settings;
+  S3-compatible object storage (MinIO locally) for image bytes
 - A `.env` pre-populated with fresh secrets, and a `README.md` tailored to
   your selection
 

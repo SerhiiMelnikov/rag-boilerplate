@@ -40,7 +40,7 @@ export function generateReadme(o: InstallOptions): string {
     lines.push(`${step++}. \`npm run db:generate\` (generate the database migrations for your schema)`);
   }
   lines.push(`${step++}. \`npm run db:migrate\``);
-  lines.push(`${step++}. \`npm run seed:admin\``);
+  lines.push(`${step++}. \`npm run seed:admin\` (creates the admin user and the default "General" workspace)`);
   if (store.initNeeded) lines.push(`${step++}. \`npm run vectorstore:init\``);
   lines.push(`${step++}. \`npm run dev\` → http://localhost:3000`);
   lines.push("");

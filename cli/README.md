@@ -15,13 +15,21 @@ already wired to your selections.
 ## What you get
 
 - **Chat UI** — streaming answers with sources and 👍/👎 ratings; ask for a
-  picture and matching images are returned inline.
-- **Image RAG** — upload images; a vision model captions each one, the caption is
+  picture and matching images come back inline, opening in a lightbox you can page
+  through.
+- **Workspaces** — group documents and images into workspaces and grant users
+  access to them. A user picks the active workspace in the header, and the
+  assistant answers only from that workspace plus the always-available **General**
+  one. A file can live in several workspaces at once.
+- **Image RAG** — upload images; a vision model captions each one (describing any
+  person or animal in depth, since that is what users search on), the caption is
   embedded, and an intent router returns the right image when a user describes it.
-  Captions are editable in the admin UI (re-embedded on save).
-- **Admin panel** — one **Files** list for documents *and* images (filter by type,
-  sort, preview + caption-edit in a modal), plus users, provider API keys,
-  retrieval settings, and answer-rating analytics.
+  Relevance is decided by the model reading the captions, not a similarity cutoff.
+  Captions are editable, and can be regenerated from the stored image.
+- **Admin panel** — one **Files** list for documents *and* images (filter by type
+  or workspace, sort, preview, edit captions and workspace membership in a modal),
+  plus workspaces, users, provider API keys, retrieval settings, and answer-rating
+  analytics.
 - **RAG engine** — chunking, PDF/DOCX/Markdown parsing, embeddings, hybrid
   (vector + keyword) retrieval with reciprocal-rank fusion.
 - **Storage** — Postgres (+ your chosen vector store) for text; S3-compatible

@@ -48,3 +48,18 @@ describe("generateReadme", () => {
     expect(readme).toContain("db:migrate");
   });
 });
+
+describe("generateReadme setup steps", () => {
+  // A non-pgvector project has no shipped migrations and builds its schema with
+  // db:generate, which emits DDL only — the seed step is the only thing that creates
+  // the General workspace there, and every workspace lookup resolves through it.
+  it("tells a non-pgvector user that seed:admin creates the default workspace", () => {
+    const readme = generateReadme(opts({ vectorStore: "qdrant" }));
+    expect(readme).toContain("npm run db:generate");
+    expect(readme).toMatch(/npm run seed:admin.*General/);
+  });
+
+  it("says the same for pgvector, where the migration already seeded it", () => {
+    expect(generateReadme(opts({ vectorStore: "pgvector" }))).toMatch(/npm run seed:admin.*General/);
+  });
+});

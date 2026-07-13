@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { ingestImage } from "./ingest";
+import { ingestImage, IMAGE_CAPTION_PROMPT } from "./ingest";
 import type { ImageRepo } from "./repo";
 import type { ImageVectorStore } from "@/lib/vectorstore/types";
 
@@ -44,5 +44,23 @@ describe("ingestImage", () => {
     expect(res.error).toContain("vision down");
     expect(repo.statuses).toEqual(["processing", "error"]);
     expect(store.upsertImage).not.toHaveBeenCalled();
+  });
+});
+
+describe("IMAGE_CAPTION_PROMPT", () => {
+  // Users search images by describing the subject ("a young muscular man"), and a terse
+  // caption drops exactly those attributes, so the analyzer is told to spend words on
+  // any living subject.
+  it("asks for a thorough description of any living subject", () => {
+    expect(IMAGE_CAPTION_PROMPT).toMatch(/person, an animal, or any other living being/i);
+    for (const attribute of ["age", "build", "hair", "expression", "clothing", "pose"]) {
+      expect(IMAGE_CAPTION_PROMPT.toLowerCase()).toContain(attribute);
+    }
+  });
+
+  it("still covers the general-purpose retrieval basics", () => {
+    for (const basic of ["visible text", "colors"]) {
+      expect(IMAGE_CAPTION_PROMPT.toLowerCase()).toContain(basic);
+    }
   });
 });

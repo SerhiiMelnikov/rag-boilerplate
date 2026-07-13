@@ -5,9 +5,19 @@ import { embedDocuments } from "@/lib/rag/embeddings";
 import type { ImageVectorStore } from "@/lib/vectorstore/types";
 import type { ImageRepo } from "./repo";
 
-const IMAGE_CAPTION_PROMPT =
+// Exported so the caption prompt can be asserted on, and so a caller can tell what a
+// stored caption was produced from.
+export const IMAGE_CAPTION_PROMPT =
   "Describe this image in detail for search retrieval. Cover the main subjects, " +
-  "scene, any visible text, colors, and notable attributes. Output only the description.";
+  "scene, any visible text, colors, and notable attributes. " +
+  // Living subjects are what users search for by description, and a short caption
+  // loses exactly the attributes they search on ("a young muscular man"), so spend
+  // the words here.
+  "If the image contains a person, an animal, or any other living being, describe it " +
+  "as thoroughly as you can: apparent age, build and physique, skin, hair, facial " +
+  "features and expression, clothing, pose and action, and any other distinguishing " +
+  "attribute. Be specific and factual; do not speculate about identity. " +
+  "Output only the description.";
 
 export interface IngestImageDeps {
   caption?: (data: Buffer, contentType: string) => Promise<string>;

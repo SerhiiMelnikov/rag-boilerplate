@@ -16,7 +16,9 @@ export interface WorkspaceRepo {
 // Resolves the default (General) workspace id, backing getDefaultId.
 async function selectDefaultId(db: typeof defaultDb): Promise<string> {
   const [row] = await db.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.isDefault, true)).limit(1);
-  if (!row) throw new Error("default workspace (General) not found — run migrations");
+  // Not "run migrations": on a non-pgvector project the schema comes from
+  // `db:generate`, which emits DDL only. `seed:admin` is what creates this row.
+  if (!row) throw new Error('default workspace (General) not found — run `npm run seed:admin`');
   return row.id;
 }
 

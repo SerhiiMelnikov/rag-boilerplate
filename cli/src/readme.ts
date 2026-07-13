@@ -53,11 +53,39 @@ export function generateReadme(o: InstallOptions): string {
   }
 
   lines.push("## Admin", "");
-  lines.push("Under the admin menu you can:");
-  lines.push("- Upload documents");
-  lines.push("- Set provider keys");
-  lines.push("- Tune settings");
-  lines.push("- View rating analytics");
+  lines.push("Sign in with the `ADMIN_EMAIL` / `ADMIN_PASSWORD` from your `.env`. Under the");
+  lines.push("profile menu you can:", "");
+  lines.push("- **Files** — upload documents (PDF/DOCX/Markdown/text) and images, see their");
+  lines.push("  status, and set which workspaces each one belongs to.");
+  lines.push("- **Workspaces** — create workspaces and grant users access to them.");
+  lines.push("- **Provider keys** — set your API keys (encrypted at rest). Do this first:");
+  lines.push("  nothing can be ingested or answered without them.");
+  lines.push("- **Settings** — pick the chat/embedding/image models and tune retrieval.");
+  lines.push("- **Users** — manage accounts and roles.");
+  lines.push("- **Analytics** — see how answers were rated.");
+  lines.push("");
+
+  lines.push("## Workspaces", "");
+  lines.push("Workspaces scope what the assistant can see. Every user always has access to");
+  lines.push("**General**, and the assistant answers from the active workspace *plus* General.", "");
+  lines.push("1. Upload a file — it lands in **General** by default, so it is visible to everyone.");
+  lines.push("2. To restrict it, create a workspace under **Workspaces**, then open the file's");
+  lines.push("   workspace cell in **Files** and move it there (a file may belong to several");
+  lines.push("   workspaces at once; unchecking them all leaves it `unassigned`, which keeps it");
+  lines.push("   in the list but hides it from the assistant).");
+  lines.push("3. Grant users access to that workspace under **Workspaces → Access**.");
+  lines.push("4. Those users can now pick it from the switcher in the chat header. Users with");
+  lines.push("   access to only General see no switcher — there is nothing to switch between.");
+  lines.push("");
+
+  lines.push("## Images", "");
+  lines.push("Uploaded images are captioned by a vision model, and the caption is embedded. Ask");
+  lines.push("the chat for a picture (\"show me a red bike\") and the matching images come back");
+  lines.push("inline; click one to open it in a lightbox. Relevance is decided by the model");
+  lines.push("reading the captions, not by a similarity cutoff.", "");
+  lines.push("You can edit a caption in **Files**, or hit **Regenerate** to re-run the vision");
+  lines.push("model on the stored image — useful after changing the image model. Nothing is");
+  lines.push("re-uploaded; the bytes already live in object storage.");
   lines.push("");
 
   return lines.join("\n");

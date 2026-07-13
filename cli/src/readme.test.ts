@@ -63,3 +63,27 @@ describe("generateReadme setup steps", () => {
     expect(generateReadme(opts({ vectorStore: "pgvector" }))).toMatch(/npm run seed:admin.*General/);
   });
 });
+
+describe("generateReadme guidance", () => {
+  // The generated README is the first thing a user reads. It must explain what the
+  // features are FOR, not just list the admin pages.
+  it("explains how to actually use workspaces", () => {
+    const readme = generateReadme(opts());
+    expect(readme).toContain("## Workspaces");
+    expect(readme).toMatch(/always has access to/i);   // General is implicit
+    expect(readme).toMatch(/unassigned/);              // the trap: hidden from the assistant
+    expect(readme).toMatch(/switcher/i);               // how a user changes workspace
+  });
+
+  it("explains the image workflow, including regenerating a caption", () => {
+    const readme = generateReadme(opts());
+    expect(readme).toContain("## Images");
+    expect(readme).toMatch(/lightbox/i);
+    expect(readme).toMatch(/Regenerate/);
+    expect(readme).toMatch(/re-uploaded/i);            // the point: bytes are already stored
+  });
+
+  it("tells the admin to set provider keys before anything else", () => {
+    expect(generateReadme(opts())).toMatch(/keys.*first|first.*keys/is);
+  });
+});

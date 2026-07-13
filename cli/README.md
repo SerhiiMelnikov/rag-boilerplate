@@ -71,14 +71,29 @@ steps for your selection. In short:
 ```bash
 cd my-app
 docker compose up -d db minio   # Postgres + MinIO (image storage); + your vector store's service, if self-hosted
+npm run db:generate             # only if you did NOT pick pgvector (builds the migrations for your schema)
 npm run db:migrate
-npm run seed:admin
+npm run seed:admin              # admin user + the default "General" workspace
 npm run vectorstore:init        # only if your vector store needs it
 npm run dev                     # → http://localhost:3000
 ```
 
-A `.env` is generated for you with fresh secrets; set your provider API keys in
-the admin UI after the first run.
+A `.env` is generated for you with fresh secrets. Sign in with its `ADMIN_EMAIL` /
+`ADMIN_PASSWORD`, then **set your provider API keys in the admin panel first** —
+nothing can be ingested or answered without them.
+
+### Using it
+
+- **Upload** documents and images under **Files**. They land in the **General**
+  workspace, which every user can see.
+- **Scope them** by creating a workspace under **Workspaces**, moving files into it
+  from the Files list, and granting users access. A file can live in several
+  workspaces at once.
+- **Switch** workspace from the chat header: the assistant then answers only from
+  that workspace plus General. (Users who can see only General get no switcher —
+  there is nothing to switch between.)
+- **Ask for a picture** ("show me a red bike") and matching images come back inline;
+  click one to open it in a lightbox.
 
 ## Requirements
 

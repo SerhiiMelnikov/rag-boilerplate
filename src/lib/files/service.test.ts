@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { listFiles, extOf } from "./service";
-import { documents, images } from "@/lib/db/schema";
+import { documents } from "@/lib/db/schema";
 
 describe("extOf", () => {
   it("returns the lowercased extension without a dot", () => {

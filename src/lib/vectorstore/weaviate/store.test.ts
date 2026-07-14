@@ -1,17 +1,25 @@
 import { describe, it, expect, vi } from "vitest";
-import { createWeaviateStore } from "./store";
+import { createWeaviateStore, type WeaviateCollectionLike } from "./store";
 
-// Fake collection mirroring the weaviate-client v3 handle surface the store uses.
-function fakeCollection(over: any = {}) {
+// Fake collection mirroring the weaviate-client v3 handle surface the store
+// uses. WeaviateCollectionLike is the store's own narrow seam (see store.ts),
+// kept local precisely so fakes like this one don't need the full client types.
+// `query` is the only sub-object tests ever override, so it alone is generic
+// (inferred per call) rather than the whole return type: a return-type
+// annotation, or a non-generic `Partial<...>` parameter, would each
+// contextually widen the vi.fn()s back down to plain functions, erasing the
+// Mock type the assertions below rely on for `.mock.calls`.
+function fakeCollection<Q extends Partial<WeaviateCollectionLike["query"]> = Record<string, never>>(overQuery: Q = {} as never) {
   return {
     data: {
-      insertMany: vi.fn(async () => ({})),
-      deleteMany: vi.fn(async () => ({})),
+      insertMany: vi.fn(async (_objs: Parameters<WeaviateCollectionLike["data"]["insertMany"]>[0]) => ({})),
+      deleteMany: vi.fn(async (_where: Parameters<WeaviateCollectionLike["data"]["deleteMany"]>[0]) => ({})),
     },
     query: {
       fetchObjects: vi.fn(async () => ({ objects: [] })),
       nearVector: vi.fn(async () => ({ objects: [] })),
       bm25: vi.fn(async () => ({ objects: [] })),
+      ...overQuery,
     },
     filter: {
       byProperty: (p: string) => ({
@@ -19,10 +27,9 @@ function fakeCollection(over: any = {}) {
         containsAny: (v: unknown[]) => ({ p, op: "containsAny", v }),
       }),
     },
-    ...over,
-  } as any;
+  };
 }
-const provide = (c: any) => async () => c;
+const provide = (c: WeaviateCollectionLike) => async () => c;
 
 describe("weaviate store", () => {
   it("upsertChunks inserts objects with properties + vectors", async () => {
@@ -43,11 +50,7 @@ describe("weaviate store", () => {
 
   it("existingHashes collects contentHash filtered by documentId", async () => {
     const col = fakeCollection({
-      query: {
-        fetchObjects: vi.fn(async () => ({ objects: [{ properties: { contentHash: "h1" } }, { properties: { contentHash: "h2" } }] })),
-        nearVector: vi.fn(async () => ({ objects: [] })),
-        bm25: vi.fn(async () => ({ objects: [] })),
-      },
+      fetchObjects: vi.fn(async () => ({ objects: [{ uuid: "p1", properties: { contentHash: "h1" } }, { uuid: "p2", properties: { contentHash: "h2" } }] })),
     });
     const out = await createWeaviateStore(provide(col)).existingHashes("d1");
     expect([...out].sort()).toEqual(["h1", "h2"]);
@@ -62,13 +65,9 @@ describe("weaviate store", () => {
 
   it("searchVector maps score = 1 - distance (cosine)", async () => {
     const col = fakeCollection({
-      query: {
-        nearVector: vi.fn(async () => ({ objects: [
-          { uuid: "u1", properties: { documentId: "d1", filename: "f.md", content: "hi" }, metadata: { distance: 0.13 } },
-        ] })),
-        fetchObjects: vi.fn(async () => ({ objects: [] })),
-        bm25: vi.fn(async () => ({ objects: [] })),
-      },
+      nearVector: vi.fn(async () => ({ objects: [
+        { uuid: "u1", properties: { documentId: "d1", filename: "f.md", content: "hi" }, metadata: { distance: 0.13 } },
+      ] })),
     });
     const out = await createWeaviateStore(provide(col)).searchVector([0.1], 5);
     expect(out).toEqual([{ chunkId: "u1", documentId: "d1", filename: "f.md", content: "hi", score: 0.87 }]);
@@ -76,13 +75,9 @@ describe("weaviate store", () => {
 
   it("searchKeyword uses bm25 and recomputes cosine score from the returned vector", async () => {
     const col = fakeCollection({
-      query: {
-        bm25: vi.fn(async () => ({ objects: [
-          { uuid: "u2", properties: { documentId: "d1", filename: "f.md", content: "dog" }, vectors: { default: [1, 0] } },
-        ] })),
-        nearVector: vi.fn(async () => ({ objects: [] })),
-        fetchObjects: vi.fn(async () => ({ objects: [] })),
-      },
+      bm25: vi.fn(async () => ({ objects: [
+        { uuid: "u2", properties: { documentId: "d1", filename: "f.md", content: "dog" }, vectors: { default: [1, 0] } },
+      ] })),
     });
     const store = createWeaviateStore(provide(col));
     expect(await store.searchKeyword("a", [1, 0], 5)).toEqual([]); // too short
@@ -94,26 +89,14 @@ describe("weaviate store", () => {
 
   it("searchVector passes a containsAny(documentId) filter to nearVector", async () => {
     const nearVector = vi.fn(async (_vector: number[], _args: { limit: number; returnMetadata?: string[]; filters?: unknown }) => ({ objects: [] }));
-    const col = fakeCollection({
-      query: {
-        nearVector,
-        fetchObjects: vi.fn(async () => ({ objects: [] })),
-        bm25: vi.fn(async () => ({ objects: [] })),
-      },
-    });
+    const col = fakeCollection({ nearVector });
     await createWeaviateStore(provide(col)).searchVector([0.1], 5, ["d1", "d2"]);
     expect(nearVector.mock.calls[0][1].filters).toEqual({ p: "documentId", op: "containsAny", v: ["d1", "d2"] });
   });
 
   it("searchVector([] allowlist) returns [] without querying", async () => {
     const nearVector = vi.fn(async () => ({ objects: [] }));
-    const col = fakeCollection({
-      query: {
-        nearVector,
-        fetchObjects: vi.fn(async () => ({ objects: [] })),
-        bm25: vi.fn(async () => ({ objects: [] })),
-      },
-    });
+    const col = fakeCollection({ nearVector });
     const out = await createWeaviateStore(provide(col)).searchVector([0.1], 5, []);
     expect(out).toEqual([]);
     expect(nearVector).not.toHaveBeenCalled();
@@ -121,26 +104,14 @@ describe("weaviate store", () => {
 
   it("searchKeyword passes a containsAny(documentId) filter to bm25", async () => {
     const bm25 = vi.fn(async (_query: string, _args: { limit: number; includeVector?: boolean; filters?: unknown }) => ({ objects: [] }));
-    const col = fakeCollection({
-      query: {
-        bm25,
-        nearVector: vi.fn(async () => ({ objects: [] })),
-        fetchObjects: vi.fn(async () => ({ objects: [] })),
-      },
-    });
+    const col = fakeCollection({ bm25 });
     await createWeaviateStore(provide(col)).searchKeyword("dog", [1, 0], 5, ["d1", "d2"]);
     expect(bm25.mock.calls[0][1].filters).toEqual({ p: "documentId", op: "containsAny", v: ["d1", "d2"] });
   });
 
   it("searchKeyword([] allowlist) returns [] without querying", async () => {
     const bm25 = vi.fn(async () => ({ objects: [] }));
-    const col = fakeCollection({
-      query: {
-        bm25,
-        nearVector: vi.fn(async () => ({ objects: [] })),
-        fetchObjects: vi.fn(async () => ({ objects: [] })),
-      },
-    });
+    const col = fakeCollection({ bm25 });
     const out = await createWeaviateStore(provide(col)).searchKeyword("dog", [1, 0], 5, []);
     expect(out).toEqual([]);
     expect(bm25).not.toHaveBeenCalled();

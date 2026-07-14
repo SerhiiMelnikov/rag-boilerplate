@@ -1,16 +1,28 @@
-import { describe, it, expect, vi } from "vitest";
-import { createChromaStore } from "./store";
+import { describe, it, expect, vi, type Mock } from "vitest";
+import { createChromaStore, type ChromaCollectionLike } from "./store";
 
-function fakeCollection(over: Partial<any> = {}) {
+// Deliberate: ChromaCollectionLike (the store's own narrow seam, see store.ts)
+// is a real interface with precisely-typed methods, but merging a `Partial<...>`
+// override into an object literal of vi.fn()s here contextually collapses the
+// Mock type the assertions below need for `.mock.calls` — so this fake keeps
+// its own loosely-typed shape instead, and is bridged with `never` (not `any`)
+// at each call site below.
+interface FakeCollection {
+  add: Mock;
+  get: Mock;
+  delete: Mock;
+  query: Mock;
+}
+function fakeCollection(over: Partial<FakeCollection> = {}): FakeCollection {
   return {
     add: vi.fn(async () => ({})),
     get: vi.fn(async () => ({ metadatas: [] })),
     delete: vi.fn(async () => ({})),
     query: vi.fn(async () => ({ ids: [[]], documents: [[]], metadatas: [[]], distances: [[]] })),
     ...over,
-  } as any;
+  };
 }
-const provide = (c: any) => async () => c;
+const provide = (c: FakeCollection) => async () => c as unknown as ChromaCollectionLike;
 
 describe("chroma store", () => {
   it("upsertChunks adds ids + embeddings + documents + metadatas", async () => {

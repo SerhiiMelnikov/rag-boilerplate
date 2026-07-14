@@ -53,17 +53,17 @@ describe("uploadImage", () => {
       getAdmin: vi.fn(async () => ({ id: "admin-1" })),
       objectStore: { put: vi.fn(async () => {}), get: vi.fn(), delete: vi.fn() },
       imageRepo: { createImage: vi.fn(async () => "img-1"), setStatus: vi.fn(async () => {}) },
-      imageVectorStore: {} as any,
+      imageVectorStore: {} as never,
       workspaceRepo: { getDefaultId: async () => "ws-general" },
       setImageWorkspacesFn,
-      getSettings: vi.fn(async () => ({} as any)),
+      getSettings: vi.fn(async () => ({} as never)),
       ingest: vi.fn(async () => {}),
       schedule: (fn: () => Promise<unknown>) => { void fn(); },
       newId: () => "uuid-1",
     };
     const f = new FormData();
     f.set("file", new File(["x"], "bike.png", { type: "image/png" }));
-    const res = await uploadImage(new Request("http://x/api/admin/images", { method: "POST", body: f }), deps as any);
+    const res = await uploadImage(new Request("http://x/api/admin/images", { method: "POST", body: f }), deps as never);
     expect(res.status).toBe(200);
     expect(setImageWorkspacesFn).toHaveBeenCalledWith("img-1", ["ws-general"]);
   });

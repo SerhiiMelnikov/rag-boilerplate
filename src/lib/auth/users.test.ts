@@ -1,8 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { createUser, getUserByEmail, getAuthUserById, DuplicateEmailError } from "@/lib/auth/users";
 
 // Minimal fake matching the Drizzle calls used by the service.
-function fakeDb(opts: { existing?: any[]; insertResult?: any[]; insertThrows?: unknown } = {}) {
+function fakeDb(opts: { existing?: unknown[]; insertResult?: unknown[]; insertThrows?: unknown } = {}) {
   return {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => opts.existing ?? [] }) }) }),
     insert: () => ({
@@ -13,7 +13,7 @@ function fakeDb(opts: { existing?: any[]; insertResult?: any[]; insertThrows?: u
         },
       }),
     }),
-  } as any;
+  } as never;
 }
 
 describe("createUser", () => {

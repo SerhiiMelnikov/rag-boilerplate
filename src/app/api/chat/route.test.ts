@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleChat } from "@/app/api/chat/handler";
-import { UnauthorizedError } from "@/lib/auth/guards";
+import { handleChat, type ChatDeps } from "@/app/api/chat/handler";
 import { MissingProviderKeyError } from "@/lib/providers/types";
+import type { addMessage } from "@/lib/chat/conversations";
+import type { prepareContext } from "@/lib/rag/answer";
+import type { searchImages, ImageSearchHit } from "@/lib/images/search";
 
 const settings = {
   chatProvider: "google", chatModel: "gemma-4-31b-it",
@@ -19,19 +21,24 @@ const body = (b: unknown) => new Request("http://localhost/api/chat", {
 // Convenience: build a standard useChat message list with a single user message + conversationId.
 const msg = (content: string) => ({ messages: [{ role: "user", content }], conversationId: "c1" });
 
-function baseDeps(over: Partial<any> = {}) {
+// Deliberate: a handful of fields here (getAuthUser, getSettingsFn, getChatModelFn)
+// return fixtures that are deliberately narrower than the real
+// getAuthUserById/RuntimeSettings/ChatModel types (only what handleChat reads).
+// Rather than casting each field individually (which would erase their Mock
+// typing and break the `.mock.calls` assertions below), the whole deps object
+// is bridged to ChatDeps through `chat()`, the handleChat wrapper below.
+function baseDeps<T extends object = object>(over: T = {} as T) {
   return {
     getSession: vi.fn(async () => ({ user: { id: "u1", role: "user" } })),
-    getAuthUser: vi.fn(async () => ({ id: "u1", role: "user", isSuperAdmin: false, blockedAt: null })) as any,
-    // Cast to any: test fixture returns only the fields used by handler; full RuntimeSettings not needed.
-    getSettingsFn: vi.fn(async () => settings) as any,
-    prepareContextFn: vi.fn(async () => ({ hasContext: true, context: "ctx", sources: [{ documentId: "d", filename: "f.md", chunkId: "c", score: 0.9 }] })),
-    getChatModelFn: vi.fn(() => ({})) as any,
-    addMessageFn: vi.fn(async () => ({ id: "m1" })),
+    getAuthUser: vi.fn(async () => ({ id: "u1", role: "user", isSuperAdmin: false, blockedAt: null })),
+    getSettingsFn: vi.fn(async () => settings),
+    prepareContextFn: vi.fn(async (..._args: Parameters<typeof prepareContext>) => ({ hasContext: true, context: "ctx", sources: [{ documentId: "d", filename: "f.md", chunkId: "c", score: 0.9 }] })),
+    getChatModelFn: vi.fn(() => ({})),
+    addMessageFn: vi.fn(async (..._args: Parameters<typeof addMessage>) => ({ id: "m1" })),
     isOwnedFn: vi.fn(async () => true),
     setTitleFn: vi.fn(async () => undefined),
     // Fake streamText: triggers onFinish so persistence runs, returns a data-stream-like Response.
-    streamTextFn: vi.fn((args: any) => {
+    streamTextFn: vi.fn((args: { messages: unknown; onFinish?: (arg: { text: string; usage: { promptTokens: number; completionTokens: number } }) => void }) => {
       args.onFinish?.({ text: "answer", usage: { promptTokens: 10, completionTokens: 3 } });
       return { toDataStreamResponse: () => new Response("stream", { status: 200 }) };
     }),
@@ -40,7 +47,7 @@ function baseDeps(over: Partial<any> = {}) {
     routeIntentFn: vi.fn(async () => ({ kind: "text" }) as const),
     // Default verifier: vouches for every candidate, so the image tests that don't
     // care about relevance keep asserting on what searchImagesFn returned.
-    verifyImageMatchesFn: vi.fn(async (_q: string, hits: any[]) => hits),
+    verifyImageMatchesFn: vi.fn(async (_q: string, hits: ImageSearchHit[]) => hits),
     // Fake workspace repo: user sees only General (ws-general), which resolves to
     // doc-1/img-1 allowlists. No cookie is set in these tests, so the handler
     // always falls back to General via resolveActiveWorkspaceId.
@@ -56,21 +63,28 @@ function baseDeps(over: Partial<any> = {}) {
   };
 }
 
+// Thin wrapper bridging our concrete (Mock-typed) deps fixtures to ChatDeps —
+// see the comment on baseDeps for why this is a whole-object cast rather than
+// per-field ones.
+function chat(request: Request, deps: object) {
+  return handleChat(request, deps as unknown as ChatDeps);
+}
+
 describe("handleChat", () => {
   it("401 when getSession returns null", async () => {
     const deps = baseDeps({ getSession: vi.fn(async () => null) });
-    const res = await handleChat(body(msg("hi")), deps);
+    const res = await chat(body(msg("hi")), deps);
     expect(res.status).toBe(401);
   });
 
   it("400 when the last message content is empty", async () => {
-    const res = await handleChat(body({ messages: [{ role: "user", content: "" }], conversationId: "c1" }), baseDeps());
+    const res = await chat(body({ messages: [{ role: "user", content: "" }], conversationId: "c1" }), baseDeps());
     expect(res.status).toBe(400);
   });
 
   it("404 when isOwnedFn returns false", async () => {
     const deps = baseDeps({ isOwnedFn: vi.fn(async () => false) });
-    const res = await handleChat(body(msg("hi")), deps);
+    const res = await chat(body(msg("hi")), deps);
     expect(res.status).toBe(404);
     expect(deps.addMessageFn).not.toHaveBeenCalled();
     expect(deps.streamTextFn).not.toHaveBeenCalled();
@@ -78,7 +92,7 @@ describe("handleChat", () => {
 
   it("happy path: persists user+assistant messages and calls streamText", async () => {
     const deps = baseDeps();
-    const res = await handleChat(body(msg("why is the sky blue?")), deps);
+    const res = await chat(body(msg("why is the sky blue?")), deps);
     expect(res.status).toBe(200);
     // isOwnedFn called to verify ownership
     expect(deps.isOwnedFn).toHaveBeenCalledWith("u1", "c1");
@@ -101,8 +115,8 @@ describe("handleChat", () => {
       ],
       conversationId: "c1",
     };
-    await handleChat(body(convo), deps);
-    const streamArg = (deps.streamTextFn as any).mock.calls[0][0];
+    await chat(body(convo), deps);
+    const streamArg = deps.streamTextFn.mock.calls[0][0];
     // Full conversation history is forwarded as messages (context memory).
     expect(streamArg.messages).toEqual([
       { role: "user", content: "Who is Broderick?" },
@@ -110,14 +124,14 @@ describe("handleChat", () => {
       { role: "user", content: "Who is his brother?" },
     ]);
     // Retrieval query carries the prior entity so the pronoun follow-up resolves.
-    const retrievalQuery = (deps.prepareContextFn as any).mock.calls[0][0];
+    const retrievalQuery = deps.prepareContextFn.mock.calls[0][0];
     expect(retrievalQuery).toContain("Broderick");
     expect(retrievalQuery).toContain("his brother");
   });
 
   it("no-context: does not call the model, persists fallback assistant message, returns 200", async () => {
     const deps = baseDeps({ prepareContextFn: vi.fn(async () => ({ hasContext: false, context: "", sources: [] })) });
-    const res = await handleChat(body(msg("unknown topic")), deps);
+    const res = await chat(body(msg("unknown topic")), deps);
     expect(res.status).toBe(200);
     expect(deps.streamTextFn).not.toHaveBeenCalled();
     // User message persisted first, fallback assistant second with usage: null
@@ -128,7 +142,7 @@ describe("handleChat", () => {
     const deps = baseDeps({
       getChatModelFn: vi.fn(() => { throw new MissingProviderKeyError("Chat", "openai"); }),
     });
-    const res = await handleChat(body(msg("hi")), deps);
+    const res = await chat(body(msg("hi")), deps);
     expect(res.status).toBe(200);
     expect(deps.streamTextFn).not.toHaveBeenCalled();
     // Assistant message persisted with the provider-error text + usage null.
@@ -145,11 +159,11 @@ describe("handleChat", () => {
     const deps = baseDeps({
       routeIntentFn: vi.fn(async () => { throw new MissingProviderKeyError("Chat", "openai"); }),
     });
-    const res = await handleChat(body(msg("show me a bike")), deps);
+    const res = await chat(body(msg("show me a bike")), deps);
     expect(res.status).toBe(200);
     expect(deps.prepareContextFn).not.toHaveBeenCalled();
     expect(deps.streamTextFn).not.toHaveBeenCalled();
-    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
     expect(assistantCall?.[0].content).toMatch(/no API key for provider "openai"/);
   });
 
@@ -160,10 +174,10 @@ describe("handleChat", () => {
       routeIntentFn: vi.fn(async () => ({ kind: "image", query: "red bike" }) as const),
       searchImagesFn: vi.fn(async () => [{ imageId: "img-1", filename: "bike.png", caption: "a red bicycle", score: 0.9 }]),
     });
-    const res = await handleChat(body(msg("show me a red bike")), deps);
+    const res = await chat(body(msg("show me a red bike")), deps);
     expect(res.status).toBe(200);
     // assistant message persisted with the images
-    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
     expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", filename: "bike.png", score: 0.9 }]);
     expect(prepareContextFn).not.toHaveBeenCalled();
   });
@@ -173,8 +187,8 @@ describe("handleChat", () => {
       routeIntentFn: vi.fn(async () => ({ kind: "image", query: "unicorn" }) as const),
       searchImagesFn: vi.fn(async () => []),
     });
-    await handleChat(body(msg("show me a unicorn")), deps);
-    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    await chat(body(msg("show me a unicorn")), deps);
+    const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
     expect(assistantCall?.[0].content).toMatch(/couldn't find/i);
     expect(assistantCall?.[0].images ?? []).toEqual([]);
   });
@@ -185,7 +199,7 @@ describe("handleChat", () => {
       routeIntentFn: vi.fn(async () => ({ kind: "image", query: "a young man" }) as const),
       searchImagesFn,
     });
-    await handleChat(body(msg("a young man")), deps);
+    await chat(body(msg("a young man")), deps);
     // A caption's cosine similarity to a short query never reaches the text threshold
     // (0.3 here), so reusing it would drop every image. Candidates are over-fetched
     // for the verifier, then trimmed to the display count.
@@ -205,9 +219,9 @@ describe("handleChat", () => {
       searchImagesFn: vi.fn(async () => hits),
       verifyImageMatchesFn,
     });
-    await handleChat(body(msg("a young man")), deps);
+    await chat(body(msg("a young man")), deps);
     expect(verifyImageMatchesFn).toHaveBeenCalledWith("a young man", hits, expect.anything());
-    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
     expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", filename: "man.png", score: 0.26 }]);
   });
 
@@ -226,9 +240,9 @@ describe("handleChat", () => {
       // Deliberately NOT score order: the two weakest cosine hits are the best matches.
       verifyImageMatchesFn: vi.fn(async () => [hits[3], hits[2], hits[1], hits[0]]),
     });
-    await handleChat(body(msg("q")), deps);
-    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
-    expect(assistantCall?.[0].images.map((i: any) => i.imageId)).toEqual(["i4", "i3", "i2"]);
+    await chat(body(msg("q")), deps);
+    const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
+    expect(assistantCall?.[0].images?.map((i) => i.imageId)).toEqual(["i4", "i3", "i2"]);
   });
 
   it("IMAGE intent: reports a provider error from the verifier instead of 'not found'", async () => {
@@ -237,8 +251,8 @@ describe("handleChat", () => {
       searchImagesFn: vi.fn(async () => [{ imageId: "i1", filename: "1.png", caption: "c1", score: 0.2 }]),
       verifyImageMatchesFn: vi.fn(async () => { throw new MissingProviderKeyError("Chat", "openai"); }),
     });
-    await handleChat(body(msg("q")), deps);
-    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    await chat(body(msg("q")), deps);
+    const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
     expect(assistantCall?.[0].content).toMatch(/no API key for provider "openai"/);
     expect(assistantCall?.[0].content).not.toMatch(/couldn't find/i);
   });
@@ -249,8 +263,8 @@ describe("handleChat", () => {
       searchImagesFn: vi.fn(async () => [{ imageId: "img-1", filename: "man.png", caption: "a young man", score: 0.19 }]),
       verifyImageMatchesFn: vi.fn(async () => []),
     });
-    await handleChat(body(msg("a red bicycle")), deps);
-    const assistantCall = (deps.addMessageFn as any).mock.calls.find((c: any) => c[0].role === "assistant");
+    await chat(body(msg("a red bicycle")), deps);
+    const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
     expect(assistantCall?.[0].content).toMatch(/couldn't find/i);
     expect(assistantCall?.[0].images ?? []).toEqual([]);
   });
@@ -261,18 +275,18 @@ describe("handleChat", () => {
       prepareContextFn,
       routeIntentFn: vi.fn(async () => ({ kind: "text" }) as const),
     });
-    await handleChat(body(msg("why is the sky blue?")), deps);
+    await chat(body(msg("why is the sky blue?")), deps);
     expect(prepareContextFn).toHaveBeenCalled();
   });
 
   it("scopes retrieval + image search to the workspace allowlist and stamps workspace_id", async () => {
     const deps = baseDeps();
-    await handleChat(body(msg("why is the sky blue?")), deps);
+    await chat(body(msg("why is the sky blue?")), deps);
     // prepareContext receives the resolved document allowlist (General → doc-1)
-    const prepArgs = (deps.prepareContextFn as any).mock.calls[0];
+    const prepArgs = deps.prepareContextFn.mock.calls[0];
     expect(prepArgs[2]).toEqual({ allowedDocumentIds: ["doc-1"] });
     // every persisted message carries the active workspace id
-    for (const call of (deps.addMessageFn as any).mock.calls) {
+    for (const call of deps.addMessageFn.mock.calls) {
       expect(call[0]).toEqual(expect.objectContaining({ workspaceId: "ws-general" }));
     }
   });
@@ -280,12 +294,10 @@ describe("handleChat", () => {
   it("passes allowedImageIds to image search on an image-intent turn", async () => {
     const deps = baseDeps({
       routeIntentFn: vi.fn(async () => ({ kind: "image", query: "red bike" })),
-      searchImagesFn: vi.fn(async () => [{ imageId: "img-1", filename: "bike.png", caption: "a red bicycle", score: 0.9 }]),
+      searchImagesFn: vi.fn(async (..._args: Parameters<typeof searchImages>) => [{ imageId: "img-1", filename: "bike.png", caption: "a red bicycle", score: 0.9 }]),
     });
-    await handleChat(body(msg("show me a red bike")), deps);
-    // Cast deps itself (not just the property) to any: searchImagesFn is only
-    // present via the override, so it isn't part of baseDeps's inferred return type.
-    const imgArgs = (deps as any).searchImagesFn.mock.calls[0];
+    await chat(body(msg("show me a red bike")), deps);
+    const imgArgs = deps.searchImagesFn.mock.calls[0];
     expect(imgArgs[1]).toEqual(expect.objectContaining({ allowedImageIds: ["img-1"] }));
   });
 });

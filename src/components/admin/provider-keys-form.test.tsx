@@ -9,7 +9,7 @@ const MASKED = {
 };
 
 beforeEach(() => {
-  global.fetch = vi.fn(async () => ({ ok: true, json: async () => MASKED })) as any;
+  global.fetch = vi.fn(async () => ({ ok: true, json: async () => MASKED })) as unknown as typeof fetch;
 });
 
 describe("ProviderKeysForm", () => {

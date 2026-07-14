@@ -10,10 +10,10 @@ function form(file: File) {
 const baseDeps = () => ({
   getAdmin: vi.fn(async () => ({ id: "admin-1" })),
   documentRepo: { createDocument: vi.fn(async () => ({ id: "doc-1", created: true })), setStatus: vi.fn(async () => {}) },
-  vectorStore: {} as any,
+  vectorStore: {} as never,
   workspaceRepo: { getDefaultId: vi.fn(async () => "ws-general") },
   setDocumentWorkspacesFn: vi.fn(async () => {}),
-  getSettings: vi.fn(async () => ({} as any)),
+  getSettings: vi.fn(async () => ({} as never)),
   ingest: vi.fn(async () => {}),
   schedule: (fn: () => Promise<unknown>) => { void fn(); },
 });
@@ -21,7 +21,7 @@ const baseDeps = () => ({
 describe("uploadDocument", () => {
   it("creates the row and assigns it to the General workspace by default", async () => {
     const deps = baseDeps();
-    const res = await uploadDocument(form(new File(["hi"], "a.md", { type: "text/markdown" })), deps as any);
+    const res = await uploadDocument(form(new File(["hi"], "a.md", { type: "text/markdown" })), deps as never);
     expect(res.status).toBe(200);
     expect(deps.documentRepo.createDocument).toHaveBeenCalledWith("a.md");
     expect(deps.setDocumentWorkspacesFn).toHaveBeenCalledWith("doc-1", ["ws-general"]);
@@ -29,7 +29,7 @@ describe("uploadDocument", () => {
 
   it("400s when no file is provided", async () => {
     const deps = baseDeps();
-    const res = await uploadDocument(new Request("http://x/api/admin/documents", { method: "POST", body: new FormData() }), deps as any);
+    const res = await uploadDocument(new Request("http://x/api/admin/documents", { method: "POST", body: new FormData() }), deps as never);
     expect(res.status).toBe(400);
     expect(deps.setDocumentWorkspacesFn).not.toHaveBeenCalled();
   });

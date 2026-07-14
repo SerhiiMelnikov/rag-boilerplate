@@ -17,7 +17,7 @@ const MASKED = {
 const UNIFIED = { ...MASKED, unifiedMode: true };
 
 beforeEach(() => {
-  global.fetch = vi.fn(async () => ({ ok: true, json: async () => MASKED })) as any;
+  global.fetch = vi.fn(async () => ({ ok: true, json: async () => MASKED })) as unknown as typeof fetch;
 });
 
 describe("SettingsForm", () => {
@@ -40,7 +40,7 @@ describe("SettingsForm", () => {
   });
 
   it("collapses to a single unified row when unified mode is on", async () => {
-    global.fetch = vi.fn(async () => ({ ok: true, json: async () => UNIFIED })) as any;
+    global.fetch = vi.fn(async () => ({ ok: true, json: async () => UNIFIED })) as unknown as typeof fetch;
     render(<SettingsForm />);
     expect(await screen.findByLabelText("All tasks provider")).toBeInTheDocument();
     expect(screen.queryByLabelText("Chat provider")).not.toBeInTheDocument();

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/lib/auth/guards", async () => {
-  const actual = await vi.importActual<any>("@/lib/auth/guards");
+  const actual = await vi.importActual<typeof import("@/lib/auth/guards")>("@/lib/auth/guards");
   return { ...actual, requireUser: vi.fn() };
 });
 vi.mock("@/lib/chat/conversations", () => ({ getConversationWithMessages: vi.fn(), deleteConversation: vi.fn() }));
@@ -13,13 +13,13 @@ const url = new Request("http://localhost/api/conversations/c1");
 
 describe("GET /api/conversations/:id", () => {
   it("404 when not found/owned", async () => {
-    (requireUser as any).mockResolvedValue({ id: "u1", role: "user" });
-    (getConversationWithMessages as any).mockResolvedValue(null);
+    vi.mocked(requireUser).mockResolvedValue({ id: "u1", role: "user", isSuperAdmin: false });
+    vi.mocked(getConversationWithMessages).mockResolvedValue(null);
     expect((await GET(url, ctx)).status).toBe(404);
   });
   it("returns the conversation when owned", async () => {
-    (requireUser as any).mockResolvedValue({ id: "u1", role: "user" });
-    (getConversationWithMessages as any).mockResolvedValue({ id: "c1", title: "t", messages: [] });
+    vi.mocked(requireUser).mockResolvedValue({ id: "u1", role: "user", isSuperAdmin: false });
+    vi.mocked(getConversationWithMessages).mockResolvedValue({ id: "c1", title: "t", messages: [] });
     const res = await GET(url, ctx);
     expect(res.status).toBe(200);
     expect((await res.json()).id).toBe("c1");
@@ -29,13 +29,13 @@ describe("GET /api/conversations/:id", () => {
 
 describe("DELETE /api/conversations/:id", () => {
   it("204 when deleted", async () => {
-    (requireUser as any).mockResolvedValue({ id: "u1", role: "user" });
-    (deleteConversation as any).mockResolvedValue(true);
+    vi.mocked(requireUser).mockResolvedValue({ id: "u1", role: "user", isSuperAdmin: false });
+    vi.mocked(deleteConversation).mockResolvedValue(true);
     expect((await DELETE(url, ctx)).status).toBe(204);
   });
   it("404 when nothing deleted", async () => {
-    (requireUser as any).mockResolvedValue({ id: "u1", role: "user" });
-    (deleteConversation as any).mockResolvedValue(false);
+    vi.mocked(requireUser).mockResolvedValue({ id: "u1", role: "user", isSuperAdmin: false });
+    vi.mocked(deleteConversation).mockResolvedValue(false);
     expect((await DELETE(url, ctx)).status).toBe(404);
   });
 });

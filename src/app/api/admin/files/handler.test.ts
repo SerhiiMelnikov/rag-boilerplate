@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { listFilesResponse } from "./handler";
 
 const admin = async () => ({ id: "a1", role: "admin", isSuperAdmin: false });

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/lib/auth/guards", async () => {
-  const actual = await vi.importActual<any>("@/lib/auth/guards");
+  const actual = await vi.importActual<typeof import("@/lib/auth/guards")>("@/lib/auth/guards");
   return { ...actual, requireAdmin: vi.fn() };
 });
 vi.mock("@/lib/rag/ingest", () => ({ ingestExistingDocument: vi.fn() }));
@@ -13,7 +13,7 @@ vi.mock("@/lib/workspaces/repo", () => ({ createWorkspaceRepo: vi.fn(() => works
 const { setDocumentWorkspaces } = vi.hoisted(() => ({ setDocumentWorkspaces: vi.fn(async () => {}) }));
 vi.mock("@/lib/workspaces/membership", () => ({ setDocumentWorkspaces }));
 // Run the scheduled background work synchronously so we can assert on it.
-vi.mock("next/server", () => ({ after: (fn: any) => void fn() }));
+vi.mock("next/server", () => ({ after: (fn: () => void | Promise<void>) => void fn() }));
 vi.mock("@/lib/config/settings-service", () => ({ getRuntimeSettings: vi.fn(async () => ({})) }));
 import { GET, POST } from "@/app/api/admin/documents/route";
 import { requireAdmin, ForbiddenError } from "@/lib/auth/guards";
@@ -32,12 +32,12 @@ function uploadReq(filename = "a.md", content = "hello") {
 
 describe("GET /api/admin/documents", () => {
   it("403 for non-admin", async () => {
-    (requireAdmin as any).mockRejectedValue(new ForbiddenError());
+    vi.mocked(requireAdmin).mockRejectedValue(new ForbiddenError());
     expect((await GET()).status).toBe(403);
   });
   it("lists documents for admin", async () => {
-    (requireAdmin as any).mockResolvedValue({ id: "u1", role: "admin" });
-    (listDocuments as any).mockResolvedValue([{ id: "d1", filename: "a.md", status: "ready", error: null, createdAt: new Date(0) }]);
+    vi.mocked(requireAdmin).mockResolvedValue({ id: "u1", role: "admin", isSuperAdmin: false });
+    vi.mocked(listDocuments).mockResolvedValue([{ id: "d1", filename: "a.md", status: "ready", error: null, createdAt: new Date(0) }]);
     const res = await GET();
     expect(res.status).toBe(200);
     expect((await res.json()).documents).toHaveLength(1);
@@ -46,19 +46,19 @@ describe("GET /api/admin/documents", () => {
 
 describe("POST /api/admin/documents", () => {
   it("403 for non-admin", async () => {
-    (requireAdmin as any).mockRejectedValue(new ForbiddenError());
+    vi.mocked(requireAdmin).mockRejectedValue(new ForbiddenError());
     const res = await POST(uploadReq());
     expect(res.status).toBe(403);
     expect(ingestExistingDocument).not.toHaveBeenCalled();
   });
   it("400 when no file", async () => {
-    (requireAdmin as any).mockResolvedValue({ id: "u1", role: "admin" });
+    vi.mocked(requireAdmin).mockResolvedValue({ id: "u1", role: "admin", isSuperAdmin: false });
     const res = await POST(new Request("http://localhost/api/admin/documents", { method: "POST", body: new FormData() }));
     expect(res.status).toBe(400);
   });
   it("creates the row, returns processing immediately, and ingests in the background", async () => {
-    (requireAdmin as any).mockResolvedValue({ id: "u1", role: "admin" });
-    (ingestExistingDocument as any).mockResolvedValue({ documentId: "d1", status: "ready", chunkCount: 2, skipped: 0 });
+    vi.mocked(requireAdmin).mockResolvedValue({ id: "u1", role: "admin", isSuperAdmin: false });
+    vi.mocked(ingestExistingDocument).mockResolvedValue({ documentId: "d1", status: "ready", chunkCount: 2, skipped: 0 });
     const res = await POST(uploadReq());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ documentId: "d1", status: "processing" });

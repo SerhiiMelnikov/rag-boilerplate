@@ -1,11 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
+import type { auth } from "@/auth";
 import { requireUser, requireAdmin, requireSuperAdmin, UnauthorizedError, ForbiddenError, errorToResponse } from "@/lib/auth/guards";
+import type { getAuthUserById } from "@/lib/auth/users";
 
+// Cast through unknown: these fakes return only the fields requireUser actually
+// reads (narrower than the real NextAuth Session / full user row).
 const session = (role?: "admin" | "user") =>
-  vi.fn(async () => (role ? { user: { id: "u1", role } } : null)) as any;
+  vi.fn(async () => (role ? { user: { id: "u1", role } } : null)) as unknown as typeof auth;
 
 const authUser = (over: Partial<{ role: "admin" | "user"; isSuperAdmin: boolean; blockedAt: Date | null }> = {}) =>
-  vi.fn(async () => ({ id: "u1", role: "user", isSuperAdmin: false, blockedAt: null, ...over })) as any;
+  vi.fn(async () => ({ id: "u1", role: "user", isSuperAdmin: false, blockedAt: null, ...over })) as unknown as typeof getAuthUserById;
 
 describe("requireUser", () => {
   it("throws Unauthorized without a session", async () => {
@@ -15,7 +19,7 @@ describe("requireUser", () => {
     expect(await requireUser({ getSession: session("user"), getAuthUser: authUser() })).toEqual({ id: "u1", role: "user", isSuperAdmin: false });
   });
   it("throws Unauthorized when the user no longer exists", async () => {
-    await expect(requireUser({ getSession: session("user"), getAuthUser: (async () => null) as any })).rejects.toBeInstanceOf(UnauthorizedError);
+    await expect(requireUser({ getSession: session("user"), getAuthUser: (async () => null) as unknown as typeof getAuthUserById })).rejects.toBeInstanceOf(UnauthorizedError);
   });
   it("throws Unauthorized when the user is blocked", async () => {
     await expect(requireUser({ getSession: session("user"), getAuthUser: authUser({ blockedAt: new Date() }) })).rejects.toBeInstanceOf(UnauthorizedError);

@@ -27,7 +27,7 @@ describe("searchChunks", () => {
   it("forwards allowedDocumentIds to both store searches", async () => {
     const searchVector = vi.fn(async () => []);
     const searchKeyword = vi.fn(async () => []);
-    const store = { searchVector, searchKeyword } as any;
+    const store: VectorStore = { upsertChunks: vi.fn(), existingHashes: vi.fn(), deleteByDocument: vi.fn(), searchVector, searchKeyword };
     await searchChunks("hello world", [0.1, 0.2], { topK: 10, minSimilarity: 0.5, tokenBudget: 10000, allowedDocumentIds: ["d1", "d2"] }, { store });
     expect(searchVector).toHaveBeenCalledWith([0.1, 0.2], expect.any(Number), ["d1", "d2"]);
     expect(searchKeyword).toHaveBeenCalledWith("hello world", [0.1, 0.2], expect.any(Number), ["d1", "d2"]);

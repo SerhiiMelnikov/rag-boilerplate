@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/lib/auth/guards", async () => {
-  const actual = await vi.importActual<any>("@/lib/auth/guards");
+  const actual = await vi.importActual<typeof import("@/lib/auth/guards")>("@/lib/auth/guards");
   return { ...actual, requireAdmin: vi.fn() };
 });
 vi.mock("@/lib/documents/service", () => ({ deleteDocument: vi.fn() }));
@@ -15,22 +15,22 @@ function makeCtx(id: string) {
 
 describe("DELETE /api/admin/documents/[id]", () => {
   it("204 when document is deleted successfully", async () => {
-    (requireAdmin as any).mockResolvedValue({ id: "u1", role: "admin" });
-    (deleteDocument as any).mockResolvedValue(true);
+    vi.mocked(requireAdmin).mockResolvedValue({ id: "u1", role: "admin", isSuperAdmin: false });
+    vi.mocked(deleteDocument).mockResolvedValue(true);
     const res = await DELETE(new Request("http://localhost/api/admin/documents/d1", { method: "DELETE" }), makeCtx("d1"));
     expect(res.status).toBe(204);
     expect(deleteDocument).toHaveBeenCalledWith("d1");
   });
 
   it("404 when document does not exist", async () => {
-    (requireAdmin as any).mockResolvedValue({ id: "u1", role: "admin" });
-    (deleteDocument as any).mockResolvedValue(false);
+    vi.mocked(requireAdmin).mockResolvedValue({ id: "u1", role: "admin", isSuperAdmin: false });
+    vi.mocked(deleteDocument).mockResolvedValue(false);
     const res = await DELETE(new Request("http://localhost/api/admin/documents/missing", { method: "DELETE" }), makeCtx("missing"));
     expect(res.status).toBe(404);
   });
 
   it("403 for non-admin", async () => {
-    (requireAdmin as any).mockRejectedValue(new ForbiddenError());
+    vi.mocked(requireAdmin).mockRejectedValue(new ForbiddenError());
     const res = await DELETE(new Request("http://localhost/api/admin/documents/d1", { method: "DELETE" }), makeCtx("d1"));
     expect(res.status).toBe(403);
     expect(deleteDocument).not.toHaveBeenCalled();

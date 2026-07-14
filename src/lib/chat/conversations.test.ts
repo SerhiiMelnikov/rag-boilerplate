@@ -2,11 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import {
   createConversation, listConversations, getConversationWithMessages,
   deleteConversation, addMessage, setRating, setConversationTitleIfDefault,
+  type ImageResultRef,
 } from "@/lib/chat/conversations";
 
 describe("createConversation", () => {
   it("inserts and returns the new id", async () => {
-    const db = { insert: () => ({ values: () => ({ returning: async () => [{ id: "c1" }] }) }) } as any;
+    const db = { insert: () => ({ values: () => ({ returning: async () => [{ id: "c1" }] }) }) } as never;
     expect(await createConversation("u1", "Hello", db)).toEqual({ id: "c1" });
   });
 });
@@ -14,25 +15,25 @@ describe("createConversation", () => {
 describe("listConversations", () => {
   it("returns the user's conversations", async () => {
     const rows = [{ id: "c1", title: "t", createdAt: new Date(0) }];
-    const db = { select: () => ({ from: () => ({ where: () => ({ orderBy: async () => rows }) }) }) } as any;
+    const db = { select: () => ({ from: () => ({ where: () => ({ orderBy: async () => rows }) }) }) } as never;
     expect(await listConversations("u1", db)).toEqual(rows);
   });
 });
 
 describe("deleteConversation", () => {
   it("returns true when a row was deleted", async () => {
-    const db = { delete: () => ({ where: () => ({ returning: async () => [{ id: "c1" }] }) }) } as any;
+    const db = { delete: () => ({ where: () => ({ returning: async () => [{ id: "c1" }] }) }) } as never;
     expect(await deleteConversation("u1", "c1", db)).toBe(true);
   });
   it("returns false when nothing was deleted (not owned)", async () => {
-    const db = { delete: () => ({ where: () => ({ returning: async () => [] }) }) } as any;
+    const db = { delete: () => ({ where: () => ({ returning: async () => [] }) }) } as never;
     expect(await deleteConversation("u1", "c1", db)).toBe(false);
   });
 });
 
 describe("addMessage", () => {
   it("inserts a message and returns its id", async () => {
-    const db = { insert: () => ({ values: () => ({ returning: async () => [{ id: "m1" }] }) }) } as any;
+    const db = { insert: () => ({ values: () => ({ returning: async () => [{ id: "m1" }] }) }) } as never;
     const id = await addMessage({ conversationId: "c1", role: "assistant", content: "hi", sources: [], usage: null }, db);
     expect(id).toEqual({ id: "m1" });
   });
@@ -40,10 +41,10 @@ describe("addMessage", () => {
 
 describe("addMessage workspaceId", () => {
   it("addMessage writes workspaceId when provided", async () => {
-    let inserted: any;
+    let inserted: unknown;
     const database = {
-      insert: () => ({ values: (v: any) => { inserted = v; return { returning: async () => [{ id: "m1" }] }; } }),
-    } as any;
+      insert: () => ({ values: (v: unknown) => { inserted = v; return { returning: async () => [{ id: "m1" }] }; } }),
+    } as never;
     await addMessage({ conversationId: "c1", role: "assistant", content: "hi", workspaceId: "ws-1" }, database);
     expect(inserted).toMatchObject({ conversationId: "c1", role: "assistant", content: "hi", workspaceId: "ws-1" });
   });
@@ -55,7 +56,7 @@ describe("setRating", () => {
     const db = {
       select: () => ({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => [{ id: "m1" }] }) }) }) }),
       update: () => ({ set: () => ({ where: () => ({ returning: async () => [{ id: "m1" }] }) }) }),
-    } as any;
+    } as never;
     expect(await setRating("u1", "m1", 1, db)).toBe(true);
   });
   it("returns false when not owned", async () => {
@@ -63,7 +64,7 @@ describe("setRating", () => {
     const db = {
       select: () => ({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => [] }) }) }) }),
       update: () => ({ set: () => ({ where: () => ({ returning: async () => [] }) }) }),
-    } as any;
+    } as never;
     expect(await setRating("u1", "m1", -1, db)).toBe(false);
   });
 });
@@ -73,7 +74,7 @@ describe("setConversationTitleIfDefault", () => {
     const whereFn = vi.fn(async () => undefined);
     const db = {
       update: () => ({ set: () => ({ where: whereFn }) }),
-    } as any;
+    } as never;
     await setConversationTitleIfDefault("u1", "c1", "My title", db);
     expect(whereFn).toHaveBeenCalledTimes(1);
     // We only assert that where was called (the AND expression is opaque to the unit test).
@@ -85,11 +86,11 @@ describe("addMessage + getConversationWithMessages (images)", () => {
   it("persists and returns assistant message images", async () => {
     // Capture the values passed to insert(), then feed them back through the
     // select mock so we can assert the round-trip end to end.
-    const insertedValues: any[] = [];
+    const insertedValues: Array<{ images?: ImageResultRef[] }> = [];
     let selectCallCount = 0;
     const db = {
       insert: () => ({
-        values: (v: any) => {
+        values: (v: { images?: ImageResultRef[] }) => {
           insertedValues.push(v);
           return { returning: async () => [{ id: "m1" }] };
         },
@@ -116,7 +117,7 @@ describe("addMessage + getConversationWithMessages (images)", () => {
           }),
         }),
       }),
-    } as any;
+    } as never;
 
     await addMessage(
       { conversationId: "c1", role: "assistant", content: "here", images: [{ imageId: "img-1", filename: "bike.png", score: 0.9 }] },
@@ -129,7 +130,7 @@ describe("addMessage + getConversationWithMessages (images)", () => {
 
 describe("getConversationWithMessages", () => {
   it("returns null when the conversation is not owned/found", async () => {
-    const db = { select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }) } as any;
+    const db = { select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }) } as never;
     expect(await getConversationWithMessages("u1", "c1", db)).toBeNull();
   });
   it("returns conversation with messages when owned", async () => {
@@ -148,7 +149,7 @@ describe("getConversationWithMessages", () => {
           }),
         }),
       }),
-    } as any;
+    } as never;
     const result = await getConversationWithMessages("u1", "c1", db);
     expect(result).toEqual({ id: "c1", title: "Hello", messages: [msg] });
   });

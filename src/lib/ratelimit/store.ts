@@ -60,12 +60,23 @@ export async function consume(
     })
     .returning({ count: rateLimits.count });
 
-  await maybePrune(database, now);
-
   const count = row?.count ?? 1;
-  if (count <= limit) return { allowed: true, retryAfterSeconds: 0 };
+  const verdict: RateLimitResult =
+    count <= limit
+      ? { allowed: true, retryAfterSeconds: 0 }
+      // Never advertise 0 — a client would hot-loop on it.
+      : { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((windowStartMs + windowMs - now) / 1000)) };
 
-  const msUntilReset = windowStartMs + windowMs - now;
-  // Never advertise 0 — a client would hot-loop on it.
-  return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(msUntilReset / 1000)) };
+  // Fire-and-forget: housekeeping must never fail (or delay) the request riding
+  // on it. The verdict above is already decided from the atomic counter update,
+  // so a prune failure here (e.g. the DELETE's sequential scan — there is no
+  // index on windowStart alone — tripping a statement_timeout under load) is
+  // swallowed and logged instead of rejecting this call. Awaiting it inline
+  // would otherwise turn an ALLOWED request into a spurious 500 for the first
+  // caller after every hourly prune boundary in every process.
+  maybePrune(database, now).catch((err: unknown) => {
+    console.error("ratelimit: prune failed", err);
+  });
+
+  return verdict;
 }

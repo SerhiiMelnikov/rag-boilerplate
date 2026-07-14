@@ -1,5 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { consume, __resetPruneThrottle } from "./store";
+import { lt } from "drizzle-orm";
+
+// The real cutoff Date store.ts computes for the prune's `WHERE window_start <
+// cutoff` is otherwise opaque here (this suite fakes the whole `db`, so the
+// condition object built by `lt()` is never actually evaluated by a real
+// query engine). Wrapping `lt` with a spy (but still calling through to the
+// real implementation) lets fakeDb's `delete().where()` below read the exact
+// cutoff production code used, so a test can assert on it instead of only on
+// "a delete happened".
+vi.mock("drizzle-orm", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("drizzle-orm")>();
+  return { ...actual, lt: vi.fn(actual.lt) };
+});
 
 // Fake db that models the ON CONFLICT DO UPDATE: one counter per (key, window).
 function fakeDb() {
@@ -18,14 +31,31 @@ function fakeDb() {
         }),
       }),
     }),
-    delete: () => ({ where: async (w: unknown) => { deleted.push(w); } }),
+    delete: () => ({
+      where: async (w: unknown) => {
+        deleted.push(w);
+        // Simulate the real `DELETE ... WHERE window_start < cutoff`: drop
+        // every bucket whose windowStart is older than the cutoff store.ts
+        // actually passed to `lt()` for this call (captured by the spy
+        // above), rather than just recording that some delete happened.
+        const cutoff = vi.mocked(lt).mock.calls.at(-1)?.[1] as Date | undefined;
+        if (!cutoff) return;
+        for (const k of [...counters.keys()]) {
+          const windowStartIso = k.slice(k.indexOf("@") + 1);
+          if (new Date(windowStartIso).getTime() < cutoff.getTime()) counters.delete(k);
+        }
+      },
+    }),
   } as never;
   return { db, counters, deleted };
 }
 
 const MINUTE = 60_000;
 
-beforeEach(() => __resetPruneThrottle());
+beforeEach(() => {
+  __resetPruneThrottle();
+  vi.mocked(lt).mockClear();
+});
 
 describe("consume", () => {
   it("allows requests up to the limit and denies the one after", async () => {
@@ -98,5 +128,33 @@ describe("consume", () => {
     t += 60 * 60 * 1000 + 1; // an hour later
     await consume("k", 10, MINUTE, { database: db, now });
     expect(deleted.length).toBe(2);
+  });
+
+  // The previous test only asserted that a delete happened, never what it deleted.
+  // RETENTION_MS (documented as "a little longer than the longest window we use, a
+  // day") is what keeps a live day-quota bucket alive across a prune; a change that
+  // shrinks it below a day would keep that test green while silently resetting
+  // live day-quotas on every hourly prune. This asserts the actual behavior that
+  // matters: a bucket still inside its day-long window must survive a prune that
+  // runs later that same day.
+  it("does not delete a bucket that is still inside its day-long window", async () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const { db, counters } = fakeDb();
+
+    // Establish a day-window bucket at t=0 and immediately exhaust its limit of 1,
+    // so a later hit on the same window is only allowed if the bucket survived.
+    await consume("k", 1, DAY, { database: db, now: () => 0 });
+    expect((await consume("k", 1, DAY, { database: db, now: () => 0 })).allowed).toBe(false);
+
+    // Roll the clock forward exactly one day-window (a fresh bucket for a
+    // different key) and force the prune to run again by clearing its
+    // once-per-hour throttle.
+    __resetPruneThrottle();
+    await consume("other", 1, DAY, { database: db, now: () => DAY });
+
+    // The original bucket — still within its own day-long window — must not
+    // have been pruned away.
+    expect(counters.has(`k@${new Date(0).toISOString()}`)).toBe(true);
+    expect((await consume("k", 1, DAY, { database: db, now: () => 0 })).allowed).toBe(false);
   });
 });

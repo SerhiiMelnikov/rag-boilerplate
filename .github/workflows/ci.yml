@@ -35,4 +35,7 @@ jobs:
           cache-dependency-path: cli/package-lock.json
       - run: npm ci
       - run: npm test
+      - name: Print failure details (diagnostic, temporary)
+        if: failure()
+        run: npm test 2>&1 | tail -n 40 | while IFS= read -r line; do echo "::error::$line"; done
       - run: npm run build

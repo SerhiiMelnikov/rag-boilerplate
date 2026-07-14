@@ -372,14 +372,26 @@ describe("rate limiting", () => {
     expect(windows).toEqual([60_000]);
   });
 
-  it("lets the request through when both limits are disabled", async () => {
+  it("lets the request through when both limits are disabled, by forwarding limit 0 to rateLimitFn", async () => {
     const deps = baseDeps();
     deps.getSettingsFn = vi.fn(async () => ({
       ...(await baseDeps().getSettingsFn()),
       chatRateLimitPerMinute: 0,
       chatRateLimitPerDay: 0,
     }));
+    // Honor the `limit` argument the way the real consume() does (limit <= 0 means
+    // "disabled, always allow"), instead of baseDeps()'s default stub that always
+    // returns allowed regardless of `limit`. Without this, the test would pass for
+    // a limit of 0, 20, or 999 and prove nothing about the "0 = disabled" contract
+    // (which store.test.ts is what actually verifies, by spying on insert) — this
+    // test's job is only to prove the settings' 0 reaches rateLimitFn as 0.
+    const limits: number[] = [];
+    deps.rateLimitFn = vi.fn(async (_key: string, limit: number) => {
+      limits.push(limit);
+      return { allowed: limit <= 0, retryAfterSeconds: limit <= 0 ? 0 : 1 };
+    });
     const res = await chat(body(msg("hi")), deps);
     expect(res.status).toBe(200);
+    expect(limits).toEqual([0, 0]); // both the minute and day calls got the disabled value
   });
 });

@@ -64,6 +64,9 @@ function baseDeps<T extends object = object>(over: T = {} as T) {
       onFinish?.({ text: "answer", usage: { promptTokens: 10, completionTokens: 3 } });
       return { toDataStreamResponse: () => new Response("stream", { status: 200 }) };
     }),
+    // Default: always allow, so tests not about rate limiting never touch the real
+    // consume() (which would hit the database).
+    rateLimitFn: vi.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })),
     // Default to the TEXT intent so existing (pre-routing) tests keep exercising the
     // document-RAG path deterministically instead of hitting the real router/model.
     routeIntentFn: vi.fn(async () => ({ kind: "text" }) as const),
@@ -322,5 +325,59 @@ describe("handleChat", () => {
     await chat(body(msg("show me a red bike")), deps);
     const imgArgs = deps.searchImagesFn.mock.calls[0];
     expect(imgArgs[1]).toEqual(expect.objectContaining({ allowedImageIds: ["img-1"] }));
+  });
+});
+
+describe("rate limiting", () => {
+  it("returns 429 with Retry-After when the per-minute limit is exhausted", async () => {
+    const deps = baseDeps();
+    deps.rateLimitFn = vi.fn(async () => ({ allowed: false, retryAfterSeconds: 42 }));
+    const res = await chat(body(msg("hi")), deps);
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("42");
+    // The model must never be reached.
+    expect(deps.streamTextFn).not.toHaveBeenCalled();
+    expect(deps.prepareContextFn).not.toHaveBeenCalled();
+  });
+
+  it("keys the per-minute bucket by user, and checks the day bucket too", async () => {
+    const deps = baseDeps();
+    const calls: Array<[string, number, number]> = [];
+    deps.rateLimitFn = vi.fn(async (key: string, limit: number, windowMs: number) => {
+      calls.push([key, limit, windowMs]);
+      return { allowed: true, retryAfterSeconds: 0 };
+    });
+    await chat(body(msg("hi")), deps);
+
+    expect(calls[0][0]).toContain("u1"); // the session user id from baseDeps()
+    expect(calls[0][2]).toBe(60_000);
+    expect(calls[1][2]).toBe(86_400_000);
+    // Distinct keys, or the minute and day counters would share one bucket.
+    expect(calls[0][0]).not.toBe(calls[1][0]);
+  });
+
+  // A request rejected by the minute rule must not also burn a day-quota slot.
+  it("does not consume the daily quota when the per-minute rule already denied", async () => {
+    const deps = baseDeps();
+    const windows: number[] = [];
+    deps.rateLimitFn = vi.fn(async (_k: string, _l: number, windowMs: number) => {
+      windows.push(windowMs);
+      return { allowed: false, retryAfterSeconds: 1 };
+    });
+    await chat(body(msg("hi")), deps);
+
+    expect(windows).toEqual([60_000]);
+  });
+
+  it("lets the request through when both limits are disabled", async () => {
+    const deps = baseDeps();
+    deps.getSettingsFn = vi.fn(async () => ({
+      ...(await baseDeps().getSettingsFn()),
+      chatRateLimitPerMinute: 0,
+      chatRateLimitPerDay: 0,
+    }));
+    const res = await chat(body(msg("hi")), deps);
+    expect(res.status).toBe(200);
   });
 });

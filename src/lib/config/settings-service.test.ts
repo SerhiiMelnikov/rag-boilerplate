@@ -2,15 +2,20 @@ import { describe, it, expect } from "vitest";
 import { encryptSecret, decryptSecret } from "@/lib/config/crypto";
 import { getRuntimeSettings, getAdminSettings, updateSettings, settingsPatchSchema } from "@/lib/config/settings-service";
 
-// Minimal fake Drizzle: a single settings row we can read/update.
+// Minimal fake Drizzle: a single settings row we can read/update. Returns
+// { db, state } rather than stashing `state` on the db object itself, so
+// callers get a properly typed handle instead of casting db back to read it.
 function fakeDb(row: Record<string, unknown>) {
   const state = { ...row };
-  return {
-    state,
+  const db = {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => [state] }) }) }),
     insert: () => ({ values: () => ({ onConflictDoNothing: () => ({ returning: async () => [state] }) }) }),
     update: () => ({ set: (patch: Record<string, unknown>) => { Object.assign(state, patch); return { where: () => ({ returning: async () => [state] }) }; } }),
-  } as any;
+  };
+  // Deliberate: this fake only implements the Drizzle calls the settings
+  // service actually makes, not the full `typeof defaultDb` surface — `never`
+  // (not `any`) bridges it.
+  return { db: db as never, state };
 }
 
 const baseRow = {
@@ -25,7 +30,7 @@ const baseRow = {
 
 describe("settings service", () => {
   it("getRuntimeSettings decrypts keys", async () => {
-    const db = fakeDb({ ...baseRow, googleKey: encryptSecret("g-key-1234") });
+    const { db } = fakeDb({ ...baseRow, googleKey: encryptSecret("g-key-1234") });
     const s = await getRuntimeSettings(db);
     expect(s.keys.google).toBe("g-key-1234");
     expect(s.keys.openai).toBeNull();
@@ -33,14 +38,14 @@ describe("settings service", () => {
   });
 
   it("exposes imageProvider/imageModel with gemini defaults", async () => {
-    const db = fakeDb(baseRow);
+    const { db } = fakeDb(baseRow);
     const s = await getRuntimeSettings(db);
     expect(s.imageProvider).toBe("google");
     expect(s.imageModel).toBe("gemini-2.5-flash");
   });
 
   it("getAdminSettings masks keys (no plaintext)", async () => {
-    const db = fakeDb({ ...baseRow, googleKey: encryptSecret("g-key-1234") });
+    const { db } = fakeDb({ ...baseRow, googleKey: encryptSecret("g-key-1234") });
     const s = await getAdminSettings(db);
     expect(s.keys.google).toEqual({ set: true, last4: "1234" });
     expect(s.keys.openai).toEqual({ set: false, last4: null });
@@ -48,21 +53,21 @@ describe("settings service", () => {
   });
 
   it("updateSettings encrypts a new key and leaves omitted keys untouched", async () => {
-    const db = fakeDb({ ...baseRow, googleKey: encryptSecret("old-google") });
+    const { db, state } = fakeDb({ ...baseRow, googleKey: encryptSecret("old-google") });
     await updateSettings({ openaiKey: "o-key-9999" }, db);
-    expect(db.state.openaiKey).not.toBe("o-key-9999"); // stored encrypted
-    expect(db.state.googleKey).not.toBeNull(); // untouched
-    expect(decryptSecret(db.state.googleKey as string)).toBe("old-google");
+    expect(state.openaiKey).not.toBe("o-key-9999"); // stored encrypted
+    expect(state.googleKey).not.toBeNull(); // untouched
+    expect(decryptSecret(state.googleKey as string)).toBe("old-google");
   });
 
   it("updateSettings clears a key on explicit null", async () => {
-    const db = fakeDb({ ...baseRow, googleKey: encryptSecret("old-google") });
+    const { db, state } = fakeDb({ ...baseRow, googleKey: encryptSecret("old-google") });
     await updateSettings({ googleKey: null }, db);
-    expect(db.state.googleKey).toBeNull();
+    expect(state.googleKey).toBeNull();
   });
 
   it("getRuntimeSettings applies unifiedMode to chat/parser/image but not embedding", async () => {
-    const db = fakeDb({ ...baseRow, unifiedMode: true, unifiedProvider: "openai", unifiedModel: "gpt-4o" });
+    const { db } = fakeDb({ ...baseRow, unifiedMode: true, unifiedProvider: "openai", unifiedModel: "gpt-4o" });
     const s = await getRuntimeSettings(db);
     expect(s.chatProvider).toBe("openai");
     expect(s.chatModel).toBe("gpt-4o");
@@ -72,7 +77,7 @@ describe("settings service", () => {
   });
 
   it("getAdminSettings returns the raw per-task values + unifiedMode", async () => {
-    const db = fakeDb({ ...baseRow, unifiedMode: true, unifiedProvider: "openai", unifiedModel: "gpt-4o" });
+    const { db } = fakeDb({ ...baseRow, unifiedMode: true, unifiedProvider: "openai", unifiedModel: "gpt-4o" });
     const s = await getAdminSettings(db);
     expect(s.unifiedMode).toBe(true);
     expect(s.chatProvider).toBe("google"); // raw, NOT resolved

@@ -16,7 +16,7 @@ export async function resolveOptions(cli: Partial<InstallOptions> & { yes: boole
   const projectName = cli.projectName ?? (await ask.askProjectName());
   const providers = cli.providers ?? (cli.yes ? (["google"] as ProviderId[]) : await ask.askProviders());
   const vectorStore = cli.vectorStore ?? (cli.yes ? ("pgvector" as VectorStoreId) : await ask.askVectorStore());
-  let defaultProvider = cli.defaultProvider ?? (providers.length === 1 ? providers[0] : cli.yes ? providers[0] : await ask.askDefaultProvider(providers));
+  const defaultProvider = cli.defaultProvider ?? (providers.length === 1 ? providers[0] : cli.yes ? providers[0] : await ask.askDefaultProvider(providers));
   const post = cli.yes ? { git: cli.git ?? true, install: cli.install ?? true } : await ask.askPostActions();
   const packageManager: PackageManager = cli.packageManager ?? detectPackageManager(process.env.npm_config_user_agent);
 

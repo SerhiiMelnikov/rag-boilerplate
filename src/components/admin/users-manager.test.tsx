@@ -7,7 +7,7 @@ const USERS = [
   { id: "s", email: "super@x", role: "admin", isSuperAdmin: true, blockedAt: null },
   { id: "u1", email: "user@x", role: "user", isSuperAdmin: false, blockedAt: null },
 ];
-beforeEach(() => { global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ users: USERS }) })) as any; });
+beforeEach(() => { global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ users: USERS }) })) as unknown as typeof fetch; });
 
 describe("UsersManager", () => {
   it("lists users and marks the super-admin", async () => {

@@ -15,7 +15,7 @@ import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "@/lib/db/schema";
-import { documents, chunks } from "@/lib/db/schema";
+import { documents } from "@/lib/db/schema";
 import { ingestDocument } from "./ingest";
 import { searchChunks } from "./retrieve";
 import { createDocumentRepo } from "@/lib/vectorstore/document-repo";

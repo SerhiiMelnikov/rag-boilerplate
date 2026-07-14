@@ -1,4 +1,5 @@
 import { streamText, createDataStreamResponse, formatDataStreamPart } from "ai";
+import type { auth } from "@/auth";
 import { requireUser, errorToResponse } from "@/lib/auth/guards";
 import { getAuthUserById } from "@/lib/auth/users";
 import { isConversationOwned, addMessage, setConversationTitleIfDefault } from "@/lib/chat/conversations";
@@ -69,9 +70,9 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
 
   let user;
   try {
-    // Cast to any: our SessionFn is narrower than typeof auth but satisfies
-    // the runtime contract (returns { user } or null).
-    user = await requireUser({ getSession: deps.getSession as any, getAuthUser: deps.getAuthUser });
+    // Cast through unknown: our SessionFn is narrower than typeof auth (it omits
+    // `expires`) but satisfies the runtime contract used here (session?.user?.id).
+    user = await requireUser({ getSession: deps.getSession as unknown as typeof auth, getAuthUser: deps.getAuthUser });
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

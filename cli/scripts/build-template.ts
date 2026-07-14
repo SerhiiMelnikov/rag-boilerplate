@@ -10,8 +10,9 @@ const OUT = resolve(import.meta.dirname, "..", "template");
 // wants in their generated app. "README.md" is excluded because it documents
 // THIS repo's own fixed golden-path config; the generated app instead gets a
 // README tailored to the user's actual selection, written by scaffold() (see
-// cli/src/readme.ts) as its only README.
-const EXCLUDE = new Set(["cli", "docs", ".superpowers", "node_modules", ".next", ".git", "tsconfig.tsbuildinfo", ".env", "package-lock.json", "next-env.d.ts", ".claude", "LICENSE", "README.md"]);
+// cli/src/readme.ts) as its only README. ".github" is this repo's own CI: a
+// matrix over cli/ and all five vector stores, meaningless in a generated app.
+export const EXCLUDE = new Set([".github", "cli", "docs", ".superpowers", "node_modules", ".next", ".git", "tsconfig.tsbuildinfo", ".env", "package-lock.json", "next-env.d.ts", ".claude", "LICENSE", "README.md"]);
 // The template is a clean starting point; the boilerplate's own tests (and the
 // vitest configs that run them) are not shipped. This also matters functionally:
 // scaffold() prunes unselected provider adapters and vector-store dirs, and the
@@ -53,4 +54,7 @@ async function main() {
   if (existsSync(gi)) await rename(gi, join(OUT, "_gitignore"));
   console.log("template assembled at", OUT);
 }
-main();
+
+// Only build when run as a script; importing this module (e.g. from a test) must
+// not assemble the template as a side effect.
+if (process.argv[1] === import.meta.filename) main();

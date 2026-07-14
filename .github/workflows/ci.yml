@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  app:
+    name: app (typecheck, lint, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run lint -- --max-warnings=0
+      - run: npx vitest run
+
+  cli:
+    name: cli (tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  scaffold:
+    name: scaffold (${{ matrix.store }}, ${{ matrix.providers }})
+    runs-on: ubuntu-latest
+    strategy:
+      # One leg failing must not hide the state of the others.
+      fail-fast: false
+      matrix:
+        # Two axes matter here: the vector store (mostly deletes directories)
+        # and the provider selection (cli/src/transforms/source.ts uses
+        # ts-morph to actually rewrite source per provider). A full cross
+        # product is overkill, so every store is exercised once with the
+        # default provider set (google), plus one extra leg that exercises
+        # the provider-pruning path: ollama alone, which needs no API key and
+        # is therefore the case where every other provider's key handling
+        # gets pruned away. anthropic alone is not a valid combination here —
+        # it can't embed, so cli/src/options.ts's validateSelection rejects it.
+        include:
+          - store: pgvector
+            providers: google
+            defaultProvider: google
+          - store: qdrant
+            providers: google
+            defaultProvider: google
+          - store: chroma
+            providers: google
+            defaultProvider: google
+          - store: weaviate
+            providers: google
+            defaultProvider: google
+          - store: pinecone
+            providers: google
+            defaultProvider: google
+          - store: pgvector
+            providers: ollama
+            defaultProvider: ollama
+    services:
+      # Credentials must match the DATABASE_URL the CLI writes into the generated
+      # .env (cli/src/transforms/config.ts). pgvector's image is a superset of
+      # stock Postgres, so it serves every store in the matrix.
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: rag
+          POSTGRES_PASSWORD: rag
+          POSTGRES_DB: rag
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Build the CLI and its template
+        working-directory: cli
+        run: |
+          npm ci
+          npm run build:template
+          npm run build
+
+      # --no-install: the workflow installs explicitly in the next step, so a
+      # failure is attributable. --no-git: nothing here needs a repo.
+      - name: Scaffold a project
+        run: >
+          node cli/dist/index.js out-app --yes
+          --vector-store ${{ matrix.store }}
+          --providers ${{ matrix.providers }} --default-provider ${{ matrix.defaultProvider }}
+          --no-install --no-git
+
+      - name: Install the generated project's dependencies
+        working-directory: out-app
+        run: npm install
+
+      # pgvector ships a checked-in drizzle/ directory; for every other store the
+      # CLI deletes it, so the schema has to be generated from schema.ts.
+      - name: Generate migrations (non-pgvector only)
+        if: matrix.store != 'pgvector'
+        working-directory: out-app
+        run: npm run db:generate
+
+      # The install path from the generated README. seed:admin is what creates the
+      # default General workspace — without it every workspace lookup throws.
+      - name: Migrate and seed
+        working-directory: out-app
+        run: |
+          npm run db:migrate
+          npm run seed:admin
+
+      - name: Type-check, lint, and build
+        working-directory: out-app
+        run: |
+          npx tsc --noEmit
+          npm run lint
+          npm run build

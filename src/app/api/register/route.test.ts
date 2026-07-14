@@ -24,7 +24,7 @@ describe("POST /api/register", () => {
   });
 
   it("201 and returns the created user", async () => {
-    (createUser as any).mockResolvedValue({ id: "u1", email: "a@b.com", role: "user" });
+    vi.mocked(createUser).mockResolvedValue({ id: "u1", email: "a@b.com", role: "user" });
     const res = await POST(req({ email: "a@b.com", password: "secret12" }));
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ id: "u1", email: "a@b.com", role: "user" });
@@ -32,7 +32,7 @@ describe("POST /api/register", () => {
   });
 
   it("409 on duplicate email", async () => {
-    (createUser as any).mockRejectedValue(new DuplicateEmailError("a@b.com"));
+    vi.mocked(createUser).mockRejectedValue(new DuplicateEmailError("a@b.com"));
     const res = await POST(req({ email: "a@b.com", password: "secret12" }));
     expect(res.status).toBe(409);
   });

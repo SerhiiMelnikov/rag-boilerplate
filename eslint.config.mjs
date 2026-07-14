@@ -4,9 +4,21 @@ const compat = new FlatCompat({ baseDirectory: import.meta.dirname });
 
 const config = [
   {
-    // Build output, generated SQL, and the assembled CLI template (a verbatim
-    // copy of this repo — linting it would double every finding).
-    ignores: [".next/**", "node_modules/**", "cli/**", "drizzle/**", "next-env.d.ts"],
+    // Build output, generated SQL, and the CLI's assembled template output.
+    // cli/template/** is generated verbatim from this repo's own src/ by
+    // cli/scripts/build-template.ts (running it would double every finding),
+    // and cli/dist/** and cli/node_modules/** are build output / dependencies.
+    // cli/src/** and cli/scripts/** are original, published CLI code and are
+    // linted like everything else.
+    ignores: [
+      ".next/**",
+      "node_modules/**",
+      "cli/template/**",
+      "cli/dist/**",
+      "cli/node_modules/**",
+      "drizzle/**",
+      "next-env.d.ts",
+    ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {

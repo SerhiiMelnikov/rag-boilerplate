@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { Project } from "ts-morph";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

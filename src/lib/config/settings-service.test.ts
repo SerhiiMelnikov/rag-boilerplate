@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { encryptSecret, decryptSecret } from "@/lib/config/crypto";
-import { getRuntimeSettings, getAdminSettings, updateSettings, settingsPatchSchema } from "@/lib/config/settings-service";
+import { getRuntimeSettings, getAdminSettings, updateSettings, settingsPatchSchema, getRateLimitSettings } from "@/lib/config/settings-service";
 
 // Minimal fake Drizzle: a single settings row we can read/update. Returns
 // { db, state } rather than stashing `state` on the db object itself, so
@@ -88,5 +88,29 @@ describe("settings service", () => {
     expect(settingsPatchSchema.safeParse({ topP: 0.9 }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ embeddingProvider: "anthropic" }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ chatProvider: "openai" }).success).toBe(true);
+  });
+});
+
+describe("getRateLimitSettings", () => {
+  it("returns the three limits without decrypting any provider key", async () => {
+    const decrypt = vi.fn();
+    const row = {
+      chatRateLimitPerMinute: 7,
+      chatRateLimitPerDay: 70,
+      registerRateLimitPerHour: 3,
+      googleKey: "encrypted-blob",
+      openaiKey: null,
+      anthropicKey: null,
+    };
+    const database = {
+      select: () => ({ from: () => ({ where: () => ({ limit: async () => [row] }) }) }),
+    } as never;
+
+    const out = await getRateLimitSettings(database);
+
+    expect(out).toEqual({ chatRateLimitPerMinute: 7, chatRateLimitPerDay: 70, registerRateLimitPerHour: 3 });
+    // The point of the narrow projection: an unauthenticated endpoint must not
+    // pull secrets through the decryptor.
+    expect(decrypt).not.toHaveBeenCalled();
   });
 });

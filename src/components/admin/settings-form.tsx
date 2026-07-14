@@ -12,6 +12,7 @@ interface AdminSettings {
   unifiedMode: boolean; unifiedProvider: string; unifiedModel: string;
   temperature: number; topK: number; minSimilarity: number; contextTokenBudget: number;
   systemPrompt: string; ollamaBaseUrl: string;
+  chatRateLimitPerMinute: number; chatRateLimitPerDay: number; registerRateLimitPerHour: number;
   keys: { google: KeyStatus; openai: KeyStatus; anthropic: KeyStatus };
 }
 
@@ -81,6 +82,9 @@ export function SettingsForm() {
       unifiedMode: cfg.unifiedMode, unifiedProvider: cfg.unifiedProvider, unifiedModel: cfg.unifiedModel,
       temperature: cfg.temperature, topK: cfg.topK, minSimilarity: cfg.minSimilarity,
       contextTokenBudget: cfg.contextTokenBudget, systemPrompt: cfg.systemPrompt,
+      chatRateLimitPerMinute: cfg.chatRateLimitPerMinute,
+      chatRateLimitPerDay: cfg.chatRateLimitPerDay,
+      registerRateLimitPerHour: cfg.registerRateLimitPerHour,
     };
     const res = await fetch("/api/admin/settings", {
       method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
@@ -134,6 +138,15 @@ export function SettingsForm() {
         </label>
         <label className="flex flex-col gap-1 text-sm">Context token budget
           <input type="number" aria-label="Context token budget" value={s.contextTokenBudget} onChange={num("contextTokenBudget")} className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">Chat requests / minute (0 = off)
+          <input type="number" aria-label="Chat rate limit per minute" value={s.chatRateLimitPerMinute} onChange={num("chatRateLimitPerMinute")} className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">Chat requests / day (0 = off)
+          <input type="number" aria-label="Chat rate limit per day" value={s.chatRateLimitPerDay} onChange={num("chatRateLimitPerDay")} className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">Registrations / hour per IP (0 = off)
+          <input type="number" aria-label="Register rate limit per hour" value={s.registerRateLimitPerHour} onChange={num("registerRateLimitPerHour")} className={inputCls} />
         </label>
         <label className="flex flex-col gap-1 text-sm">System prompt
           <textarea aria-label="System prompt" value={s.systemPrompt} rows={4} onChange={(e) => set({ systemPrompt: e.target.value })} className={inputCls} />

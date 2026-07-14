@@ -351,7 +351,9 @@ describe("rate limiting", () => {
     await chat(body(msg("hi")), deps);
 
     expect(calls[0][0]).toContain("u1"); // the session user id from baseDeps()
+    expect(calls[0][1]).toBe(settings.chatRateLimitPerMinute); // minute limit from settings
     expect(calls[0][2]).toBe(60_000);
+    expect(calls[1][1]).toBe(settings.chatRateLimitPerDay); // day limit from settings
     expect(calls[1][2]).toBe(86_400_000);
     // Distinct keys, or the minute and day counters would share one bucket.
     expect(calls[0][0]).not.toBe(calls[1][0]);

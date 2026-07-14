@@ -4,6 +4,9 @@ import { MissingProviderKeyError } from "@/lib/providers/types";
 import type { addMessage } from "@/lib/chat/conversations";
 import type { prepareContext } from "@/lib/rag/answer";
 import type { searchImages, ImageSearchHit } from "@/lib/images/search";
+import type { getAuthUserById } from "@/lib/auth/users";
+import type { getRuntimeSettings } from "@/lib/config/settings-service";
+import type { getChatModel } from "@/lib/providers";
 
 const settings = {
   chatProvider: "google", chatModel: "gemma-4-31b-it",
@@ -21,25 +24,36 @@ const body = (b: unknown) => new Request("http://localhost/api/chat", {
 // Convenience: build a standard useChat message list with a single user message + conversationId.
 const msg = (content: string) => ({ messages: [{ role: "user", content }], conversationId: "c1" });
 
-// Deliberate: a handful of fields here (getAuthUser, getSettingsFn, getChatModelFn)
-// return fixtures that are deliberately narrower than the real
-// getAuthUserById/RuntimeSettings/ChatModel types (only what handleChat reads).
-// Rather than casting each field individually (which would erase their Mock
-// typing and break the `.mock.calls` assertions below), the whole deps object
-// is bridged to ChatDeps through `chat()`, the handleChat wrapper below.
+// Deliberate: three fields here (getAuthUser, getSettingsFn, getChatModelFn) are cast
+// individually to their real collaborator type, because their fixtures are narrower
+// than the production shape (only the fields handleChat reads). streamTextFn's `args`
+// is typed `unknown` instead (see the comment on it below) rather than cast. Every
+// OTHER field is left as-is, so `chat()` (the thin ChatDeps-typed wrapper following
+// this function) checks it structurally against its real collaborator type — the whole
+// point being that a fixture that drifts from the real shape (e.g. prepareContextFn
+// returning the wrong field types) fails `tsc --noEmit`.
 function baseDeps<T extends object = object>(over: T = {} as T) {
   return {
     getSession: vi.fn(async () => ({ user: { id: "u1", role: "user" } })),
-    getAuthUser: vi.fn(async () => ({ id: "u1", role: "user", isSuperAdmin: false, blockedAt: null })),
-    getSettingsFn: vi.fn(async () => settings),
+    // Cast through unknown: fixture returns only the fields getAuthUserById's callers read.
+    getAuthUser: vi.fn(async () => ({ id: "u1", role: "user", isSuperAdmin: false, blockedAt: null })) as unknown as typeof getAuthUserById,
+    // Cast through unknown: fixture returns only the fields used by handler; full RuntimeSettings not needed.
+    getSettingsFn: vi.fn(async () => settings) as unknown as typeof getRuntimeSettings,
     prepareContextFn: vi.fn(async (..._args: Parameters<typeof prepareContext>) => ({ hasContext: true, context: "ctx", sources: [{ documentId: "d", filename: "f.md", chunkId: "c", score: 0.9 }] })),
-    getChatModelFn: vi.fn(() => ({})),
+    getChatModelFn: vi.fn(() => ({})) as unknown as typeof getChatModel,
     addMessageFn: vi.fn(async (..._args: Parameters<typeof addMessage>) => ({ id: "m1" })),
     isOwnedFn: vi.fn(async () => true),
     setTitleFn: vi.fn(async () => undefined),
-    // Fake streamText: triggers onFinish so persistence runs, returns a data-stream-like Response.
-    streamTextFn: vi.fn((args: { messages: unknown; onFinish?: (arg: { text: string; usage: { promptTokens: number; completionTokens: number } }) => void }) => {
-      args.onFinish?.({ text: "answer", usage: { promptTokens: 10, completionTokens: 3 } });
+    // Fake streamText: triggers onFinish so persistence runs, returns a data-stream-like
+    // Response. `args` is typed `unknown` (not a narrowed literal): a narrowed param type
+    // would make this mock's signature contravariantly incompatible with StreamTextLike's
+    // real (large) `Parameters<typeof streamText>[0]` type, forcing a whole-field cast that
+    // erases the Mock typing `.mock.calls` below relies on. `unknown` is assignable *to*
+    // from anything, so the mock stays structurally checked as `Mock<(args: unknown) => …>`
+    // without any cast, and we narrow internally only where we read from it.
+    streamTextFn: vi.fn((args: unknown) => {
+      const { onFinish } = args as { onFinish?: (arg: { text: string; usage: { promptTokens: number; completionTokens: number } }) => void };
+      onFinish?.({ text: "answer", usage: { promptTokens: 10, completionTokens: 3 } });
       return { toDataStreamResponse: () => new Response("stream", { status: 200 }) };
     }),
     // Default to the TEXT intent so existing (pre-routing) tests keep exercising the
@@ -63,11 +77,10 @@ function baseDeps<T extends object = object>(over: T = {} as T) {
   };
 }
 
-// Thin wrapper bridging our concrete (Mock-typed) deps fixtures to ChatDeps —
-// see the comment on baseDeps for why this is a whole-object cast rather than
-// per-field ones.
-function chat(request: Request, deps: object) {
-  return handleChat(request, deps as unknown as ChatDeps);
+// Thin wrapper typed directly against ChatDeps — see the comment on baseDeps for
+// why only three fields are cast individually instead of casting the whole object.
+function chat(request: Request, deps: ChatDeps) {
+  return handleChat(request, deps);
 }
 
 describe("handleChat", () => {
@@ -116,7 +129,9 @@ describe("handleChat", () => {
       conversationId: "c1",
     };
     await chat(body(convo), deps);
-    const streamArg = deps.streamTextFn.mock.calls[0][0];
+    // Cast: streamTextFn's fixture param is typed `unknown` (see baseDeps), so its
+    // captured call arg needs narrowing here to read the field this test checks.
+    const streamArg = deps.streamTextFn.mock.calls[0][0] as { messages: unknown };
     // Full conversation history is forwarded as messages (context memory).
     expect(streamArg.messages).toEqual([
       { role: "user", content: "Who is Broderick?" },

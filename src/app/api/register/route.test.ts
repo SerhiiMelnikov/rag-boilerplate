@@ -23,6 +23,16 @@ function req(body: unknown, ip = "203.0.113.7") {
   });
 }
 
+// Variant that omits x-forwarded-for entirely (unlike req(), which always sets it,
+// even to an empty string) — mirrors a direct hit with no proxy in front, e.g. local dev.
+function reqNoForwardedFor(body: unknown, extraHeaders: Record<string, string> = {}) {
+  return new Request("http://test/api/register", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...extraHeaders },
+    body: JSON.stringify(body),
+  });
+}
+
 // NOTE: the installed zod (^3.25.76) rejects "a@b.c" as an invalid email (its TLD
 // must be at least 2 characters), so a valid-looking single-letter TLD is used here
 // instead of the shorter form seen in some drafts of this fixture.
@@ -73,5 +83,27 @@ describe("registerUser", () => {
     deps.createUserFn = vi.fn(async () => { throw new DuplicateEmailError("taken"); });
     const res = await registerUser(req(GOOD), deps);
     expect(res.status).toBe(409);
+  });
+
+  // Design fix (overrides the original brief): without x-forwarded-for there is no
+  // client identity to bucket on, so we skip the rate-limit check entirely rather than
+  // fall back to a shared "unknown" bucket — see clientIp's comment in handler.ts for
+  // why a shared bucket would be a self-inflicted DoS and would break local dev.
+  it("skips rate limiting entirely when x-forwarded-for is absent, and still creates the user", async () => {
+    const deps = baseDeps();
+    const res = await registerUser(reqNoForwardedFor(GOOD), deps);
+
+    expect(res.status).toBe(201);
+    expect(deps.rateLimitFn).not.toHaveBeenCalled();
+    expect(deps.createUserFn).toHaveBeenCalled();
+  });
+
+  it("treats an empty/whitespace-only x-forwarded-for the same as absent", async () => {
+    const deps = baseDeps();
+    const res = await registerUser(reqNoForwardedFor(GOOD, { "x-forwarded-for": "   " }), deps);
+
+    expect(res.status).toBe(201);
+    expect(deps.rateLimitFn).not.toHaveBeenCalled();
+    expect(deps.createUserFn).toHaveBeenCalled();
   });
 });

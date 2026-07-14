@@ -20,6 +20,44 @@ jobs:
       - run: npm run lint -- --max-warnings=0
       - run: npx vitest run
 
+  integration:
+    name: integration (ratelimit)
+    runs-on: ubuntu-latest
+    services:
+      # Same image/credentials/health check as the scaffold job's postgres
+      # service below — vitest.integration.config.ts does not stub DATABASE_URL
+      # (unlike the unit config), so it must point at a real Postgres that
+      # matches what db:migrate and the test below connect to.
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: rag
+          POSTGRES_PASSWORD: rag
+          POSTGRES_DB: rag
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://rag:rag@localhost:5432/rag
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+      # Only the ratelimit integration suite: it is the one that actually
+      # exercises the atomic INSERT ... ON CONFLICT DO UPDATE against a real
+      # Postgres (the unit suite's fake models the counter in a JS Map and
+      # would stay green even if this regressed to a racy SELECT-then-UPDATE).
+      # The rest of the repo's integration tests need live Chroma/Weaviate/
+      # Pinecone and are out of scope here.
+      - run: RUN_INTEGRATION=1 npx vitest run --config vitest.integration.config.ts src/lib/ratelimit/store.integration.test.ts
+
   cli:
     name: cli (tests, build)
     runs-on: ubuntu-latest

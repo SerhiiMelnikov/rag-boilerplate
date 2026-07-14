@@ -12,7 +12,15 @@ const OUT = resolve(import.meta.dirname, "..", "template");
 // README tailored to the user's actual selection, written by scaffold() (see
 // cli/src/readme.ts) as its only README. ".github" is this repo's own CI: a
 // matrix over cli/ and all five vector stores, meaningless in a generated app.
-export const EXCLUDE = new Set([".github", "cli", "docs", ".superpowers", "node_modules", ".next", ".git", "tsconfig.tsbuildinfo", ".env", "package-lock.json", "next-env.d.ts", ".claude", "LICENSE", "README.md"]);
+// "graphify-out" is generated knowledge-graph scratch output (see .gitignore) —
+// it must never ship inside the published template.
+//
+// This set has already drifted out of sync with .gitignore once (graphify-out
+// was gitignored but missing here for a while, which would have shipped ~2.8MB
+// of generated artifacts in the npm tarball). build-template.test.ts asserts
+// every gitignored top-level directory has an entry here, specifically to
+// catch a repeat of that.
+export const EXCLUDE = new Set([".github", "cli", "docs", ".superpowers", "node_modules", ".next", ".git", "tsconfig.tsbuildinfo", ".env", "package-lock.json", "next-env.d.ts", ".claude", "LICENSE", "README.md", "graphify-out"]);
 // The template is a clean starting point; the boilerplate's own tests (and the
 // vitest configs that run them) are not shipped. This also matters functionally:
 // scaffold() prunes unselected provider adapters and vector-store dirs, and the

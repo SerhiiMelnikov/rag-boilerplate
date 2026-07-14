@@ -36,3 +36,77 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+
+  scaffold:
+    name: scaffold (${{ matrix.store }})
+    runs-on: ubuntu-latest
+    strategy:
+      # One store failing must not hide the state of the other four.
+      fail-fast: false
+      matrix:
+        store: [pgvector, qdrant, chroma, weaviate, pinecone]
+    services:
+      # Credentials must match the DATABASE_URL the CLI writes into the generated
+      # .env (cli/src/transforms/config.ts). pgvector's image is a superset of
+      # stock Postgres, so it serves every store in the matrix.
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: rag
+          POSTGRES_PASSWORD: rag
+          POSTGRES_DB: rag
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Build the CLI and its template
+        working-directory: cli
+        run: |
+          npm ci
+          npm run build:template
+          npm run build
+
+      # --no-install: the workflow installs explicitly in the next step, so a
+      # failure is attributable. --no-git: nothing here needs a repo.
+      - name: Scaffold a project
+        run: >
+          node cli/dist/index.js out-app --yes
+          --vector-store ${{ matrix.store }}
+          --providers google --default-provider google
+          --no-install --no-git
+
+      - name: Install the generated project's dependencies
+        working-directory: out-app
+        run: npm install
+
+      # pgvector ships a checked-in drizzle/ directory; for every other store the
+      # CLI deletes it, so the schema has to be generated from schema.ts.
+      - name: Generate migrations (non-pgvector only)
+        if: matrix.store != 'pgvector'
+        working-directory: out-app
+        run: npm run db:generate
+
+      # The install path from the generated README. seed:admin is what creates the
+      # default General workspace — without it every workspace lookup throws.
+      - name: Migrate and seed
+        working-directory: out-app
+        run: |
+          npm run db:migrate
+          npm run seed:admin
+
+      - name: Type-check, lint, and build
+        working-directory: out-app
+        run: |
+          npx tsc --noEmit
+          npm run lint
+          npm run build

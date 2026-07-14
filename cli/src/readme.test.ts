@@ -86,6 +86,12 @@ describe("generateReadme guidance", () => {
   it("tells the admin to set provider keys before anything else", () => {
     expect(generateReadme(opts())).toMatch(/keys.*first|first.*keys/is);
   });
+
+  it("tells the user the rate limits exist and how to disable them", () => {
+    const out = generateReadme(opts());
+    expect(out).toContain("rate limits");
+    expect(out).toContain("`0` disables a limit");
+  });
 });
 
 describe("generateReadme secrets", () => {

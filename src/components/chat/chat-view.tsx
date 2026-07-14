@@ -8,6 +8,7 @@ import { MessageContent } from "./message-content";
 import { Sources } from "./sources";
 import { Rating } from "./rating";
 import { ImageResults } from "./image-results";
+import { humanizeChatError } from "./chat-error";
 
 interface PersistedMessage {
   id: string;
@@ -20,7 +21,7 @@ interface PersistedMessage {
 
 export function ChatView({ conversationId, onTurnComplete }: { conversationId: string; onTurnComplete?: () => void }) {
   const [persisted, setPersisted] = useState<PersistedMessage[]>([]);
-  const { messages, input, handleInputChange, handleSubmit, status, setMessages } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, status, setMessages, error } = useChat({
     api: "/api/chat",
     body: { conversationId },
   });
@@ -87,6 +88,11 @@ export function ChatView({ conversationId, onTurnComplete }: { conversationId: s
           </div>
         )}
       </div>
+      {error && (
+        <div role="alert" className="mx-4 mb-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+          {humanizeChatError(error)}
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="flex gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800">
         <input
           value={input} onChange={handleInputChange} placeholder="Ask something..." aria-label="Message"

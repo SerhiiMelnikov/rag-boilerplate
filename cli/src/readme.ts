@@ -75,7 +75,9 @@ export function generateReadme(o: InstallOptions): string {
   lines.push("- **Workspaces** — create workspaces and grant users access to them.");
   lines.push("- **Provider keys** — set your API keys (encrypted at rest). Do this first:");
   lines.push("  nothing can be ingested or answered without them.");
-  lines.push("- **Settings** — pick the chat/embedding/image models and tune retrieval.");
+  lines.push("- **Settings** — pick the chat/embedding/image models, tune retrieval, and set");
+  lines.push("  rate limits (chat requests per minute and per day per user; registrations per");
+  lines.push("  hour per IP). `0` disables a limit. These guard your provider budget.");
   lines.push("- **Users** — manage accounts and roles.");
   lines.push("- **Analytics** — see how answers were rated.");
   lines.push("");

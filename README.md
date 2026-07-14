@@ -62,6 +62,10 @@ The generated app includes:
 - An admin panel: a unified Files list (documents + images, with workspace
   membership), workspaces and user access, provider API keys (encrypted at rest),
   retrieval settings, user management, rating analytics
+- **Rate limits** — under **Settings**, cap chat requests per minute and per day
+  (per user) and registrations per hour (per IP). Set any of them to `0` to
+  disable that limit. They exist because `/api/chat` sits in front of a paid
+  model: without a cap, one runaway client can spend your entire budget.
 - A hand-rolled RAG engine: chunking, parsing (PDF/DOCX/Markdown/text),
   embeddings, hybrid (vector + keyword) retrieval, ingestion
 - Auth.js-based authentication with admin/user roles

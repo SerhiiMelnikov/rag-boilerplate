@@ -48,9 +48,14 @@ function baseDeps<T extends object = object>(over: T = {} as T) {
     // Response. `args` is typed `unknown` (not a narrowed literal): a narrowed param type
     // would make this mock's signature contravariantly incompatible with StreamTextLike's
     // real (large) `Parameters<typeof streamText>[0]` type, forcing a whole-field cast that
-    // erases the Mock typing `.mock.calls` below relies on. `unknown` is assignable *to*
-    // from anything, so the mock stays structurally checked as `Mock<(args: unknown) => …>`
-    // without any cast, and we narrow internally only where we read from it.
+    // erases the Mock typing `.mock.calls` below relies on.
+    //
+    // Be honest about what this buys: the RETURN type is checked against StreamTextLike,
+    // but the PARAMETER is not — `unknown` is the top type, so any parameter shape is
+    // assignable to it and drift in `Parameters<typeof streamText>[0]` cannot fail here.
+    // The previous `args: any` had the same blind spot (`any` is bivariant), so this is
+    // not a regression — just a limit worth naming. Every other field of ChatDeps IS
+    // checked against its production type.
     streamTextFn: vi.fn((args: unknown) => {
       const { onFinish } = args as { onFinish?: (arg: { text: string; usage: { promptTokens: number; completionTokens: number } }) => void };
       onFinish?.({ text: "answer", usage: { promptTokens: 10, completionTokens: 3 } });

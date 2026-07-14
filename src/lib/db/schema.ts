@@ -137,3 +137,17 @@ export const userWorkspaces = pgTable("user_workspaces", {
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
 }, (t) => ({ pk: primaryKey({ columns: [t.userId, t.workspaceId] }) }));
+
+// Fixed-window rate-limit counters. `key` identifies the subject and the rule
+// (e.g. "chat:minute:user:<id>"), `window_start` is the clock floored to the
+// window, so a row is one (subject, rule, window) bucket. Rows are disposable:
+// they are pruned once they fall out of the longest window.
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    key: text("key").notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.key, t.windowStart] }) }),
+);

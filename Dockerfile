@@ -3,8 +3,17 @@
 # Node 22 LTS, not latest: the Qdrant client breaks on Node >= 26.
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
+# Every lockfile is globbed so it is optional: the CLI ships no lockfile (it is
+# excluded from the template) and supports npm/pnpm/yarn/bun, so a generated
+# project may carry any one of these — or none, when scaffolded with --no-install.
+COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* bun.lockb* bun.lock* .npmrc* ./
+RUN \
+  if [ -f package-lock.json ]; then npm ci; \
+  elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile; \
+  elif [ -f yarn.lock ]; then corepack enable && yarn --frozen-lockfile; \
+  elif [ -f bun.lockb ] || [ -f bun.lock ]; then npm i -g bun && bun install --frozen-lockfile; \
+  else npm install; \
+  fi
 
 FROM node:22-alpine AS builder
 WORKDIR /app
@@ -28,7 +37,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Run as a non-root user: a compromised app process should not be root in the
 # container.
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
-COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 # standalone bundles server.js plus only the traced node_modules.
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static

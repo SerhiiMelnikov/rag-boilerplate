@@ -18,9 +18,11 @@ function baseDeps() {
     getSettingsFn: vi.fn(async () => SETTINGS),
     findUserFn: vi.fn(async () => null as { id: string; emailVerifiedAt: Date | null } | null),
     createUserFn: vi.fn(async () => ({ id: "u1", email: "a@company.com", role: "user" as const })),
-    resetPasswordFn: vi.fn(async () => undefined),
     deleteUserFn: vi.fn(async () => undefined),
     createTokenFn: vi.fn(async () => "tok"),
+    // A stub, not the real bcrypt hash, so assertions can check exactly what
+    // travels to createTokenFn without paying (or depending on) real hashing cost.
+    hashPasswordFn: vi.fn(async (pw: string) => `hashed:${pw}`),
     // Explicit param type: without it, TS infers a zero-arg mock (same inference
     // gap as findUserForRegistration — see users.ts), and `mock.calls[0][0]` below
     // would not type-check.
@@ -39,7 +41,7 @@ describe("registerUser (verified mode)", () => {
     const res = await registerUser(req(GOOD), deps);
     expect(res.status).toBe(201);
     await expect(res.json()).resolves.toEqual({ status: "verification_sent" });
-    expect(deps.createTokenFn).toHaveBeenCalledWith("u1");
+    expect(deps.createTokenFn).toHaveBeenCalledWith("u1", "hashed:password123");
     expect(deps.sendEmailFn).toHaveBeenCalled();
   });
 
@@ -72,14 +74,20 @@ describe("registerUser (verified mode)", () => {
     expect(deps.sendEmailFn).not.toHaveBeenCalled();
   });
 
-  // Without this, one unverified registration squats an address forever.
+  // Without this, one unverified registration squats an address forever. Note
+  // what does NOT happen here: no function exists any more that can write
+  // users.passwordHash for a pre-existing row (createUserFn — the only thing
+  // that can — must stay uncalled), which is the account-pre-hijack fix: a
+  // re-registration only ever mints a new token carrying the new hash, so the
+  // previous owner's already-mailed link is left to resolve to whatever
+  // password it was minted with (see verification.test.ts for the full attack
+  // reproduction).
   it("resends for an unverified address instead of squatting it", async () => {
     const deps = baseDeps();
     deps.findUserFn = vi.fn(async () => ({ id: "old", emailVerifiedAt: null }));
     const res = await registerUser(req(GOOD), deps);
     expect(res.status).toBe(201);
-    expect(deps.resetPasswordFn).toHaveBeenCalledWith("old", "password123");
-    expect(deps.createTokenFn).toHaveBeenCalledWith("old");
+    expect(deps.createTokenFn).toHaveBeenCalledWith("old", "hashed:password123");
     expect(deps.sendEmailFn).toHaveBeenCalled();
     expect(deps.createUserFn).not.toHaveBeenCalled();
   });
@@ -122,8 +130,9 @@ describe("registerUser verification link", () => {
     expect(html).not.toContain("localhost:3000");
   });
 
-  it("falls back to the request's own origin when AUTH_URL is unset", async () => {
+  it("falls back to the request's own origin when AUTH_URL is unset in development", async () => {
     vi.stubEnv("AUTH_URL", undefined);
+    vi.stubEnv("NODE_ENV", "development");
     const deps = baseDeps();
     await registerUser(req(GOOD), deps);
     const { html } = deps.sendEmailFn.mock.calls[0][0];
@@ -131,5 +140,21 @@ describe("registerUser verification link", () => {
     // derived from that origin, never a hardcoded default.
     expect(html).toContain("http://test/api/auth/verify?token=tok");
     expect(html).not.toContain("localhost:3000");
+  });
+
+  // A proxy that forwards the client's Host verbatim (proxy_set_header Host $host,
+  // a very common recipe) would let an attacker POSTing with a spoofed Host mint a
+  // victim's verification link pointing at the attacker's own server. /api/register
+  // is not an Auth.js route, so AUTH_TRUST_HOST does not guard it. In production we
+  // must not trust the request at all: fail loudly instead of sending an untrusted link.
+  it("503s and sends nothing when AUTH_URL is unset in production", async () => {
+    vi.stubEnv("AUTH_URL", undefined);
+    vi.stubEnv("NODE_ENV", "production");
+    const deps = baseDeps();
+    const res = await registerUser(req(GOOD), deps);
+    expect(res.status).toBe(503);
+    expect(deps.sendEmailFn).not.toHaveBeenCalled();
+    expect(deps.createTokenFn).not.toHaveBeenCalled();
+    expect(deps.createUserFn).not.toHaveBeenCalled();
   });
 });

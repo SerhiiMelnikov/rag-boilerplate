@@ -175,5 +175,12 @@ export const rateLimits = pgTable(
 export const emailVerificationTokens = pgTable("email_verification_tokens", {
   token: text("token").primaryKey(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // The password this link was minted for. A re-registration on the same address
+  // must never overwrite users.password_hash directly — that would retarget every
+  // verification link already sitting in an inbox to whichever password overwrote
+  // it last. Binding the hash to the token instead means consuming a token always
+  // restores the exact password it was minted with, no matter how many later
+  // tokens exist for the same user.
+  passwordHash: text("password_hash").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });

@@ -30,14 +30,15 @@ function paramValue(where: unknown, expectedColumn: string): string {
 
 // Fake db modelling one tokens table + the users row it verifies.
 function fakeDb() {
-  const tokens = new Map<string, { userId: string; expiresAt: Date }>();
+  const tokens = new Map<string, { userId: string; passwordHash: string; expiresAt: Date }>();
   // Captures the full `.set()` payload, not just that *some* update happened — so a
-  // wrong or missing `emailVerifiedAt` is visible to the test, not thrown away.
-  const verified: { userId: string; emailVerifiedAt: Date }[] = [];
+  // wrong or missing `passwordHash`/`emailVerifiedAt` is visible to the test, not
+  // thrown away.
+  const verified: { userId: string; passwordHash: string; emailVerifiedAt: Date }[] = [];
   const db = {
     insert: () => ({
-      values: async (v: { token: string; userId: string; expiresAt: Date }) => {
-        tokens.set(v.token, { userId: v.userId, expiresAt: v.expiresAt });
+      values: async (v: { token: string; userId: string; passwordHash: string; expiresAt: Date }) => {
+        tokens.set(v.token, { userId: v.userId, passwordHash: v.passwordHash, expiresAt: v.expiresAt });
       },
     }),
     select: () => ({
@@ -46,16 +47,16 @@ function fakeDb() {
           limit: async () => {
             const token = paramValue(w, "token");
             const row = tokens.get(token);
-            return row ? [{ token, userId: row.userId, expiresAt: row.expiresAt }] : [];
+            return row ? [{ token, userId: row.userId, passwordHash: row.passwordHash, expiresAt: row.expiresAt }] : [];
           },
         }),
       }),
     }),
     update: () => ({
-      set: (payload: { emailVerifiedAt: Date }) => ({
+      set: (payload: { passwordHash: string; emailVerifiedAt: Date }) => ({
         where: async (w: unknown) => {
           const userId = paramValue(w, "id");
-          verified.push({ userId, emailVerifiedAt: payload.emailVerifiedAt });
+          verified.push({ userId, passwordHash: payload.passwordHash, emailVerifiedAt: payload.emailVerifiedAt });
         },
       }),
     }),
@@ -72,39 +73,40 @@ function fakeDb() {
 const NOW = 1_800_000_000_000;
 
 describe("verification tokens", () => {
-  it("issues a token bound to the user", async () => {
+  it("issues a token bound to the user and its password hash", async () => {
     const { db, tokens } = fakeDb();
-    const t = await createVerificationToken("u1", { database: db, now: () => NOW, randomToken: () => "tok" });
+    const t = await createVerificationToken("u1", "hash1", { database: db, now: () => NOW, randomToken: () => "tok" });
     expect(t).toBe("tok");
     expect(tokens.get("tok")?.userId).toBe("u1");
+    expect(tokens.get("tok")?.passwordHash).toBe("hash1");
   });
 
   it("expires the token 24 hours out", async () => {
     const { db, tokens } = fakeDb();
-    await createVerificationToken("u1", { database: db, now: () => NOW, randomToken: () => "tok" });
+    await createVerificationToken("u1", "hash1", { database: db, now: () => NOW, randomToken: () => "tok" });
     expect(tokens.get("tok")?.expiresAt.getTime()).toBe(NOW + 24 * 60 * 60 * 1000);
   });
 
-  it("verifies the user and returns true", async () => {
+  it("verifies the user, sets the token's password hash, and returns true", async () => {
     const { db, verified } = fakeDb();
-    await createVerificationToken("u1", { database: db, now: () => NOW, randomToken: () => "tok" });
+    await createVerificationToken("u1", "hash1", { database: db, now: () => NOW, randomToken: () => "tok" });
     expect(await consumeVerificationToken("tok", { database: db, now: () => NOW })).toBe(true);
     // Asserts the actual `.set()` payload, not just that some update touched "u1" —
-    // a wrong or missing `emailVerifiedAt` must be visible here.
-    expect(verified).toEqual([{ userId: "u1", emailVerifiedAt: new Date(NOW) }]);
+    // a wrong or missing `passwordHash`/`emailVerifiedAt` must be visible here.
+    expect(verified).toEqual([{ userId: "u1", passwordHash: "hash1", emailVerifiedAt: new Date(NOW) }]);
   });
 
   // The deciding test: a link forwarded or replayed must not work twice.
   it("cannot be consumed twice", async () => {
     const { db } = fakeDb();
-    await createVerificationToken("u1", { database: db, now: () => NOW, randomToken: () => "tok" });
+    await createVerificationToken("u1", "hash1", { database: db, now: () => NOW, randomToken: () => "tok" });
     expect(await consumeVerificationToken("tok", { database: db, now: () => NOW })).toBe(true);
     expect(await consumeVerificationToken("tok", { database: db, now: () => NOW })).toBe(false);
   });
 
   it("refuses an expired token and verifies nobody", async () => {
     const { db, verified } = fakeDb();
-    await createVerificationToken("u1", { database: db, now: () => NOW, randomToken: () => "tok" });
+    await createVerificationToken("u1", "hash1", { database: db, now: () => NOW, randomToken: () => "tok" });
     const later = NOW + 24 * 60 * 60 * 1000 + 1;
     expect(await consumeVerificationToken("tok", { database: db, now: () => later })).toBe(false);
     expect(verified).toEqual([]);
@@ -117,9 +119,45 @@ describe("verification tokens", () => {
 
   it("issues unpredictable tokens by default", async () => {
     const { db } = fakeDb();
-    const a = await createVerificationToken("u1", { database: db, now: () => NOW });
-    const b = await createVerificationToken("u2", { database: db, now: () => NOW });
+    const a = await createVerificationToken("u1", "hash1", { database: db, now: () => NOW });
+    const b = await createVerificationToken("u2", "hash2", { database: db, now: () => NOW });
     expect(a).not.toBe(b);
     expect(a.length).toBeGreaterThanOrEqual(32);
+  });
+});
+
+// account pre-hijacking (CRITICAL finding): the design used to claim "an unverified
+// row confers nothing, so overwriting its password is safe." False — it confers a
+// live token already sitting in the victim's inbox. Overwriting users.passwordHash
+// directly at re-registration time retargets every link already in flight to
+// whichever password overwrote it last. The fix binds the password to the token
+// instead, so consuming a token always restores exactly the password it was minted
+// with — no matter what happened to the user row (or other tokens) since.
+describe("account pre-hijacking via the unverified-overwrite path", () => {
+  it("a later token for the same user cannot retarget an earlier one already in flight", async () => {
+    const { db, tokens, verified } = fakeDb();
+
+    // 1. VICTIM registers: token T1 is minted carrying the victim's password hash.
+    const t1 = await createVerificationToken("victim-id", "victim-hash", {
+      database: db, now: () => NOW, randomToken: () => "T1",
+    });
+    expect(tokens.get(t1)?.passwordHash).toBe("victim-hash");
+
+    // 2. ATTACKER re-registers the same address before the victim clicks anything.
+    // This must only mint the attacker's own token (T2) — it must not touch the
+    // users row at all (nothing here calls `update`, so `verified` stays empty).
+    const t2 = await createVerificationToken("victim-id", "attacker-hash", {
+      database: db, now: () => NOW, randomToken: () => "T2",
+    });
+    expect(tokens.get(t2)?.passwordHash).toBe("attacker-hash");
+    expect(verified).toEqual([]);
+
+    // 3. VICTIM clicks their OWN original link (T1).
+    expect(await consumeVerificationToken(t1, { database: db, now: () => NOW })).toBe(true);
+
+    // 4. The victim's own password wins — not the attacker's later token. Under the
+    // old "overwrite users.passwordHash at registration" design, step 2 would have
+    // already clobbered the password, and this assertion would see "attacker-hash".
+    expect(verified).toEqual([{ userId: "victim-id", passwordHash: "victim-hash", emailVerifiedAt: new Date(NOW) }]);
   });
 });

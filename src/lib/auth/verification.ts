@@ -17,12 +17,20 @@ function defaultToken(): string {
   return randomBytes(32).toString("base64url");
 }
 
-export async function createVerificationToken(userId: string, deps: VerificationDeps = {}): Promise<string> {
+// passwordHash is the hash this link is minted for. It travels with the token —
+// not the users row — so a later re-registration on the same address can never
+// retarget a link that is already in flight (see the schema comment on
+// emailVerificationTokens).
+export async function createVerificationToken(
+  userId: string,
+  passwordHash: string,
+  deps: VerificationDeps = {},
+): Promise<string> {
   const database = deps.database ?? defaultDb;
   const now = deps.now ? deps.now() : Date.now();
   const token = (deps.randomToken ?? defaultToken)();
   await database.insert(emailVerificationTokens).values({
-    token, userId, expiresAt: new Date(now + TOKEN_TTL_MS),
+    token, userId, passwordHash, expiresAt: new Date(now + TOKEN_TTL_MS),
   });
   return token;
 }
@@ -45,7 +53,12 @@ export async function consumeVerificationToken(token: string, deps: Verification
     }
     // Verification and deletion are one transaction: a crash between them would
     // leave a live token for an already-verified user, letting it be replayed.
-    await tx.update(users).set({ emailVerifiedAt: new Date(now) }).where(eq(users.id, row.userId));
+    // The password rides on the token, so consuming it is what actually sets the
+    // user's password — whichever link the user clicks wins with its own
+    // password, regardless of how many newer tokens exist for the same user.
+    await tx.update(users)
+      .set({ passwordHash: row.passwordHash, emailVerifiedAt: new Date(now) })
+      .where(eq(users.id, row.userId));
     await tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.token, token));
     return true;
   });

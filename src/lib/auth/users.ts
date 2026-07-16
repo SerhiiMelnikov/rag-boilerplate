@@ -22,12 +22,6 @@ export async function findUserForRegistration(
   return row ?? null;
 }
 
-// Overwrite the password of an unverified registration. Safe only for unverified
-// rows — they confer no login and no session, so nothing is being hijacked.
-export async function resetUnverifiedPassword(userId: string, password: string, database = defaultDb): Promise<void> {
-  await database.update(users).set({ passwordHash: await hashPassword(password) }).where(eq(users.id, userId));
-}
-
 export async function deleteUser(userId: string, database = defaultDb): Promise<void> {
   await database.delete(users).where(eq(users.id, userId));
 }

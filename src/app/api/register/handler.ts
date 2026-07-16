@@ -1,5 +1,6 @@
 import { credentialsSchema } from "@/lib/validation";
-import { createUser, DuplicateEmailError, findUserForRegistration, resetUnverifiedPassword, deleteUser } from "@/lib/auth/users";
+import { createUser, DuplicateEmailError, findUserForRegistration, deleteUser } from "@/lib/auth/users";
+import { hashPassword } from "@/lib/auth/password";
 import { getRegistrationSettings } from "@/lib/config/settings-service";
 import { isEmailDomainAllowed } from "@/lib/auth/domains";
 import { createVerificationToken } from "@/lib/auth/verification";
@@ -10,19 +11,34 @@ export interface RegisterDeps {
   getSettingsFn?: typeof getRegistrationSettings;
   findUserFn?: typeof findUserForRegistration;
   createUserFn?: typeof createUser;
-  resetPasswordFn?: typeof resetUnverifiedPassword;
   deleteUserFn?: typeof deleteUser;
   createTokenFn?: typeof createVerificationToken;
+  hashPasswordFn?: typeof hashPassword;
   sendEmailFn?: typeof sendEmail;
 }
 
-// Absolute base for the emailed link. AUTH_URL is the explicit override (Auth.js
-// uses the same variable); without it, fall back to the origin of the request that
-// asked to register. That is correct in development and behind any proxy that sets
-// Host properly — which this app already requires anyway, since Auth.js rejects a
-// Host it does not trust (see AUTH_TRUST_HOST in docker-compose.yml).
-function verifyLink(request: Request, token: string): string {
-  const base = process.env.AUTH_URL ?? new URL(request.url).origin;
+// Thrown when we cannot mint a link we would be willing to send. Caught the same
+// way as EmailNotConfiguredError: a clean 503 rather than a link we can't trust.
+class UntrustedAuthOriginError extends Error {
+  constructor() {
+    super("AUTH_URL is required in production; refusing to trust the request's Host");
+    this.name = "UntrustedAuthOriginError";
+  }
+}
+
+// The emailed link's base MUST NOT come from the request in production: /api/register
+// is not an Auth.js route, so AUTH_TRUST_HOST does not guard it, and a proxy that
+// forwards the client's Host verbatim would let an attacker mint a link pointing at
+// their own server — capturing the victim's token. Dev has no proxy and no attacker,
+// so the request's origin is fine there.
+function resolveAuthBase(request: Request): string {
+  const configured = process.env.AUTH_URL;
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") throw new UntrustedAuthOriginError();
+  return new URL(request.url).origin;
+}
+
+function verifyLink(base: string, token: string): string {
   return `${base.replace(/\/$/, "")}/api/auth/verify?token=${encodeURIComponent(token)}`;
 }
 
@@ -30,9 +46,9 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
   const getSettingsFn = deps.getSettingsFn ?? getRegistrationSettings;
   const findUserFn = deps.findUserFn ?? findUserForRegistration;
   const createUserFn = deps.createUserFn ?? createUser;
-  const resetPasswordFn = deps.resetPasswordFn ?? resetUnverifiedPassword;
   const deleteUserFn = deps.deleteUserFn ?? deleteUser;
   const createTokenFn = deps.createTokenFn ?? createVerificationToken;
+  const hashPasswordFn = deps.hashPasswordFn ?? hashPassword;
   const sendEmailFn = deps.sendEmailFn ?? sendEmail;
 
   let body: unknown;
@@ -46,6 +62,19 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
     return Response.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 });
   }
   const { email, password } = parsed.data;
+
+  // Fail before touching the database at all: if we cannot trust a base for the
+  // link, no amount of further processing makes sending one safe.
+  let authBase: string;
+  try {
+    authBase = resolveAuthBase(request);
+  } catch (err) {
+    if (err instanceof UntrustedAuthOriginError) {
+      console.error("register: AUTH_URL is not set in production; refusing to mint a verification link from the request's Host header");
+      return Response.json({ error: "Registration is unavailable: the server is not configured." }, { status: 503 });
+    }
+    throw err;
+  }
 
   const settings = await getSettingsFn();
 
@@ -64,13 +93,18 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
     return Response.json({ error: "Email already registered" }, { status: 409 });
   }
 
-  // An unverified row confers nothing — no login, no session — so overwriting it is
-  // safe, and NOT overwriting it would let one unverified attempt squat an address
-  // against its real owner forever.
+  // An unverified row confers no login and no session on its own — but it DOES
+  // confer a live token already sitting in that address's inbox. Overwriting
+  // users.passwordHash here would retarget every link already in flight to
+  // whichever password overwrote it last (account pre-hijacking). So a
+  // pre-existing unverified row is never touched: we only ever mint a new token,
+  // carrying the new password, and leave the old token(s) and the users row alone.
+  // Whoever clicks their own link gets their own password — see
+  // createVerificationToken/consumeVerificationToken.
+  const passwordHash = await hashPasswordFn(password);
   let userId: string;
   let created = false;
   if (existing) {
-    await resetPasswordFn(existing.id, password);
     userId = existing.id;
   } else {
     try {
@@ -86,8 +120,8 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
   }
 
   try {
-    const token = await createTokenFn(userId);
-    const { subject, html } = verificationEmail(verifyLink(request, token));
+    const token = await createTokenFn(userId, passwordHash);
+    const { subject, html } = verificationEmail(verifyLink(authBase, token));
     await sendEmailFn({ to: email, subject, html });
   } catch (err) {
     // Roll back only what we created. Deleting a pre-existing row would destroy

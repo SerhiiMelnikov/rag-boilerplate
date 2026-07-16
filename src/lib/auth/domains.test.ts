@@ -36,4 +36,16 @@ describe("isEmailDomainAllowed", () => {
     expect(isEmailDomainAllowed("", "company.com")).toBe(false);
     expect(isEmailDomainAllowed("a@", "company.com")).toBe(false);
   });
+
+  // This function claims to be a security boundary on its own — it must hold even if
+  // some future caller stops pre-validating with a real email parser.
+  it("rejects a local part that itself contains an @ (ambiguous split)", () => {
+    expect(isEmailDomainAllowed("a@b@company.com", "company.com")).toBe(false);
+  });
+
+  it("rejects whitespace hiding in the local part or the domain", () => {
+    expect(isEmailDomainAllowed("a@ company.com", "company.com")).toBe(false);
+    expect(isEmailDomainAllowed("a b@company.com", "company.com")).toBe(false);
+    expect(isEmailDomainAllowed("a@company .com", "company.com")).toBe(false);
+  });
 });

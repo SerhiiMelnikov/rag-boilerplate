@@ -7,10 +7,24 @@
 //
 // An empty list denies everyone. That is the safe reading: treating empty as
 // "allow all" would make a fresh install silently accept the whole internet.
+//
+// This must hold as a security boundary on its own, not merely because today's
+// caller happens to validate the address with a real email parser first. So beyond
+// the domain match: reject a local part (before the last "@") that itself contains
+// an "@" or whitespace, and reject a domain containing whitespace. Without this,
+// `lastIndexOf("@")` plus `trim()` can be tricked into approving an address that
+// isn't what it looks like — e.g. "a@b@company.com" (ambiguous split) or
+// "a@ company.com" (whitespace trimmed away before the compare).
 export function isEmailDomainAllowed(email: string, allowedCsv: string): boolean {
   const at = email.lastIndexOf("@");
   if (at <= 0 || at === email.length - 1) return false;
-  const domain = email.slice(at + 1).trim().toLowerCase();
+
+  const local = email.slice(0, at);
+  if (local.includes("@") || /\s/.test(local)) return false;
+
+  const rawDomain = email.slice(at + 1);
+  if (/\s/.test(rawDomain)) return false;
+  const domain = rawDomain.toLowerCase();
   if (!domain) return false;
 
   const allowed = allowedCsv

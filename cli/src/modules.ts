@@ -20,6 +20,14 @@ export interface VectorStoreModule {
   dockerVolume: string | null;
   envHeader: string | null; // substring identifying its block header in .env.example
   initNeeded: boolean;
+  // Env vars to override on the compose `app` service so it addresses this
+  // store by its in-network service name instead of the `localhost` URL
+  // generateEnv() writes into .env (correct for `npm run dev` on the host,
+  // wrong inside the app container, where localhost is the container itself).
+  // null for stores with no docker-compose service of their own: pgvector
+  // (lives in Postgres — DATABASE_URL already covers it) and pinecone
+  // (managed, reached over the internet via PINECONE_API_KEY).
+  appEnvOverrides: Record<string, string> | null;
 }
 
 // Default model ids are sensible, currently-available defaults; the admin can
@@ -50,11 +58,11 @@ export const PROVIDERS: Record<ProviderId, ProviderModule> = {
 };
 
 export const VECTOR_STORES: Record<VectorStoreId, VectorStoreModule> = {
-  pgvector: { id: "pgvector", label: "pgvector (Postgres)", dir: "src/lib/vectorstore/pgvector", deps: [], dockerService: null, dockerVolume: null, envHeader: null, initNeeded: false },
-  qdrant: { id: "qdrant", label: "Qdrant", dir: "src/lib/vectorstore/qdrant", deps: ["@qdrant/js-client-rest"], dockerService: "qdrant", dockerVolume: "rag_qdrant", envHeader: "Qdrant", initNeeded: true },
-  chroma: { id: "chroma", label: "Chroma", dir: "src/lib/vectorstore/chroma", deps: ["chromadb"], dockerService: "chroma", dockerVolume: "rag_chroma", envHeader: "Chroma", initNeeded: true },
-  weaviate: { id: "weaviate", label: "Weaviate", dir: "src/lib/vectorstore/weaviate", deps: ["weaviate-client"], dockerService: "weaviate", dockerVolume: "rag_weaviate", envHeader: "Weaviate", initNeeded: true },
-  pinecone: { id: "pinecone", label: "Pinecone (managed)", dir: "src/lib/vectorstore/pinecone", deps: ["@pinecone-database/pinecone"], dockerService: null, dockerVolume: null, envHeader: "Pinecone", initNeeded: true },
+  pgvector: { id: "pgvector", label: "pgvector (Postgres)", dir: "src/lib/vectorstore/pgvector", deps: [], dockerService: null, dockerVolume: null, envHeader: null, initNeeded: false, appEnvOverrides: null },
+  qdrant: { id: "qdrant", label: "Qdrant", dir: "src/lib/vectorstore/qdrant", deps: ["@qdrant/js-client-rest"], dockerService: "qdrant", dockerVolume: "rag_qdrant", envHeader: "Qdrant", initNeeded: true, appEnvOverrides: { QDRANT_URL: "http://qdrant:6333" } },
+  chroma: { id: "chroma", label: "Chroma", dir: "src/lib/vectorstore/chroma", deps: ["chromadb"], dockerService: "chroma", dockerVolume: "rag_chroma", envHeader: "Chroma", initNeeded: true, appEnvOverrides: { CHROMA_URL: "http://chroma:8000" } },
+  weaviate: { id: "weaviate", label: "Weaviate", dir: "src/lib/vectorstore/weaviate", deps: ["weaviate-client"], dockerService: "weaviate", dockerVolume: "rag_weaviate", envHeader: "Weaviate", initNeeded: true, appEnvOverrides: { WEAVIATE_URL: "http://weaviate:8080" } },
+  pinecone: { id: "pinecone", label: "Pinecone (managed)", dir: "src/lib/vectorstore/pinecone", deps: ["@pinecone-database/pinecone"], dockerService: null, dockerVolume: null, envHeader: "Pinecone", initNeeded: true, appEnvOverrides: null },
 };
 
 // Provider deps to remove for a given kept set. @ai-sdk/openai stays if either

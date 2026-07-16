@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { InstallOptions } from "./options.js";
 import { PROVIDER_IDS, VECTOR_STORE_IDS, resolveEmbeddingProvider } from "./options.js";
 import { PROVIDERS, VECTOR_STORES, providerDepsToRemove } from "./modules.js";
-import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret, setDbImage } from "./transforms/config.js";
+import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret, setDbImage, setAppEnvOverrides } from "./transforms/config.js";
 import { applySourceTransforms } from "./transforms/source.js";
 import { generateReadme } from "./readme.js";
 
@@ -55,9 +55,16 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
   // pgvector, downgrade the db image to plain Postgres.
   const dcPath = join(opts.targetDir, "docker-compose.yml");
   if (existsSync(dcPath)) {
-    const keep = ["db", "minio", "createbuckets", VECTOR_STORES[o.vectorStore].dockerService].filter((s): s is string => !!s);
+    // "app" ships in every generated project: it is the documented Docker
+    // deployment path (docker compose --profile app up --build). Omit it here and
+    // pruneDockerCompose deletes the service from the user's compose file.
+    const keep = ["db", "minio", "createbuckets", "app", VECTOR_STORES[o.vectorStore].dockerService].filter((s): s is string => !!s);
     let dc = pruneDockerCompose(await readFile(dcPath, "utf8"), keep);
     if (cutPgvector) dc = setDbImage(dc, "postgres:16");
+    // Point the app service at the chosen store's in-network host (see the
+    // localhost-trap comment already on DATABASE_URL/S3_ENDPOINT in the
+    // template's compose file); a no-op for pgvector/pinecone.
+    dc = setAppEnvOverrides(dc, VECTOR_STORES[o.vectorStore].appEnvOverrides);
     await writeFile(dcPath, dc);
   }
 

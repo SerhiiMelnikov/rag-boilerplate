@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.env
+.env*.local
+cli/template
+cli/dist
+cli/node_modules
+graphify-out
+docs
+.superpowers
+.claude
+*.tsbuildinfo
+Dockerfile
+.dockerignore

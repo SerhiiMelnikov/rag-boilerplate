@@ -123,6 +123,24 @@ export function generateReadme(o: InstallOptions): string {
   lines.push("   access to only General see no switcher — there is nothing to switch between.");
   lines.push("");
 
+  lines.push("## Deploying", "");
+  lines.push("The app ships as a Docker image. To run the whole stack — Postgres, MinIO");
+  lines.push("and the app itself:", "");
+  lines.push("```bash");
+  lines.push("docker compose --profile app up --build");
+  lines.push("```");
+  lines.push("");
+  lines.push("Local development is unaffected: without `--profile app`, `docker compose up -d db");
+  lines.push("minio` still starts only the dependencies.", "");
+  lines.push("**The container does not run migrations.** It is a standalone Next.js server with");
+  lines.push("no `drizzle-kit`, so run `npm run db:migrate` and `npm run seed:admin` from the");
+  lines.push("host against the database before the first start.", "");
+  lines.push("`GET /api/health` returns 200 when Postgres is reachable and 503 when it is not;");
+  lines.push("Docker's healthcheck uses it. When deploying outside compose, pass `DATABASE_URL`,");
+  lines.push("`AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY` and the `S3_*` variables as real");
+  lines.push("environment variables — `.env` is never baked into the image.");
+  lines.push("");
+
   lines.push("## Images", "");
   lines.push("Uploaded images are captioned by a vision model, and the caption is embedded. Ask");
   lines.push("the chat for a picture (\"show me a red bike\") and the matching images come back");

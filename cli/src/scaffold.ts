@@ -55,7 +55,10 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
   // pgvector, downgrade the db image to plain Postgres.
   const dcPath = join(opts.targetDir, "docker-compose.yml");
   if (existsSync(dcPath)) {
-    const keep = ["db", "minio", "createbuckets", VECTOR_STORES[o.vectorStore].dockerService].filter((s): s is string => !!s);
+    // "app" ships in every generated project: it is the documented Docker
+    // deployment path (docker compose --profile app up --build). Omit it here and
+    // pruneDockerCompose deletes the service from the user's compose file.
+    const keep = ["db", "minio", "createbuckets", "app", VECTOR_STORES[o.vectorStore].dockerService].filter((s): s is string => !!s);
     let dc = pruneDockerCompose(await readFile(dcPath, "utf8"), keep);
     if (cutPgvector) dc = setDbImage(dc, "postgres:16");
     await writeFile(dcPath, dc);

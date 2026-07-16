@@ -149,5 +149,27 @@ fails fast on the first settings read, with a message saying which of the two it
 is. Changing it later makes the already-encrypted provider keys unreadable — you
 would have to re-enter them in the admin panel.
 
+### Deploying with Docker
+
+The app itself ships as an image. To run the whole stack — Postgres, MinIO and the app:
+
+```bash
+cp .env.example .env    # then fill in the secrets (see Secrets above)
+docker compose --profile app up --build
+```
+
+The app is served on http://localhost:3000. Without `--profile app` nothing changes: `docker compose up -d db minio` still starts only the dependencies, which is what local development uses.
+
+**Migrations are not run by the container.** The image is a standalone Next.js server and carries no `drizzle-kit`, so schema changes and the admin seed stay a host step — run them once against the database before the first start:
+
+```bash
+npm run db:migrate
+npm run seed:admin
+```
+
+The container exposes `GET /api/health`, which returns `200` when it can reach Postgres and `503` when it cannot. Docker's own healthcheck uses it, so `docker compose ps` reports the app as `healthy` only once the database is genuinely reachable.
+
+Deploying the image somewhere other than compose: supply `DATABASE_URL`, `AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY` and the `S3_*` variables as real environment variables. `.env` is deliberately excluded from the image — secrets are never baked into a layer.
+
 For building, testing, and publishing the installer package, see
 [`cli/README.md`](cli/README.md).

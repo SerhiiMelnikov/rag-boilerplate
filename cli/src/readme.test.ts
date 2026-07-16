@@ -125,6 +125,14 @@ describe("generateReadme guidance", () => {
   });
 });
 
+describe("generateReadme deploying", () => {
+  it("documents the Docker deployment path and that migrations stay on the host", () => {
+    const out = generateReadme(opts());
+    expect(out).toContain("docker compose --profile app up --build");
+    expect(out).toContain("does not run migrations");
+  });
+});
+
 describe("generateReadme secrets", () => {
   // The scaffolder writes both secrets, but rotating the encryption key silently
   // orphans every provider key already stored in the DB — that must be stated.

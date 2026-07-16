@@ -9,6 +9,30 @@ services:
       - "5432:5432"
     volumes:
       - rag_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  # Behind a profile so local development is untouched: `docker compose up -d db minio`
+  # still starts only the dependencies. Run the whole stack with:
+  #   docker compose --profile app up --build
+  app:
+    profiles: ["app"]
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      # .env points these at localhost, which inside this container means the
+      # container itself. Inside the compose network they must address the other
+      # services by name. This override is the classic trap and the reason this
+      # block exists.
+      DATABASE_URL: postgres://rag:rag@db:5432/rag
+      S3_ENDPOINT: http://minio:9000
+    ports:
+      - "3000:3000"
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"

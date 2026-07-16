@@ -16,7 +16,6 @@ const settings = {
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
   chatRateLimitPerMinute: 20,
   chatRateLimitPerDay: 200,
-  registerRateLimitPerHour: 5,
   keys: { google: "gk", openai: null, anthropic: null },
 };
 

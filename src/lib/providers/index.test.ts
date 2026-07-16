@@ -12,7 +12,7 @@ function settings(over: Partial<RuntimeSettings> = {}): RuntimeSettings {
     unifiedMode: false, unifiedProvider: "google", unifiedModel: "gemma-4-31b-it",
     temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
     systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
-    chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200, registerRateLimitPerHour: 5,
+    chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200,
     keys: { google: "gk", openai: null, anthropic: null },
     ...over,
   };

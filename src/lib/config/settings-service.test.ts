@@ -1,12 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { encryptSecret, decryptSecret } from "@/lib/config/crypto";
-import { getRuntimeSettings, getAdminSettings, updateSettings, settingsPatchSchema, getRateLimitSettings } from "@/lib/config/settings-service";
+import { getRuntimeSettings, getAdminSettings, updateSettings, settingsPatchSchema } from "@/lib/config/settings-service";
 
 // Real crypto module, but decryptSecret is wrapped in a spy (call-through to the
 // actual implementation) so tests can observe whether it was invoked. This keeps
 // every other test in this file working against the real encrypt/decrypt round
-// trip while letting the getRateLimitSettings test below genuinely assert that
-// the narrow rate-limit projection never reaches the decryptor.
+// trip.
 vi.mock("@/lib/config/crypto", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/config/crypto")>();
   return { ...actual, decryptSecret: vi.fn(actual.decryptSecret) };
@@ -98,35 +97,5 @@ describe("settings service", () => {
     expect(settingsPatchSchema.safeParse({ topP: 0.9 }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ embeddingProvider: "anthropic" }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ chatProvider: "openai" }).success).toBe(true);
-  });
-});
-
-describe("getRateLimitSettings", () => {
-  it("returns the three limits without decrypting any provider key", async () => {
-    const row = {
-      chatRateLimitPerMinute: 7,
-      chatRateLimitPerDay: 70,
-      registerRateLimitPerHour: 3,
-      googleKey: "encrypted-blob",
-      openaiKey: null,
-      anthropicKey: null,
-    };
-    const database = {
-      select: () => ({ from: () => ({ where: () => ({ limit: async () => [row] }) }) }),
-    } as never;
-
-    // Clear call history left over from earlier tests in this file (those
-    // exercise getRuntimeSettings/getAdminSettings, which do decrypt) so this
-    // assertion reflects only what getRateLimitSettings itself does.
-    vi.mocked(decryptSecret).mockClear();
-
-    const out = await getRateLimitSettings(database);
-
-    expect(out).toEqual({ chatRateLimitPerMinute: 7, chatRateLimitPerDay: 70, registerRateLimitPerHour: 3 });
-    // The point of the narrow projection: an unauthenticated endpoint must not
-    // pull secrets through the decryptor. This is a real spy on the actual
-    // decryptSecret export (see the vi.mock above), so an implementation that
-    // decrypted row.googleKey here would genuinely fail this assertion.
-    expect(decryptSecret).not.toHaveBeenCalled();
   });
 });

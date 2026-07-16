@@ -53,6 +53,22 @@ export function setDbImage(yamlText: string, image: string): string {
   return stringifyYaml(doc);
 }
 
+// Merge env vars into the `app` service's `environment:` block. Used so the
+// chosen vector store's URL addresses its in-network docker-compose service
+// name rather than the `localhost` value generateEnv() wrote into .env — the
+// same trap DATABASE_URL/S3_ENDPOINT are already overridden for. A null/empty
+// `overrides` (pgvector, pinecone) is a no-op that leaves the YAML untouched,
+// so it never pays the parse/stringify round trip (which drops comments) when
+// there is nothing to change.
+export function setAppEnvOverrides(yamlText: string, overrides: Record<string, string> | null): string {
+  if (!overrides || Object.keys(overrides).length === 0) return yamlText;
+  const doc = parseYaml(yamlText) as { services?: Record<string, { environment?: Record<string, unknown> }> };
+  const app = doc.services?.app;
+  if (!app) return yamlText;
+  app.environment = { ...(app.environment ?? {}), ...overrides };
+  return stringifyYaml(doc);
+}
+
 // Remove every store's .env block except the chosen one. Blocks start at a
 // `# --- <Store> ...` header and run until the next such header or EOF.
 export function pruneEnvExampleStores(text: string, keepStore: VectorStoreId): string {

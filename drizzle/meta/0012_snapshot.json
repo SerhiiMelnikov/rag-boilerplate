@@ -733,13 +733,6 @@
           "notNull": true,
           "default": 200
         },
-        "register_rate_limit_per_hour": {
-          "name": "register_rate_limit_per_hour",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 5
-        },
         "google_key": {
           "name": "google_key",
           "type": "text",

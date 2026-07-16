@@ -92,13 +92,6 @@
       "when": 1784024389073,
       "tag": "0012_awesome_nick_fury",
       "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "7",
-      "when": 1784190241687,
-      "tag": "0013_dark_liz_osborn",
-      "breakpoints": true
     }
   ]
 }

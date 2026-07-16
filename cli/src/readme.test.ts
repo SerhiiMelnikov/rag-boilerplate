@@ -139,6 +139,42 @@ describe("generateReadme deploying", () => {
     const out = generateReadme(opts());
     expect(out).toContain("AUTH_TRUST_HOST");
   });
+
+  // scaffold.ts deletes drizzle/ for every non-pgvector store (its shipped
+  // migrations don't apply to a different schema), and Getting-started already
+  // inserts db:generate for exactly that reason. The Deploying section's
+  // host-step list must stay consistent with it: a qdrant/chroma/weaviate/
+  // pinecone user following Deploying alone must run db:generate before
+  // db:migrate finds no migrations, and vectorstore:init so the collection
+  // actually gets created.
+  it("non-pgvector: the Deploying section includes db:generate before db:migrate and vectorstore:init", () => {
+    const out = generateReadme(opts({ vectorStore: "qdrant" }));
+    const deploySection = out.slice(out.indexOf("## Deploying"));
+    expect(deploySection).toContain("db:generate");
+    expect(deploySection).toContain("vectorstore:init");
+    const genIdx = deploySection.indexOf("db:generate");
+    const migrateIdx = deploySection.indexOf("db:migrate");
+    expect(migrateIdx).toBeGreaterThan(genIdx);
+  });
+
+  it("pgvector: the Deploying section has no db:generate step (migrations ship pre-generated)", () => {
+    const out = generateReadme(opts({ vectorStore: "pgvector" }));
+    const deploySection = out.slice(out.indexOf("## Deploying"));
+    expect(deploySection).not.toContain("db:generate");
+    expect(deploySection).toContain("db:migrate");
+  });
+
+  // pruneDockerCompose round-trips the generated compose file through a
+  // YAML parser/stringifier, which drops all comments — including the one
+  // explaining why the app service overrides .env's localhost URLs. That
+  // explanation has to survive somewhere so a user editing the compose file
+  // doesn't delete the overrides thinking they're dead code.
+  it("explains that the app service overrides .env's localhost URLs for in-network addressing", () => {
+    const out = generateReadme(opts());
+    const deploySection = out.slice(out.indexOf("## Deploying"));
+    expect(deploySection).toMatch(/localhost/i);
+    expect(deploySection).toMatch(/in-network|container itself/i);
+  });
 });
 
 describe("generateReadme secrets", () => {

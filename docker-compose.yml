@@ -20,9 +20,14 @@ services:
   app:
     profiles: ["app"]
     build: .
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+      minio:
+        condition: service_started
+      createbuckets:
+        condition: service_completed_successfully
     env_file: .env
     environment:
       # .env points these at localhost, which inside this container means the

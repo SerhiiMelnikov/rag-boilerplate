@@ -1,5 +1,20 @@
 import type { InstallOptions } from "./options.js";
-import { PROVIDERS, VECTOR_STORES } from "./modules.js";
+import { PROVIDERS, VECTOR_STORES, type VectorStoreModule } from "./modules.js";
+
+// Host-side migration/seed steps, shared by "Getting started" (npm run dev)
+// and "Deploying" (the container doesn't run migrations, so they run from the
+// host there too). db:generate is required for every non-pgvector store
+// because scaffold() deletes the shipped drizzle/ migrations for them (they
+// don't apply to a different schema); vectorstore:init is required only for
+// stores that need their collection/index created before first use.
+function hostMigrationSteps(o: InstallOptions, store: VectorStoreModule): string[] {
+  const steps: string[] = [];
+  if (o.vectorStore !== "pgvector") steps.push("`npm run db:generate` (generate the database migrations for your schema)");
+  steps.push("`npm run db:migrate`");
+  steps.push('`npm run seed:admin` (creates the admin user and the default "General" workspace)');
+  if (store.initNeeded) steps.push("`npm run vectorstore:init`");
+  return steps;
+}
 
 // Pure function: renders the generated app's own README, tailored to the
 // caller's provider/vector-store selection. No filesystem access here —
@@ -36,12 +51,7 @@ export function generateReadme(o: InstallOptions): string {
     `${step++}. Start services: \`${composeCmd}\` (Postgres + MinIO for image storage, plus the selected ` +
       "self-hosted store if any; Pinecone is managed → no extra service).",
   );
-  if (o.vectorStore !== "pgvector") {
-    lines.push(`${step++}. \`npm run db:generate\` (generate the database migrations for your schema)`);
-  }
-  lines.push(`${step++}. \`npm run db:migrate\``);
-  lines.push(`${step++}. \`npm run seed:admin\` (creates the admin user and the default "General" workspace)`);
-  if (store.initNeeded) lines.push(`${step++}. \`npm run vectorstore:init\``);
+  for (const s of hostMigrationSteps(o, store)) lines.push(`${step++}. ${s}`);
   lines.push(`${step++}. \`npm run dev\` → http://localhost:3000`);
   lines.push("");
 
@@ -132,9 +142,16 @@ export function generateReadme(o: InstallOptions): string {
   lines.push("");
   lines.push("Local development is unaffected: without `--profile app`, `docker compose up -d db");
   lines.push("minio` still starts only the dependencies.", "");
+  lines.push("The `app` service's `environment:` block overrides the `localhost` URLs `.env`");
+  lines.push("carries for Postgres, object storage, and the selected vector store (if it runs");
+  lines.push("its own container) with their in-network service names — inside the container,");
+  lines.push("`localhost` means the container itself, not its neighbors. Keep those overrides");
+  lines.push("if you edit the compose file.", "");
   lines.push("**The container does not run migrations.** It is a standalone Next.js server with");
-  lines.push("no `drizzle-kit`, so run `npm run db:migrate` and `npm run seed:admin` from the");
-  lines.push("host against the database before the first start.", "");
+  lines.push("no `drizzle-kit`, so run the following from the host against the database before");
+  lines.push("the first start:", "");
+  for (const s of hostMigrationSteps(o, store)) lines.push(`- ${s}`);
+  lines.push("");
   lines.push("`GET /api/health` returns 200 when Postgres is reachable and 503 when it is not;");
   lines.push("Docker's healthcheck uses it. When deploying outside compose, pass `DATABASE_URL`,");
   lines.push("`AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`, `AUTH_TRUST_HOST=true` and the `S3_*`");

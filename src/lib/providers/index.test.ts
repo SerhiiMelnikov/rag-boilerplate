@@ -13,7 +13,10 @@ function settings(over: Partial<RuntimeSettings> = {}): RuntimeSettings {
     temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
     systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
     chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200,
+    registrationMode: "verified", allowedEmailDomains: "",
+    smtpHost: "", smtpPort: 587, smtpUser: "", smtpFrom: "",
     keys: { google: "gk", openai: null, anthropic: null },
+    smtpPassword: null,
     ...over,
   };
 }

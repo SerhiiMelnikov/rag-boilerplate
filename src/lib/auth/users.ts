@@ -42,7 +42,7 @@ export async function createUser(input: NewUser, database = defaultDb): Promise<
 // Fetch a user by email, including the password hash (for credential verification).
 export async function getUserByEmail(email: string, database = defaultDb) {
   const rows = await database
-    .select({ id: users.id, email: users.email, role: users.role, passwordHash: users.passwordHash, blockedAt: users.blockedAt, isSuperAdmin: users.isSuperAdmin })
+    .select({ id: users.id, email: users.email, role: users.role, passwordHash: users.passwordHash, blockedAt: users.blockedAt, isSuperAdmin: users.isSuperAdmin, emailVerifiedAt: users.emailVerifiedAt })
     .from(users)
     .where(eq(users.email, email))
     .limit(1);

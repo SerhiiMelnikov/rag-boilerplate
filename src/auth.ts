@@ -15,6 +15,7 @@ type LookupFn = (email: string) => Promise<{
   passwordHash: string;
   blockedAt: Date | null;
   isSuperAdmin: boolean;
+  emailVerifiedAt: Date | null;
 } | null>;
 type VerifyFn = (plain: string, hash: string) => Promise<boolean>;
 
@@ -31,6 +32,7 @@ export async function authorizeCredentials(
   const user = await lookup(email);
   if (!user) return null;
   if (user.blockedAt) return null; // blocked → cannot authenticate
+  if (!user.emailVerifiedAt) return null; // unverified → cannot authenticate
   if (!(await verify(password, user.passwordHash))) return null;
   return { id: user.id, email: user.email, role: user.role as "admin" | "user", isSuperAdmin: user.isSuperAdmin };
 }

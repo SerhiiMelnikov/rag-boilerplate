@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { encryptSecret, decryptSecret } from "@/lib/config/crypto";
-import { getRuntimeSettings, getAdminSettings, updateSettings, settingsPatchSchema } from "@/lib/config/settings-service";
+import { getRuntimeSettings, getAdminSettings, updateSettings, settingsPatchSchema, getRegistrationSettings } from "@/lib/config/settings-service";
 
 // Real crypto module, but decryptSecret is wrapped in a spy (call-through to the
 // actual implementation) so tests can observe whether it was invoked. This keeps
@@ -34,7 +34,9 @@ const baseRow = {
   imageProvider: "google", imageModel: "gemini-2.5-flash",
   temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
-  googleKey: null, openaiKey: null, anthropicKey: null,
+  registrationMode: "verified", allowedEmailDomains: "",
+  smtpHost: "", smtpPort: 587, smtpUser: "", smtpFrom: "",
+  googleKey: null, openaiKey: null, anthropicKey: null, smtpPassword: null,
 };
 
 describe("settings service", () => {
@@ -90,6 +92,30 @@ describe("settings service", () => {
     const s = await getAdminSettings(db);
     expect(s.unifiedMode).toBe(true);
     expect(s.chatProvider).toBe("google"); // raw, NOT resolved
+  });
+
+  it("getRegistrationSettings decrypts smtpPassword but never touches the provider keys", async () => {
+    vi.mocked(decryptSecret).mockClear();
+    const { db } = fakeDb({
+      ...baseRow,
+      registrationMode: "verified", allowedEmailDomains: "acme.com",
+      smtpHost: "smtp.acme.com", smtpPort: 2525, smtpUser: "bot", smtpFrom: "bot@acme.com",
+      smtpPassword: encryptSecret("s-pass-1234"),
+      googleKey: encryptSecret("g-key-1234"),
+    });
+    const s = await getRegistrationSettings(db);
+    expect(s.smtpPassword).toBe("s-pass-1234");
+    expect(s.registrationMode).toBe("verified");
+    expect(s.allowedEmailDomains).toBe("acme.com");
+    expect(s.smtpHost).toBe("smtp.acme.com");
+    expect(s.smtpPort).toBe(2525);
+    expect(s.smtpUser).toBe("bot");
+    expect(s.smtpFrom).toBe("bot@acme.com");
+    // decryptSecret was called exactly once (for smtpPassword) — the provider keys
+    // were never passed through it.
+    expect(decryptSecret).toHaveBeenCalledTimes(1);
+    expect(decryptSecret).toHaveBeenCalledWith(expect.stringMatching(/.+/));
+    expect(JSON.stringify(s)).not.toContain("g-key-1234");
   });
 
   it("schema rejects an unknown provider and a sampling top_p", () => {

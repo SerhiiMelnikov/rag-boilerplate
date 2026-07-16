@@ -62,6 +62,10 @@ The generated app includes:
 - An admin panel: a unified Files list (documents + images, with workspace
   membership), workspaces and user access, provider API keys (encrypted at rest),
   retrieval settings, user management, rating analytics
+- **Rate limits** — under **Settings**, cap chat requests per minute and per day
+  (per user) and registrations per hour (per IP). Set any of them to `0` to
+  disable that limit. **They are on by default, and are not as strong as they
+  look — see [Rate limits](#rate-limits) below.**
 - A hand-rolled RAG engine: chunking, parsing (PDF/DOCX/Markdown/text),
   embeddings, hybrid (vector + keyword) retrieval, ingestion
 - Auth.js-based authentication with admin/user roles
@@ -73,6 +77,43 @@ The generated app includes:
 Unselected providers/vector-store adapters, their dependencies, and related
 `docker-compose.yml` services are pruned from the generated app — it only
 ever references what you picked.
+
+## Rate limits
+
+The chat (per user, per minute + per day) and registration (per IP, per hour)
+limits under Settings exist because `/api/chat` sits in front of a paid model:
+without a cap, one runaway client could spend your entire budget. Read this
+before you rely on them.
+
+- **They take effect immediately, with no warning.** `drizzle/0012` adds the
+  three limit columns as `NOT NULL DEFAULT` and backfills the existing
+  `settings` row, so an existing deployment that was previously unlimited
+  starts enforcing 20/min and 200/day per user, and 5/hour per IP for
+  registration, the moment you run `db:migrate` — not when you first open
+  Settings. A power user sending 250 messages a day will start seeing 429s
+  with no notice. Set any of the three to `0` to disable it.
+- **The registration limit only works behind a reverse proxy that OVERWRITES
+  `x-forwarded-for`.** Vercel, Fly, and nginx configured with
+  `proxy_set_header X-Forwarded-For $remote_addr;` all overwrite it, so it
+  binds. The commonly copy-pasted nginx recipe `proxy_set_header
+  X-Forwarded-For $proxy_add_x_forwarded_for;` *appends* instead — the
+  client-supplied value stays first in the chain, and the app reads the first
+  hop, so an attacker can send a fresh forged header on every request and get
+  a fresh bucket every time. And with no reverse proxy at all (`next start` on
+  a bare VPS, `npm run dev`), there is no `x-forwarded-for` header at all, so
+  the check is skipped entirely — a deliberate fail-open (see the `clientIp`
+  comment in `src/app/api/register/handler.ts`), not a bug. In both of the
+  broken cases, the admin panel still shows whatever limit you configured; it
+  is not actually being enforced. If mass signups matter to you, use
+  invitations or email verification — this limit only raises the cost of
+  scripted registration, it does not remove it.
+- **The per-user chat cap bounds one account, not your total spend.**
+  Self-registration is effectively free, and the two limits compose: even
+  behind a correctly overwriting proxy, 5 accounts/hour/IP is 120
+  accounts/day/IP, and at 200 chat requests/day per account that is up to
+  24,000 chat requests/day from a single IP. Actually closing that means
+  restricting who can register — invitations, or disabling self-registration —
+  which is planned separately and is not what these limits do today.
 
 ## Development
 

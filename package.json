@@ -17,7 +17,7 @@
     "ingest": "tsx scripts/ingest.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
     "vectorstore:init": "tsx scripts/vectorstore-init.ts",
-    "test:integration": "RUN_INTEGRATION=1 vitest run --config vitest.integration.config.ts src/lib/rag/ingest.integration.test.ts src/app/api/admin/documents/upload.integration.test.ts src/lib/vectorstore/chroma/store.integration.test.ts src/lib/vectorstore/weaviate/store.integration.test.ts src/lib/vectorstore/pinecone/store.integration.test.ts"
+    "test:integration": "RUN_INTEGRATION=1 vitest run --config vitest.integration.config.ts src/lib/rag/ingest.integration.test.ts src/app/api/admin/documents/upload.integration.test.ts src/lib/vectorstore/chroma/store.integration.test.ts src/lib/vectorstore/weaviate/store.integration.test.ts src/lib/vectorstore/pinecone/store.integration.test.ts src/lib/ratelimit/store.integration.test.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",

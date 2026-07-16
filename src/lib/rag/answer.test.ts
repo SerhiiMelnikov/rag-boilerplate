@@ -11,6 +11,7 @@ const settings: RuntimeSettings = {
   unifiedMode: false, unifiedProvider: "google", unifiedModel: "gemma-4-31b-it",
   temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
+  chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200, registerRateLimitPerHour: 5,
   keys: { google: null, openai: null, anthropic: null },
 };
 const chunk = (id: string, score: number): RetrievedChunk => ({ chunkId: id, documentId: "d" + id, filename: id + ".md", content: "content " + id, score });

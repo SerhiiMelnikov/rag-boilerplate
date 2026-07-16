@@ -8,3 +8,6 @@ docs/superpowers/
 next-env.d.ts
 cli/template/
 cli/dist/
+
+# graphify generated artifacts
+graphify-out/

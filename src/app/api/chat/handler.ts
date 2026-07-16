@@ -4,6 +4,7 @@ import { requireUser, errorToResponse } from "@/lib/auth/guards";
 import { getAuthUserById } from "@/lib/auth/users";
 import { isConversationOwned, addMessage, setConversationTitleIfDefault } from "@/lib/chat/conversations";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
+import { consume } from "@/lib/ratelimit/store";
 import { prepareContext } from "@/lib/rag/answer";
 import { getChatModel } from "@/lib/providers";
 import { isProviderError } from "@/lib/providers/types";
@@ -29,6 +30,8 @@ const IMAGE_CANDIDATES = 8;
 const IMAGE_MIN_SCORE = 0.1;
 const IMAGE_INTRO = "Here are the images that best match your description:";
 const NO_IMAGE_ANSWER = "I couldn't find any image matching that description.";
+const MINUTE_MS = 60_000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Narrow session type: unit-test mocks only need to return { user } or null,
 // without the full NextAuth Session shape (which requires `expires`).
@@ -47,6 +50,7 @@ export interface ChatDeps {
   addMessageFn?: typeof addMessage;
   setTitleFn?: typeof setConversationTitleIfDefault;
   streamTextFn?: StreamTextLike;
+  rateLimitFn?: typeof consume;
   routeIntentFn?: typeof routeIntent;
   searchImagesFn?: typeof searchImages;
   verifyImageMatchesFn?: typeof verifyImageMatches;
@@ -63,6 +67,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   const addMessageFn = deps.addMessageFn ?? addMessage;
   const setTitleFn = deps.setTitleFn ?? setConversationTitleIfDefault;
   const streamTextFn = deps.streamTextFn ?? (streamText as unknown as StreamTextLike);
+  const rateLimitFn = deps.rateLimitFn ?? consume;
   const routeIntentFn = deps.routeIntentFn ?? routeIntent;
   const searchImagesFn = deps.searchImagesFn ?? searchImages;
   const verifyImageMatchesFn = deps.verifyImageMatchesFn ?? verifyImageMatches;
@@ -77,6 +82,24 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
     const res = errorToResponse(err);
     if (res) return res;
     throw err;
+  }
+
+  // Rate limit before any parsing, database work or model call — a limit that runs
+  // after the expensive part is not a limit. Two independent buckets: a burst guard
+  // and a daily quota. The minute rule is checked first and short-circuits, so a
+  // request it already rejected does not also burn a slot of the daily quota.
+  const settings = await getSettingsFn();
+  for (const [rule, limit, windowMs] of [
+    ["minute", settings.chatRateLimitPerMinute, MINUTE_MS],
+    ["day", settings.chatRateLimitPerDay, DAY_MS],
+  ] as const) {
+    const verdict = await rateLimitFn(`chat:${rule}:user:${user.id}`, limit, windowMs);
+    if (!verdict.allowed) {
+      return Response.json(
+        { error: `You have reached the message limit. Try again in ${verdict.retryAfterSeconds} seconds.` },
+        { status: 429, headers: { "Retry-After": String(verdict.retryAfterSeconds) } },
+      );
+    }
   }
 
   let parsed: { messages?: Array<{ role?: string; content?: unknown }>; conversationId?: unknown };
@@ -126,7 +149,6 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   await setTitleFn(user.id, conversationId, content.slice(0, 60));
   await addMessageFn({ conversationId, role: "user", content, workspaceId });
 
-  const settings = await getSettingsFn();
   // History-aware retrieval: include the last couple of user turns so a
   // pronoun-only follow-up still retrieves the entity from the prior question.
   const retrievalQuery =

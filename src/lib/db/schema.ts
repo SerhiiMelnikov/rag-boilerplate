@@ -102,6 +102,11 @@ export const settings = pgTable("settings", {
   minSimilarity: real("min_similarity").notNull().default(0.3),
   contextTokenBudget: integer("context_token_budget").notNull().default(3000),
   systemPrompt: text("system_prompt").notNull().default("You are a helpful assistant. Answer using only the provided context."),
+  // Rate limits. 0 disables the rule. Defaults are deliberately generous enough
+  // for a real person and far too tight for a script.
+  chatRateLimitPerMinute: integer("chat_rate_limit_per_minute").notNull().default(20),
+  chatRateLimitPerDay: integer("chat_rate_limit_per_day").notNull().default(200),
+  registerRateLimitPerHour: integer("register_rate_limit_per_hour").notNull().default(5),
   // Provider API keys, encrypted at rest (nullable until an admin sets them).
   googleKey: text("google_key"),
   openaiKey: text("openai_key"),
@@ -137,3 +142,17 @@ export const userWorkspaces = pgTable("user_workspaces", {
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
 }, (t) => ({ pk: primaryKey({ columns: [t.userId, t.workspaceId] }) }));
+
+// Fixed-window rate-limit counters. `key` identifies the subject and the rule
+// (e.g. "chat:minute:user:<id>"), `window_start` is the clock floored to the
+// window, so a row is one (subject, rule, window) bucket. Rows are disposable:
+// they are pruned once they fall out of the longest window.
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    key: text("key").notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.key, t.windowStart] }) }),
+);

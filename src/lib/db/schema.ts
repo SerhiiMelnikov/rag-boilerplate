@@ -106,7 +106,6 @@ export const settings = pgTable("settings", {
   // for a real person and far too tight for a script.
   chatRateLimitPerMinute: integer("chat_rate_limit_per_minute").notNull().default(20),
   chatRateLimitPerDay: integer("chat_rate_limit_per_day").notNull().default(200),
-  registerRateLimitPerHour: integer("register_rate_limit_per_hour").notNull().default(5),
   // Provider API keys, encrypted at rest (nullable until an admin sets them).
   googleKey: text("google_key"),
   openaiKey: text("openai_key"),

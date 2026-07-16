@@ -11,7 +11,7 @@ const MASKED = {
   unifiedMode: false, unifiedProvider: "google", unifiedModel: "gemini-2.5-flash",
   temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
-  chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200, registerRateLimitPerHour: 5,
+  chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200,
   keys: { google: { set: true, last4: "1234" }, openai: { set: false, last4: null }, anthropic: { set: false, last4: null } },
 };
 

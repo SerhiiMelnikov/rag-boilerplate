@@ -93,26 +93,14 @@ describe("generateReadme guidance", () => {
     expect(out).toContain("`0` disables a limit");
   });
 
-  // The registration limit silently does nothing unless the deployment sits behind
-  // a proxy that OVERWRITES x-forwarded-for — a proxy that appends (the commonly
-  // copy-pasted nginx recipe) or no proxy at all both leave it unenforced while the
-  // admin panel shows a number that looks like protection. That has to be explicit,
-  // not left for someone to discover after a bot signup wave.
-  it("explains when the registration rate limit does not actually bind", () => {
-    const out = generateReadme(opts());
-    expect(out).toContain("## Rate limits");
-    expect(out).toMatch(/OVERWRITES/);
-    expect(out).toMatch(/APPENDS/);
-    expect(out).toMatch(/invitations or email verification/);
-  });
-
-  // Self-registration being ~free means the per-account chat cap does not bound
-  // what an attacker can spend across many accounts from one IP — that has to be
-  // stated so an owner doesn't find out from a bill.
+  // Self-registration being open and free means the per-account chat cap does not
+  // bound what an attacker can spend across many accounts — that has to be stated
+  // so an owner doesn't find out from a bill.
   it("explains that the per-user chat cap does not bound total spend", () => {
     const out = generateReadme(opts());
+    expect(out).toContain("## Rate limits");
     expect(out).toMatch(/bounds one account, not your total spend/);
-    expect(out).toMatch(/24,000 chat requests\/day/);
+    expect(out).toMatch(/invitations, or disabling self-registration/);
   });
 
   // drizzle/0012 backfills the limit columns onto the existing settings row, so an

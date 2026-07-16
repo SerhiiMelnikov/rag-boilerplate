@@ -1,0 +1,1 @@
+ALTER TABLE "settings" DROP COLUMN IF EXISTS "register_rate_limit_per_hour";

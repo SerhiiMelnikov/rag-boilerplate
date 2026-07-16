@@ -31,7 +31,6 @@ interface BaseSettings {
   ollamaBaseUrl: string;
   chatRateLimitPerMinute: number;
   chatRateLimitPerDay: number;
-  registerRateLimitPerHour: number;
 }
 
 export interface RuntimeSettings extends BaseSettings {
@@ -63,7 +62,6 @@ const BASE_COLUMNS = {
   ollamaBaseUrl: settings.ollamaBaseUrl,
   chatRateLimitPerMinute: settings.chatRateLimitPerMinute,
   chatRateLimitPerDay: settings.chatRateLimitPerDay,
-  registerRateLimitPerHour: settings.registerRateLimitPerHour,
 };
 const ALL_COLUMNS = {
   ...BASE_COLUMNS,
@@ -94,7 +92,6 @@ export const settingsPatchSchema = z
     ollamaBaseUrl: z.string().url(),
     chatRateLimitPerMinute: z.number().int().min(0).max(100000),
     chatRateLimitPerDay: z.number().int().min(0).max(1000000),
-    registerRateLimitPerHour: z.number().int().min(0).max(100000),
     // Keys: omit = leave, null = clear, string = set new plaintext.
     googleKey: z.string().min(1).nullable(),
     openaiKey: z.string().min(1).nullable(),
@@ -170,20 +167,4 @@ export async function updateSettings(patch: SettingsPatch, database = defaultDb)
     await database.update(settings).set(set).where(eq(settings.id, 1));
   }
   return getAdminSettings(database);
-}
-
-// Narrow projection for the rate limiters. Deliberately NOT getRuntimeSettings:
-// that decrypts the provider API keys, and /api/register is unauthenticated —
-// there is no reason to touch secrets on that path.
-export async function getRateLimitSettings(database = defaultDb): Promise<{
-  chatRateLimitPerMinute: number;
-  chatRateLimitPerDay: number;
-  registerRateLimitPerHour: number;
-}> {
-  const row = await readRow(database);
-  return {
-    chatRateLimitPerMinute: row.chatRateLimitPerMinute,
-    chatRateLimitPerDay: row.chatRateLimitPerDay,
-    registerRateLimitPerHour: row.registerRateLimitPerHour,
-  };
 }

@@ -12,7 +12,7 @@ interface AdminSettings {
   unifiedMode: boolean; unifiedProvider: string; unifiedModel: string;
   temperature: number; topK: number; minSimilarity: number; contextTokenBudget: number;
   systemPrompt: string; ollamaBaseUrl: string;
-  chatRateLimitPerMinute: number; chatRateLimitPerDay: number; registerRateLimitPerHour: number;
+  chatRateLimitPerMinute: number; chatRateLimitPerDay: number;
   keys: { google: KeyStatus; openai: KeyStatus; anthropic: KeyStatus };
 }
 
@@ -84,7 +84,6 @@ export function SettingsForm() {
       contextTokenBudget: cfg.contextTokenBudget, systemPrompt: cfg.systemPrompt,
       chatRateLimitPerMinute: cfg.chatRateLimitPerMinute,
       chatRateLimitPerDay: cfg.chatRateLimitPerDay,
-      registerRateLimitPerHour: cfg.registerRateLimitPerHour,
     };
     const res = await fetch("/api/admin/settings", {
       method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
@@ -144,9 +143,6 @@ export function SettingsForm() {
         </label>
         <label className="flex flex-col gap-1 text-sm">Chat requests / day (0 = off)
           <input type="number" aria-label="Chat rate limit per day" value={s.chatRateLimitPerDay} onChange={num("chatRateLimitPerDay")} className={inputCls} />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">Registrations / hour per IP (0 = off)
-          <input type="number" aria-label="Register rate limit per hour" value={s.registerRateLimitPerHour} onChange={num("registerRateLimitPerHour")} className={inputCls} />
         </label>
         <label className="flex flex-col gap-1 text-sm">System prompt
           <textarea aria-label="System prompt" value={s.systemPrompt} rows={4} onChange={(e) => set({ systemPrompt: e.target.value })} className={inputCls} />

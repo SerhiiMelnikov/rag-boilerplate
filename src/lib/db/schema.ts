@@ -109,9 +109,6 @@ export const settings = pgTable("settings", {
   // for a real person and far too tight for a script.
   chatRateLimitPerMinute: integer("chat_rate_limit_per_minute").notNull().default(20),
   chatRateLimitPerDay: integer("chat_rate_limit_per_day").notNull().default(200),
-  // Registration. `open` = anyone may register; `verified` = the address must be at
-  // an allowed domain AND confirmed by clicking an emailed link.
-  registrationMode: text("registration_mode").notNull().default("verified"),
   // Comma-separated, lowercase. EMPTY MEANS NOBODY: an empty list denies every
   // registration. seed:admin seeds it from ADMIN_EMAIL's domain so a fresh install
   // is not a dead end.

@@ -4,7 +4,6 @@ CREATE TABLE IF NOT EXISTS "email_verification_tokens" (
 	"expires_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "settings" ADD COLUMN "registration_mode" text DEFAULT 'verified' NOT NULL;--> statement-breakpoint
 ALTER TABLE "settings" ADD COLUMN "allowed_email_domains" text DEFAULT '' NOT NULL;--> statement-breakpoint
 ALTER TABLE "settings" ADD COLUMN "smtp_host" text DEFAULT '' NOT NULL;--> statement-breakpoint
 ALTER TABLE "settings" ADD COLUMN "smtp_port" integer DEFAULT 587 NOT NULL;--> statement-breakpoint

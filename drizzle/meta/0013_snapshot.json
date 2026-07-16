@@ -778,13 +778,6 @@
           "notNull": true,
           "default": 200
         },
-        "registration_mode": {
-          "name": "registration_mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'verified'"
-        },
         "allowed_email_domains": {
           "name": "allowed_email_domains",
           "type": "text",

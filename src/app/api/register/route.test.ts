@@ -1,11 +1,17 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { registerUser } from "./handler";
 import { EmailNotConfiguredError } from "@/lib/email/sender";
 
 const SETTINGS = {
-  registrationMode: "verified", allowedEmailDomains: "company.com",
+  allowedEmailDomains: "company.com",
   smtpHost: "smtp.test", smtpPort: 587, smtpUser: "u", smtpFrom: "f@company.com", smtpPassword: "p",
 };
+
+// AUTH_URL is read straight from process.env by the handler; stubbing (and always
+// unstubbing) it here keeps that global mutation from leaking into other tests.
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function baseDeps() {
   return {
@@ -15,7 +21,10 @@ function baseDeps() {
     resetPasswordFn: vi.fn(async () => undefined),
     deleteUserFn: vi.fn(async () => undefined),
     createTokenFn: vi.fn(async () => "tok"),
-    sendEmailFn: vi.fn(async () => undefined),
+    // Explicit param type: without it, TS infers a zero-arg mock (same inference
+    // gap as findUserForRegistration — see users.ts), and `mock.calls[0][0]` below
+    // would not type-check.
+    sendEmailFn: vi.fn(async (_msg: { to: string; subject: string; html: string }) => undefined),
   };
 }
 
@@ -100,5 +109,27 @@ describe("registerUser (verified mode)", () => {
 
   it("still rejects invalid input with 400", async () => {
     expect((await registerUser(req({ email: "nope", password: "x" }), baseDeps())).status).toBe(400);
+  });
+});
+
+describe("registerUser verification link", () => {
+  it("uses AUTH_URL when it is set", async () => {
+    vi.stubEnv("AUTH_URL", "https://app.example.com");
+    const deps = baseDeps();
+    await registerUser(req(GOOD), deps);
+    const { html } = deps.sendEmailFn.mock.calls[0][0];
+    expect(html).toContain("https://app.example.com/api/auth/verify?token=tok");
+    expect(html).not.toContain("localhost:3000");
+  });
+
+  it("falls back to the request's own origin when AUTH_URL is unset", async () => {
+    vi.stubEnv("AUTH_URL", undefined);
+    const deps = baseDeps();
+    await registerUser(req(GOOD), deps);
+    const { html } = deps.sendEmailFn.mock.calls[0][0];
+    // req() builds its Request against "http://test/..." — the link must be
+    // derived from that origin, never a hardcoded default.
+    expect(html).toContain("http://test/api/auth/verify?token=tok");
+    expect(html).not.toContain("localhost:3000");
   });
 });

@@ -34,7 +34,7 @@ const baseRow = {
   imageProvider: "google", imageModel: "gemini-2.5-flash",
   temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
-  registrationMode: "verified", allowedEmailDomains: "",
+  allowedEmailDomains: "",
   smtpHost: "", smtpPort: 587, smtpUser: "", smtpFrom: "",
   googleKey: null, openaiKey: null, anthropicKey: null, smtpPassword: null,
 };
@@ -98,14 +98,13 @@ describe("settings service", () => {
     vi.mocked(decryptSecret).mockClear();
     const { db } = fakeDb({
       ...baseRow,
-      registrationMode: "verified", allowedEmailDomains: "acme.com",
+      allowedEmailDomains: "acme.com",
       smtpHost: "smtp.acme.com", smtpPort: 2525, smtpUser: "bot", smtpFrom: "bot@acme.com",
       smtpPassword: encryptSecret("s-pass-1234"),
       googleKey: encryptSecret("g-key-1234"),
     });
     const s = await getRegistrationSettings(db);
     expect(s.smtpPassword).toBe("s-pass-1234");
-    expect(s.registrationMode).toBe("verified");
     expect(s.allowedEmailDomains).toBe("acme.com");
     expect(s.smtpHost).toBe("smtp.acme.com");
     expect(s.smtpPort).toBe(2525);

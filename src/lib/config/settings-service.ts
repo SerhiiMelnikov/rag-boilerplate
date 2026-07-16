@@ -31,7 +31,6 @@ interface BaseSettings {
   ollamaBaseUrl: string;
   chatRateLimitPerMinute: number;
   chatRateLimitPerDay: number;
-  registrationMode: string;
   allowedEmailDomains: string;
   smtpHost: string;
   smtpPort: number;
@@ -70,7 +69,6 @@ const BASE_COLUMNS = {
   ollamaBaseUrl: settings.ollamaBaseUrl,
   chatRateLimitPerMinute: settings.chatRateLimitPerMinute,
   chatRateLimitPerDay: settings.chatRateLimitPerDay,
-  registrationMode: settings.registrationMode,
   allowedEmailDomains: settings.allowedEmailDomains,
   smtpHost: settings.smtpHost,
   smtpPort: settings.smtpPort,
@@ -107,7 +105,6 @@ export const settingsPatchSchema = z
     ollamaBaseUrl: z.string().url(),
     chatRateLimitPerMinute: z.number().int().min(0).max(100000),
     chatRateLimitPerDay: z.number().int().min(0).max(1000000),
-    registrationMode: z.enum(["open", "verified"]),
     allowedEmailDomains: z.string(),
     smtpHost: z.string(),
     smtpPort: z.number().int().min(1).max(65535),
@@ -198,13 +195,12 @@ export async function updateSettings(patch: SettingsPatch, database = defaultDb)
 // actually send mail) but never touches the provider API keys — /api/register is
 // unauthenticated and has no business pulling those through the decryptor.
 export async function getRegistrationSettings(database = defaultDb): Promise<{
-  registrationMode: string; allowedEmailDomains: string;
+  allowedEmailDomains: string;
   smtpHost: string; smtpPort: number; smtpUser: string; smtpFrom: string;
   smtpPassword: string | null;
 }> {
   const row = await readRow(database);
   return {
-    registrationMode: row.registrationMode,
     allowedEmailDomains: row.allowedEmailDomains,
     smtpHost: row.smtpHost, smtpPort: row.smtpPort,
     smtpUser: row.smtpUser, smtpFrom: row.smtpFrom,

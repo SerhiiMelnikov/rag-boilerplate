@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { sendEmail, EmailNotConfiguredError } from "./sender";
 
 const CONFIGURED = {
-  registrationMode: "verified", allowedEmailDomains: "company.com",
+  allowedEmailDomains: "company.com",
   smtpHost: "smtp.test", smtpPort: 587, smtpUser: "u", smtpFrom: "RAG <no-reply@company.com>",
   smtpPassword: "secret",
 };

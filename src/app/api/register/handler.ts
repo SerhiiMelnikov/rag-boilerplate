@@ -16,10 +16,13 @@ export interface RegisterDeps {
   sendEmailFn?: typeof sendEmail;
 }
 
-// Absolute link for the email. AUTH_URL is what Auth.js already uses to know where
-// it lives; fall back to localhost for development.
-function verifyLink(token: string): string {
-  const base = process.env.AUTH_URL ?? "http://localhost:3000";
+// Absolute base for the emailed link. AUTH_URL is the explicit override (Auth.js
+// uses the same variable); without it, fall back to the origin of the request that
+// asked to register. That is correct in development and behind any proxy that sets
+// Host properly — which this app already requires anyway, since Auth.js rejects a
+// Host it does not trust (see AUTH_TRUST_HOST in docker-compose.yml).
+function verifyLink(request: Request, token: string): string {
+  const base = process.env.AUTH_URL ?? new URL(request.url).origin;
   return `${base.replace(/\/$/, "")}/api/auth/verify?token=${encodeURIComponent(token)}`;
 }
 
@@ -84,7 +87,7 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
 
   try {
     const token = await createTokenFn(userId);
-    const { subject, html } = verificationEmail(verifyLink(token));
+    const { subject, html } = verificationEmail(verifyLink(request, token));
     await sendEmailFn({ to: email, subject, html });
   } catch (err) {
     // Roll back only what we created. Deleting a pre-existing row would destroy

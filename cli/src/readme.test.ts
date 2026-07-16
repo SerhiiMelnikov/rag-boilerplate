@@ -131,6 +131,14 @@ describe("generateReadme deploying", () => {
     expect(out).toContain("docker compose --profile app up --build");
     expect(out).toContain("does not run migrations");
   });
+
+  // Auth.js rejects the Host header in production unless told otherwise, which
+  // 500s every login when deployed outside compose (docker-compose.yml already
+  // sets this for the `app` service) — the README must tell a self-hoster to set it.
+  it("tells a self-hoster to set AUTH_TRUST_HOST outside compose", () => {
+    const out = generateReadme(opts());
+    expect(out).toContain("AUTH_TRUST_HOST");
+  });
 });
 
 describe("generateReadme secrets", () => {

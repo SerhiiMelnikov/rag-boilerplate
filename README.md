@@ -169,7 +169,7 @@ npm run seed:admin
 
 The container exposes `GET /api/health`, which returns `200` when it can reach Postgres and `503` when it cannot. Docker's own healthcheck uses it, so `docker compose ps` reports the app as `healthy` only once the database is genuinely reachable.
 
-Deploying the image somewhere other than compose: supply `DATABASE_URL`, `AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY` and the `S3_*` variables as real environment variables. `.env` is deliberately excluded from the image — secrets are never baked into a layer.
+Deploying the image somewhere other than compose: supply `DATABASE_URL`, `AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`, `AUTH_TRUST_HOST=true` and the `S3_*` variables as real environment variables. `.env` is deliberately excluded from the image — secrets are never baked into a layer. `AUTH_TRUST_HOST` is required because Auth.js rejects the incoming Host header in production otherwise ("UntrustedHost"), and every login fails with a 500 — `docker-compose.yml` already sets it for the `app` service.
 
 For building, testing, and publishing the installer package, see
 [`cli/README.md`](cli/README.md).

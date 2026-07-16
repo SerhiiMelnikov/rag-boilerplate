@@ -137,8 +137,10 @@ export function generateReadme(o: InstallOptions): string {
   lines.push("host against the database before the first start.", "");
   lines.push("`GET /api/health` returns 200 when Postgres is reachable and 503 when it is not;");
   lines.push("Docker's healthcheck uses it. When deploying outside compose, pass `DATABASE_URL`,");
-  lines.push("`AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY` and the `S3_*` variables as real");
-  lines.push("environment variables — `.env` is never baked into the image.");
+  lines.push("`AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`, `AUTH_TRUST_HOST=true` and the `S3_*`");
+  lines.push("variables as real environment variables — `.env` is never baked into the image.");
+  lines.push("`AUTH_TRUST_HOST` is required: Auth.js rejects the incoming Host header in");
+  lines.push("production otherwise (`UntrustedHost`), and every login fails with a 500.");
   lines.push("");
 
   lines.push("## Images", "");

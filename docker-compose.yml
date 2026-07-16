@@ -31,6 +31,12 @@ services:
       # block exists.
       DATABASE_URL: postgres://rag:rag@db:5432/rag
       S3_ENDPOINT: http://minio:9000
+      # Auth.js v5 rejects the Host header in production unless it is told the
+      # host is trustworthy ("UntrustedHost"), so every login 500s. Safe here:
+      # the app sits behind the compose network on a host we control. When you
+      # put this behind a real reverse proxy, keep this true and make sure the
+      # proxy sets Host / X-Forwarded-* correctly.
+      AUTH_TRUST_HOST: "true"
     ports:
       - "3000:3000"
   minio:

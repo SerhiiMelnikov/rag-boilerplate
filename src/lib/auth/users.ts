@@ -3,6 +3,35 @@ import { db as defaultDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { hashPassword } from "./password";
 
+// Minimal projection for the registration path: is this address taken, and is it
+// confirmed?
+//
+// Explicit return type is required here (not just style): without it, TS infers
+// `row`'s destructured type as non-nullable (this tsconfig has no
+// noUncheckedIndexedAccess), which makes it treat the `?? null` fallback as
+// unreachable and infers the return type as non-null — silently dropping the
+// `| null` that callers (and RegisterDeps, which types against
+// `typeof findUserForRegistration`) depend on.
+export async function findUserForRegistration(
+  email: string,
+  database = defaultDb,
+): Promise<{ id: string; emailVerifiedAt: Date | null } | null> {
+  const [row] = await database
+    .select({ id: users.id, emailVerifiedAt: users.emailVerifiedAt })
+    .from(users).where(eq(users.email, email)).limit(1);
+  return row ?? null;
+}
+
+// Overwrite the password of an unverified registration. Safe only for unverified
+// rows — they confer no login and no session, so nothing is being hijacked.
+export async function resetUnverifiedPassword(userId: string, password: string, database = defaultDb): Promise<void> {
+  await database.update(users).set({ passwordHash: await hashPassword(password) }).where(eq(users.id, userId));
+}
+
+export async function deleteUser(userId: string, database = defaultDb): Promise<void> {
+  await database.delete(users).where(eq(users.id, userId));
+}
+
 export interface NewUser {
   email: string;
   password: string;

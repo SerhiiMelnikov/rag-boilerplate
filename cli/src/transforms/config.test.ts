@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret, setDbImage } from "./config.js";
+import { parse as parseYaml } from "yaml";
+import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret, setDbImage, setAppEnvOverrides } from "./config.js";
 
 const PKG = JSON.stringify({ dependencies: { "@ai-sdk/google": "1", "@ai-sdk/openai": "1", "chromadb": "1", "next": "15" } }, null, 2);
 
@@ -152,5 +153,38 @@ describe("setDbImage", () => {
     const out = setDbImage("services:\n  qdrant:\n    image: q\n", "postgres:16");
     expect(out).not.toContain("postgres:16");
     expect(out).toContain("image: q");
+  });
+});
+
+const COMPOSE_WITH_APP = `services:
+  app:
+    profiles: ["app"]
+    build: .
+    environment:
+      DATABASE_URL: postgres://rag:rag@db:5432/rag
+`;
+
+describe("setAppEnvOverrides", () => {
+  it("merges the given vars into the app service's environment block", () => {
+    const out = setAppEnvOverrides(COMPOSE_WITH_APP, { QDRANT_URL: "http://qdrant:6333" });
+    const doc = parseYaml(out) as { services: { app: { environment: Record<string, string> } } };
+    expect(doc.services.app.environment.QDRANT_URL).toBe("http://qdrant:6333");
+    // the pre-existing override survives the merge
+    expect(doc.services.app.environment.DATABASE_URL).toBe("postgres://rag:rag@db:5432/rag");
+  });
+
+  it("is a no-op for a null overrides map (pgvector, pinecone)", () => {
+    const out = setAppEnvOverrides(COMPOSE_WITH_APP, null);
+    expect(out).toBe(COMPOSE_WITH_APP); // untouched, not even round-tripped through the YAML parser
+  });
+
+  it("is a no-op for an empty overrides map", () => {
+    const out = setAppEnvOverrides(COMPOSE_WITH_APP, {});
+    expect(out).toBe(COMPOSE_WITH_APP);
+  });
+
+  it("is a no-op when there is no app service", () => {
+    const out = setAppEnvOverrides("services:\n  qdrant:\n    image: q\n", { QDRANT_URL: "http://qdrant:6333" });
+    expect(out).not.toContain("QDRANT_URL");
   });
 });

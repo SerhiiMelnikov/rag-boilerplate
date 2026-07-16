@@ -17,4 +17,15 @@ describe("verificationEmail", () => {
     const { html } = verificationEmail('https://x/y?t=a"><script>alert(1)</script>');
     expect(html).not.toContain("<script>");
   });
+
+  // Escaping keeps the link from breaking out of the href attribute, but says
+  // nothing about the scheme inside it. Not exploitable via the one caller today
+  // (it builds an https:// link server-side), but a guard rail for the future.
+  it("rejects a javascript: link", () => {
+    expect(() => verificationEmail("javascript:alert(1)")).toThrow();
+  });
+
+  it("accepts a valid https: link", () => {
+    expect(() => verificationEmail("https://app.test/api/auth/verify?token=abc")).not.toThrow();
+  });
 });

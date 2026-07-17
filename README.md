@@ -90,12 +90,52 @@ client could spend your entire budget. Read this before you rely on them.
   when you first open Settings. A power user sending 250 messages a day will
   start seeing 429s with no notice. Set either to `0` to disable it.
 - **The per-user chat cap bounds one account, not your total spend.**
-  Self-registration is open and free, so an attacker can create as many
-  accounts as they like and run each one up to its own cap — at 200 chat
-  requests/day per account, that is 200 times the number of accounts they
-  bother to create. Actually bounding total spend means restricting who can
-  register — invitations, or disabling self-registration — which is a
-  separate design and is not what these limits do today.
+  Registration is gated (see [Registration](#registration) below), so this is
+  no longer "anyone can create unlimited accounts" — but an attacker who does
+  control a mailbox at an allowed domain can still create several accounts and
+  run each one up to its own cap. The rate limits and the registration gate
+  address different halves of the same budget problem; neither alone bounds
+  total spend.
+
+## Registration
+
+Self-registration is **gated**, not open: `POST /api/register` takes an email
+address only, and only succeeds if the address is at an **allowed domain**
+and the owner of that mailbox clicks the confirmation link that gets sent to
+it. Nobody can log in until they do — `authorizeCredentials` rejects any user
+whose `emailVerifiedAt` is still null.
+
+**The first thing a new operator hits: registration returns 503 until SMTP is
+configured.** The gate needs to send an email, so a fresh install has no way
+to complete a registration yet. Fix it in **Admin → Settings**: fill in the
+SMTP host, port, user and from address (plain) and the password (encrypted at
+rest, shown masked afterwards). Once saved, registration starts sending real
+verification emails. This is not a bug — it is the safe default: nobody can
+be verified before there is a mailer to verify them with.
+
+The **allowed domains** list (also in Settings) is a comma-separated list of
+domains, e.g. `company.com,contractor.com`. **Empty means nobody can
+register** — that is deliberate, not a bug: treating empty as "allow all"
+would mean a fresh install silently accepts registrations from the whole
+internet, which is exactly the hole this feature closes. `npm run seed:admin`
+seeds this list from `ADMIN_EMAIL`'s domain on first run, so a fresh install
+already has a working, correctly-scoped allowlist instead of a second dead
+end; widen it in Settings as needed.
+
+`AUTH_URL` is **required in production** for the same reason SMTP is: the
+verification link has to point somewhere trustworthy. `/api/register` is not
+an Auth.js route, so `AUTH_TRUST_HOST` does not cover it — and a proxy that
+forwards the client's `Host` header verbatim (a common config) would let an
+attacker mint a verification link pointing at their own server, capturing a
+victim's token. Without `AUTH_URL` set, production registration fails loudly
+with 503 rather than trust the request's `Host`. In development the request's
+own origin is used instead, since there is no proxy and no attacker to spoof
+it. See `.env.example` for the variable.
+
+Once SMTP and the allowlist are set: registering emails a link that expires
+in **24 hours**. Clicking it — not registering — is what sets the password;
+the registration request itself never carries one. Submitting that form
+verifies the email and enables login.
 
 ## Development
 

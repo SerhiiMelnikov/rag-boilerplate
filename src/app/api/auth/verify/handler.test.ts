@@ -37,10 +37,14 @@ describe("submitVerification", () => {
   // Unknown, expired, already-used and already-verified must be indistinguishable
   // in the response: telling them apart tells a guesser which guesses are close.
   it("gives the same answer regardless of why the token was rejected", async () => {
-    const a = await submitVerification(req({ token: "unknown", password: "my-new-password" }), deps(false));
-    const b = await submitVerification(req({ token: "expired", password: "my-new-password" }), deps(false));
-    expect(a.headers.get("location")).toContain("error=1");
-    expect(b.headers.get("location")).toContain("error=1");
+    const d = deps(false);
+    const res = await submitVerification(req({ token: "test-token", password: "my-new-password" }), d);
+    const location = res.headers.get("location")!;
+    const url = new URL(location, "http://test");
+    // Only token and error parameters are allowed in rejection URLs. If a reason
+    // or other distinguishing parameter were added, this would catch it.
+    const params = Array.from(url.searchParams.keys());
+    expect(params).toEqual(["token", "error"]);
   });
 
   it("rejects a too-short password without ever calling consumeFn — the token is untouched", async () => {

@@ -3,8 +3,8 @@ import { verificationEmail } from "./templates";
 
 describe("verificationEmail", () => {
   it("puts the link in the body", () => {
-    const { html } = verificationEmail("https://app.test/api/auth/verify?token=abc");
-    expect(html).toContain("https://app.test/api/auth/verify?token=abc");
+    const { html } = verificationEmail("https://app.test/verify?token=abc");
+    expect(html).toContain("https://app.test/verify?token=abc");
   });
 
   it("has a subject", () => {
@@ -26,6 +26,6 @@ describe("verificationEmail", () => {
   });
 
   it("accepts a valid https: link", () => {
-    expect(() => verificationEmail("https://app.test/api/auth/verify?token=abc")).not.toThrow();
+    expect(() => verificationEmail("https://app.test/verify?token=abc")).not.toThrow();
   });
 });

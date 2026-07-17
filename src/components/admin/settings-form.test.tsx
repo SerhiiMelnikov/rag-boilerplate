@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { SettingsForm } from "@/components/admin/settings-form";
 
 const MASKED = {
@@ -12,7 +12,10 @@ const MASKED = {
   temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
   chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200,
+  allowedEmailDomains: "",
+  smtpHost: "", smtpPort: 587, smtpUser: "", smtpFrom: "",
   keys: { google: { set: true, last4: "1234" }, openai: { set: false, last4: null }, anthropic: { set: false, last4: null } },
+  smtpPassword: { set: false, last4: null },
 };
 
 const UNIFIED = { ...MASKED, unifiedMode: true };
@@ -45,5 +48,62 @@ describe("SettingsForm", () => {
     render(<SettingsForm />);
     expect(await screen.findByLabelText("All tasks provider")).toBeInTheDocument();
     expect(screen.queryByLabelText("Chat provider")).not.toBeInTheDocument();
+  });
+
+  it("shows the allowed-domains hint that empty means nobody can register", async () => {
+    render(<SettingsForm />);
+    expect(await screen.findByLabelText("Allowed email domains")).toBeInTheDocument();
+    expect(screen.getByText(/Comma-separated\. Empty means nobody can register\./i)).toBeInTheDocument();
+  });
+
+  // registrationMode existed briefly earlier on this branch (a settings column
+  // gating "open" vs "gated" registration) and was dropped entirely — see
+  // 962565f. Registration is gated unconditionally now, by the allowed-domains
+  // list above; there is no mode to choose, at scaffold time or at runtime, so
+  // this field must never come back.
+  it("never renders a registration-mode field", async () => {
+    render(<SettingsForm />);
+    await screen.findByLabelText("Allowed email domains");
+    expect(screen.queryByLabelText(/registration.?mode/i)).toBeNull();
+    expect(screen.queryByText(/registrationMode/i)).toBeNull();
+  });
+
+  it("renders the SMTP password masked, never binding the stored value into the input", async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ...MASKED, smtpPassword: { set: true, last4: "5678" } }),
+    })) as unknown as typeof fetch;
+    render(<SettingsForm />);
+    const input = (await screen.findByLabelText("SMTP password")) as HTMLInputElement;
+    // The masked {set, last4} object must never be bound as the input's value —
+    // only shown as a placeholder. The input itself starts empty.
+    expect(input.value).toBe("");
+    expect(input.placeholder).toBe("••••5678");
+    expect(input.type).toBe("password");
+  });
+
+  it("does not send smtpPassword on save when the field is left untouched", async () => {
+    render(<SettingsForm />);
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const put = calls.find((c) => (c[1] as { method?: string } | undefined)?.method === "PUT");
+      expect(put).toBeTruthy();
+      const body = JSON.parse((put![1] as { body: string }).body);
+      expect(body).not.toHaveProperty("smtpPassword");
+    });
+  });
+
+  it("sends the typed SMTP password, trimmed, only when the admin types one", async () => {
+    render(<SettingsForm />);
+    const input = await screen.findByLabelText("SMTP password");
+    fireEvent.change(input, { target: { value: "  new-secret-1234  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const put = calls.find((c) => (c[1] as { method?: string } | undefined)?.method === "PUT");
+      const body = JSON.parse((put![1] as { body: string }).body);
+      expect(body.smtpPassword).toBe("new-secret-1234");
+    });
   });
 });

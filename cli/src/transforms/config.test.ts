@@ -124,6 +124,17 @@ describe("generateEnv", () => {
     expect(out).toContain("AUTH_SECRET=A");
     expect(out).toContain("SETTINGS_ENCRYPTION_KEY=B");
   });
+
+  // Without this line, `docker compose --profile app up` (NODE_ENV=production
+  // there) 503s on the very first registration until someone hand-edits .env —
+  // it must at least be discoverable. Commented, not live: a plain `npm run
+  // dev` needs no AUTH_URL at all (it falls back to the request's own origin).
+  it("documents AUTH_URL as required in production, commented out by default", () => {
+    const out = generateEnv({ vectorStore: "pgvector" }, { authSecret: "A", encryptionKey: "B" });
+    expect(out).toContain("# AUTH_URL=");
+    expect(out).not.toMatch(/^AUTH_URL=/m);
+  });
+
   it("omits VECTOR_STORE detail lines for pgvector (default)", () => {
     const out = generateEnv({ vectorStore: "pgvector" }, { authSecret: "A", encryptionKey: "B" });
     expect(out).toContain("VECTOR_STORE=pgvector");

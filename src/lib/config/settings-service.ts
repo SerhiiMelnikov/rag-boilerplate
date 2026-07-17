@@ -31,14 +31,21 @@ interface BaseSettings {
   ollamaBaseUrl: string;
   chatRateLimitPerMinute: number;
   chatRateLimitPerDay: number;
+  allowedEmailDomains: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpFrom: string;
 }
 
 export interface RuntimeSettings extends BaseSettings {
   keys: { google: string | null; openai: string | null; anthropic: string | null };
+  smtpPassword: string | null;
 }
 
 export interface AdminSettings extends BaseSettings {
   keys: { google: KeyStatus; openai: KeyStatus; anthropic: KeyStatus };
+  smtpPassword: KeyStatus;
 }
 
 // Non-key columns selected for both projections.
@@ -62,12 +69,18 @@ const BASE_COLUMNS = {
   ollamaBaseUrl: settings.ollamaBaseUrl,
   chatRateLimitPerMinute: settings.chatRateLimitPerMinute,
   chatRateLimitPerDay: settings.chatRateLimitPerDay,
+  allowedEmailDomains: settings.allowedEmailDomains,
+  smtpHost: settings.smtpHost,
+  smtpPort: settings.smtpPort,
+  smtpUser: settings.smtpUser,
+  smtpFrom: settings.smtpFrom,
 };
 const ALL_COLUMNS = {
   ...BASE_COLUMNS,
   googleKey: settings.googleKey,
   openaiKey: settings.openaiKey,
   anthropicKey: settings.anthropicKey,
+  smtpPassword: settings.smtpPassword,
 };
 
 // strict() so unknown fields (e.g. a stray top_p) are rejected.
@@ -92,17 +105,23 @@ export const settingsPatchSchema = z
     ollamaBaseUrl: z.string().url(),
     chatRateLimitPerMinute: z.number().int().min(0).max(100000),
     chatRateLimitPerDay: z.number().int().min(0).max(1000000),
+    allowedEmailDomains: z.string(),
+    smtpHost: z.string(),
+    smtpPort: z.number().int().min(1).max(65535),
+    smtpUser: z.string(),
+    smtpFrom: z.string(),
     // Keys: omit = leave, null = clear, string = set new plaintext.
     googleKey: z.string().min(1).nullable(),
     openaiKey: z.string().min(1).nullable(),
     anthropicKey: z.string().min(1).nullable(),
+    smtpPassword: z.string().min(1).nullable(),
   })
   .partial()
   .strict();
 
 export type SettingsPatch = z.infer<typeof settingsPatchSchema>;
 
-type Row = BaseSettings & { googleKey: string | null; openaiKey: string | null; anthropicKey: string | null };
+type Row = BaseSettings & { googleKey: string | null; openaiKey: string | null; anthropicKey: string | null; smtpPassword: string | null };
 
 async function readRow(database = defaultDb): Promise<Row> {
   const rows = await database.select(ALL_COLUMNS).from(settings).where(eq(settings.id, 1)).limit(1);
@@ -115,7 +134,7 @@ async function readRow(database = defaultDb): Promise<Row> {
 
 function base(row: Row): BaseSettings {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { googleKey, openaiKey, anthropicKey, ...rest } = row;
+  const { googleKey, openaiKey, anthropicKey, smtpPassword, ...rest } = row;
   return rest;
 }
 
@@ -139,6 +158,7 @@ export async function getRuntimeSettings(database = defaultDb): Promise<RuntimeS
   return {
     ...effective,
     keys: { google: dec(row.googleKey), openai: dec(row.openaiKey), anthropic: dec(row.anthropicKey) },
+    smtpPassword: dec(row.smtpPassword),
   };
 }
 
@@ -147,24 +167,43 @@ export async function getAdminSettings(database = defaultDb): Promise<AdminSetti
   return {
     ...base(row),
     keys: { google: maskSecret(row.googleKey), openai: maskSecret(row.openaiKey), anthropic: maskSecret(row.anthropicKey) },
+    smtpPassword: maskSecret(row.smtpPassword),
   };
 }
 
 // Maps a key patch value: undefined -> skip, null -> clear, string -> encrypt.
-function keyUpdate(set: Record<string, unknown>, column: "googleKey" | "openaiKey" | "anthropicKey", value: string | null | undefined) {
+function keyUpdate(set: Record<string, unknown>, column: "googleKey" | "openaiKey" | "anthropicKey" | "smtpPassword", value: string | null | undefined) {
   if (value === undefined) return;
   set[column] = value === null ? null : encryptSecret(value);
 }
 
 export async function updateSettings(patch: SettingsPatch, database = defaultDb): Promise<AdminSettings> {
-  const { googleKey, openaiKey, anthropicKey, ...rest } = patch;
+  const { googleKey, openaiKey, anthropicKey, smtpPassword, ...rest } = patch;
   const set: Record<string, unknown> = { ...rest };
   keyUpdate(set, "googleKey", googleKey);
   keyUpdate(set, "openaiKey", openaiKey);
   keyUpdate(set, "anthropicKey", anthropicKey);
+  keyUpdate(set, "smtpPassword", smtpPassword);
   await readRow(database); // ensure the singleton exists
   if (Object.keys(set).length > 0) {
     await database.update(settings).set(set).where(eq(settings.id, 1));
   }
   return getAdminSettings(database);
+}
+
+// Projection for the registration path. Decrypts the SMTP password (it must
+// actually send mail) but never touches the provider API keys — /api/register is
+// unauthenticated and has no business pulling those through the decryptor.
+export async function getRegistrationSettings(database = defaultDb): Promise<{
+  allowedEmailDomains: string;
+  smtpHost: string; smtpPort: number; smtpUser: string; smtpFrom: string;
+  smtpPassword: string | null;
+}> {
+  const row = await readRow(database);
+  return {
+    allowedEmailDomains: row.allowedEmailDomains,
+    smtpHost: row.smtpHost, smtpPort: row.smtpPort,
+    smtpUser: row.smtpUser, smtpFrom: row.smtpFrom,
+    smtpPassword: row.smtpPassword ? decryptSecret(row.smtpPassword) : null,
+  };
 }

@@ -13,7 +13,10 @@ interface AdminSettings {
   temperature: number; topK: number; minSimilarity: number; contextTokenBudget: number;
   systemPrompt: string; ollamaBaseUrl: string;
   chatRateLimitPerMinute: number; chatRateLimitPerDay: number;
+  allowedEmailDomains: string;
+  smtpHost: string; smtpPort: number; smtpUser: string; smtpFrom: string;
   keys: { google: KeyStatus; openai: KeyStatus; anthropic: KeyStatus };
+  smtpPassword: KeyStatus;
 }
 
 const CHAT_PROVIDERS = ["google", "openai", "anthropic", "ollama"];
@@ -56,6 +59,10 @@ function ModelRow({ label, provider, model, providers, onProvider, onModel, miss
 export function SettingsForm() {
   const [s, setS] = useState<AdminSettings | null>(null);
   const [saved, setSaved] = useState(false);
+  // Like the provider keys page: the SMTP password is never sent back in
+  // plaintext, so this input starts empty and only its value (if the admin
+  // typed one) is sent on save.
+  const [smtpPasswordInput, setSmtpPasswordInput] = useState("");
 
   useEffect(() => {
     void (async () => {
@@ -84,12 +91,17 @@ export function SettingsForm() {
       contextTokenBudget: cfg.contextTokenBudget, systemPrompt: cfg.systemPrompt,
       chatRateLimitPerMinute: cfg.chatRateLimitPerMinute,
       chatRateLimitPerDay: cfg.chatRateLimitPerDay,
+      allowedEmailDomains: cfg.allowedEmailDomains,
+      smtpHost: cfg.smtpHost, smtpPort: cfg.smtpPort, smtpUser: cfg.smtpUser, smtpFrom: cfg.smtpFrom,
     };
+    // Send the SMTP password only when the admin typed a new value (empty = leave unchanged).
+    if (smtpPasswordInput.trim() !== "") body.smtpPassword = smtpPasswordInput.trim();
     const res = await fetch("/api/admin/settings", {
       method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     });
     if (res.ok) {
       setS(await res.json());
+      setSmtpPasswordInput("");
       setSaved(true);
     }
   }
@@ -146,6 +158,39 @@ export function SettingsForm() {
         </label>
         <label className="flex flex-col gap-1 text-sm">System prompt
           <textarea aria-label="System prompt" value={s.systemPrompt} rows={4} onChange={(e) => set({ systemPrompt: e.target.value })} className={inputCls} />
+        </label>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-lg font-semibold">Registration</h2>
+        <label className="flex flex-col gap-1 text-sm">Allowed email domains
+          <input aria-label="Allowed email domains" value={s.allowedEmailDomains} onChange={(e) => set({ allowedEmailDomains: e.target.value })} className={inputCls} />
+          <span className="text-xs text-zinc-500">Comma-separated. Empty means nobody can register.</span>
+        </label>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-lg font-semibold">SMTP (verification email)</h2>
+        <label className="flex flex-col gap-1 text-sm">SMTP host
+          <input aria-label="SMTP host" value={s.smtpHost} onChange={(e) => set({ smtpHost: e.target.value })} className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">SMTP port
+          <input type="number" aria-label="SMTP port" value={s.smtpPort} onChange={num("smtpPort")} className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">SMTP user
+          <input aria-label="SMTP user" value={s.smtpUser} onChange={(e) => set({ smtpUser: e.target.value })} className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">SMTP from
+          <input aria-label="SMTP from" value={s.smtpFrom} onChange={(e) => set({ smtpFrom: e.target.value })} className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">SMTP password
+          <input
+            type="password" aria-label="SMTP password"
+            placeholder={s.smtpPassword.set ? `••••${s.smtpPassword.last4 ?? ""}` : "not set"}
+            value={smtpPasswordInput}
+            onChange={(e) => setSmtpPasswordInput(e.target.value)}
+            className={inputCls}
+          />
         </label>
       </section>
 

@@ -104,6 +104,15 @@ export function generateEnv(o: { vectorStore: VectorStoreId }, secrets: { authSe
     `AUTH_SECRET=${secrets.authSecret}`,
     `SETTINGS_ENCRYPTION_KEY=${secrets.encryptionKey}`,
     `VECTOR_STORE=${o.vectorStore}`,
+    // Required in production: /api/register mints its verification link from
+    // this, not from the request's Host header (see resolveAuthBase in
+    // src/app/api/register/handler.ts), because a proxy that forwards Host
+    // verbatim would let an attacker mint a link pointing at their own server.
+    // Left commented for local `npm run dev` (NODE_ENV=development falls back
+    // to the request's own origin there); uncomment and set it for any
+    // production deployment, including `docker compose --profile app up`,
+    // whose docker-compose.yml already sets NODE_ENV=production.
+    "# AUTH_URL=http://localhost:3000",
   ];
   // Object storage (images, S3-compatible) is always present: every generated
   // project ships MinIO in docker-compose.yml, so these vars always apply.

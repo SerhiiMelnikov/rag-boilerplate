@@ -19,6 +19,9 @@ export const users = pgTable("users", {
   role: roleEnum("role").notNull().default("user"),
   isSuperAdmin: boolean("is_super_admin").notNull().default(false),
   blockedAt: timestamp("blocked_at"),
+  // Null until the address is confirmed. In `open` registration mode nothing ever
+  // sets this and the login gate that reads it is pruned out — see the CLI task.
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -106,6 +109,16 @@ export const settings = pgTable("settings", {
   // for a real person and far too tight for a script.
   chatRateLimitPerMinute: integer("chat_rate_limit_per_minute").notNull().default(20),
   chatRateLimitPerDay: integer("chat_rate_limit_per_day").notNull().default(200),
+  // Comma-separated, lowercase. EMPTY MEANS NOBODY: an empty list denies every
+  // registration. seed:admin seeds it from ADMIN_EMAIL's domain so a fresh install
+  // is not a dead end.
+  allowedEmailDomains: text("allowed_email_domains").notNull().default(""),
+  smtpHost: text("smtp_host").notNull().default(""),
+  smtpPort: integer("smtp_port").notNull().default(587),
+  smtpUser: text("smtp_user").notNull().default(""),
+  smtpFrom: text("smtp_from").notNull().default(""),
+  // Encrypted at rest, like the provider API keys. Never returned in plaintext.
+  smtpPassword: text("smtp_password"),
   // Provider API keys, encrypted at rest (nullable until an admin sets them).
   googleKey: text("google_key"),
   openaiKey: text("openai_key"),
@@ -155,3 +168,19 @@ export const rateLimits = pgTable(
   },
   (t) => ({ pk: primaryKey({ columns: [t.key, t.windowStart] }) }),
 );
+
+// Single-use, short-lived proof that someone controls an email address. Stored raw:
+// the token grants exactly one state change on one row, so hashing costs more than
+// it buys. Cascade so deleting a user cannot orphan tokens.
+//
+// Deliberately carries no password. The password is chosen by whoever clicks the
+// link and submits the "set your password" form — never by whoever triggered the
+// email. That is what makes multiple live tokens for the same address harmless:
+// none of them can set anything on its own, so a re-registration by someone else
+// can never retarget a link already sitting in the real owner's inbox. See the
+// design doc's "Why the password cannot travel with the registration".
+export const emailVerificationTokens = pgTable("email_verification_tokens", {
+  token: text("token").primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});

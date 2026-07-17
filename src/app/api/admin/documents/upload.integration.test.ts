@@ -20,7 +20,10 @@ const settings = {
   temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
   chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200,
+  allowedEmailDomains: "",
+  smtpHost: "", smtpPort: 587, smtpUser: "", smtpFrom: "",
   keys: { google: "gk", openai: null, anthropic: null },
+  smtpPassword: null,
 } satisfies RuntimeSettings;
 
 describe.runIf(process.env.RUN_INTEGRATION === "1")("admin document upload (real DB)", () => {

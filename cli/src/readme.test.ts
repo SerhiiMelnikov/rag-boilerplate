@@ -93,14 +93,15 @@ describe("generateReadme guidance", () => {
     expect(out).toContain("`0` disables a limit");
   });
 
-  // Self-registration being open and free means the per-account chat cap does not
-  // bound what an attacker can spend across many accounts — that has to be stated
-  // so an owner doesn't find out from a bill.
+  // Registration is gated (see the Registration section), but the per-account chat
+  // cap still only bounds one account — an attacker with a mailbox at an allowed
+  // domain can create several. That has to be stated so an owner doesn't find out
+  // from a bill that the gate alone wasn't the whole story.
   it("explains that the per-user chat cap does not bound total spend", () => {
     const out = generateReadme(opts());
     expect(out).toContain("## Rate limits");
     expect(out).toMatch(/bounds one account, not your total spend/);
-    expect(out).toMatch(/invitations, or disabling self-registration/);
+    expect(out).toMatch(/neither alone bounds total spend/);
   });
 
   // drizzle/0012 backfills the limit columns onto the existing settings row, so an
@@ -162,6 +163,35 @@ describe("generateReadme deploying", () => {
     const deploySection = out.slice(out.indexOf("## Deploying"));
     expect(deploySection).toMatch(/localhost/i);
     expect(deploySection).toMatch(/in-network|container itself/i);
+  });
+});
+
+describe("generateReadme registration", () => {
+  // The Registration section is the operator's first stop when registration
+  // mysteriously 503s on a fresh install — it must say plainly that SMTP has to be
+  // configured first, so nobody mistakes the 503 for a bug and goes bug-hunting.
+  it("tells the operator that SMTP must be configured before registration works", () => {
+    const out = generateReadme(opts());
+    expect(out).toContain("## Registration");
+    expect(out).toMatch(/SMTP must be configured before anyone can register/);
+    expect(out).toMatch(/registration returns 503/);
+  });
+
+  // The empty-allowlist rule is the load-bearing security property of the whole
+  // feature (see isEmailDomainAllowed and the design doc's "bootstrapping" section)
+  // — an empty list must read as "deny all", not "allow all", and the README must
+  // say so or an operator could assume the opposite and ship an open registration.
+  it("states that an empty allowed-domains list denies everyone", () => {
+    const out = generateReadme(opts());
+    expect(out).toMatch(/An empty list denies everyone/);
+    expect(out).toMatch(/seed:admin.*seeds it from `ADMIN_EMAIL`'s domain/);
+  });
+
+  it("documents AUTH_URL as required in production and the 24-hour link expiry", () => {
+    const out = generateReadme(opts());
+    expect(out).toMatch(/AUTH_URL.*required in production/s);
+    expect(out).toMatch(/expires in 24 hours/);
+    expect(out).toMatch(/whoever clicks the link chooses it/);
   });
 });
 

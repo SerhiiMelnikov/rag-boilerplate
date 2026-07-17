@@ -15,6 +15,16 @@
 // `lastIndexOf("@")` plus `trim()` can be tricked into approving an address that
 // isn't what it looks like — e.g. "a@b@company.com" (ambiguous split) or
 // "a@ company.com" (whitespace trimmed away before the compare).
+//
+// A single trailing dot on either side is normalised away: "company.com." is the
+// same domain as "company.com" in DNS (the dot marks the root), and an admin who
+// pastes the dotted form into the allowlist — or whose address happens to carry
+// one — must not be silently denied. A double trailing dot is not root notation,
+// just malformed, and is left alone so it still fails to match.
+function stripRootDot(domain: string): string {
+  return domain.endsWith(".") && !domain.endsWith("..") ? domain.slice(0, -1) : domain;
+}
+
 export function isEmailDomainAllowed(email: string, allowedCsv: string): boolean {
   const at = email.lastIndexOf("@");
   if (at <= 0 || at === email.length - 1) return false;
@@ -24,12 +34,12 @@ export function isEmailDomainAllowed(email: string, allowedCsv: string): boolean
 
   const rawDomain = email.slice(at + 1);
   if (/\s/.test(rawDomain)) return false;
-  const domain = rawDomain.toLowerCase();
+  const domain = stripRootDot(rawDomain.toLowerCase());
   if (!domain) return false;
 
   const allowed = allowedCsv
     .split(",")
-    .map((d) => d.trim().toLowerCase().replace(/^@/, ""))
+    .map((d) => stripRootDot(d.trim().toLowerCase().replace(/^@/, "")))
     .filter(Boolean);
 
   return allowed.includes(domain);

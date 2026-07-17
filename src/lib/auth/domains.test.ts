@@ -48,4 +48,19 @@ describe("isEmailDomainAllowed", () => {
     expect(isEmailDomainAllowed("a b@company.com", "company.com")).toBe(false);
     expect(isEmailDomainAllowed("a@company .com", "company.com")).toBe(false);
   });
+
+  // Regression: a trailing dot is valid FQDN root notation. "company.com." and
+  // "company.com" are the same domain in DNS, so an ADMIN_EMAIL or an allowlist
+  // entry carrying the dotted form must not silently deny everyone.
+  it("treats a single trailing dot as the DNS root on either side", () => {
+    expect(isEmailDomainAllowed("user@company.com.", "company.com")).toBe(true);
+    expect(isEmailDomainAllowed("user@company.com", "company.com.")).toBe(true);
+    expect(isEmailDomainAllowed("user@company.com.", "company.com.")).toBe(true);
+  });
+
+  // A double trailing dot is not root notation, just malformed — it must keep
+  // failing closed rather than being normalised away too.
+  it("does not strip a double trailing dot", () => {
+    expect(isEmailDomainAllowed("a@company.com..", "company.com")).toBe(false);
+  });
 });

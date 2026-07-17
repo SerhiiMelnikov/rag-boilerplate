@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { like } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { users, emailVerificationTokens } from "@/lib/db/schema";
+import { TOKEN_TTL_MS } from "@/lib/auth/verification";
 import { pruneAbandonedRegistrations, __resetRegistrationPruneThrottle } from "./prune";
 
 const RUN = process.env.RUN_INTEGRATION === "1";
@@ -32,9 +33,20 @@ describe.runIf(RUN)("pruneAbandonedRegistrations (integration)", () => {
   it("deletes an expired token and the abandoned unverified user it belonged to, but leaves a verified user and a live token alone", async () => {
     const now = Date.now();
 
+    // Backdated past the token TTL: a real abandoned row's own token (below)
+    // already expired, which is only possible if the row itself is at least
+    // TOKEN_TTL_MS old — a freshly-created row cannot yet hold an expired
+    // token. This is also what exercises the createdAt guard in prune.ts
+    // (see the dedicated test below for the guard's own non-vacuity proof).
     const [abandoned] = await db
       .insert(users)
-      .values({ email: `${PREFIX}-abandoned@company.com`, passwordHash: "placeholder", role: "user", emailVerifiedAt: null })
+      .values({
+        email: `${PREFIX}-abandoned@company.com`,
+        passwordHash: "placeholder",
+        role: "user",
+        emailVerifiedAt: null,
+        createdAt: new Date(now - TOKEN_TTL_MS - 60_000),
+      })
       .returning({ id: users.id });
     const [stillLive] = await db
       .insert(users)
@@ -76,5 +88,50 @@ describe.runIf(RUN)("pruneAbandonedRegistrations (integration)", () => {
     const remainingTokenValues = remainingTokens.map((t) => t.token);
     expect(remainingTokenValues).not.toContain(`${PREFIX}-expired-tok`);
     expect(remainingTokenValues).toContain(`${PREFIX}-live-tok`);
+  });
+
+  // The review finding, made non-vacuous: "unverified AND no token" also matches
+  // a row that never had a token minted yet at all — the ~1ms window in
+  // registerUser between createUnverifiedUser and createVerificationToken (and
+  // the identical gap in scripts/seed-admin.ts before its emailVerifiedAt
+  // UPDATE). That is NOT abandonment; nobody's link has expired because no link
+  // was ever sent. The createdAt guard in prune.ts is what tells the two apart.
+  // To confirm this test actually exercises that guard (and is not vacuously
+  // true), temporarily remove the `lt(users.createdAt, ...)` condition from
+  // pruneAbandonedRegistrations and re-run this file — the first assertion
+  // below must fail (the fresh row gets swept).
+  it("does not sweep a brand-new unverified row with no token yet, but does sweep an old one in the same state", async () => {
+    const now = Date.now();
+
+    // Freshly created, zero token rows — exactly the mid-registration snapshot
+    // above. Must survive: it is too young for any link to have possibly expired.
+    const [freshNoToken] = await db
+      .insert(users)
+      .values({ email: `${PREFIX}-fresh-no-token@company.com`, passwordHash: "placeholder", role: "user", emailVerifiedAt: null })
+      .returning({ id: users.id });
+
+    // Same shape (unverified, zero token rows) but created before the token TTL
+    // window — old enough that any link ever sent to it would have expired by
+    // now. This one is genuinely abandoned and must be swept.
+    const [oldNoToken] = await db
+      .insert(users)
+      .values({
+        email: `${PREFIX}-old-no-token@company.com`,
+        passwordHash: "placeholder",
+        role: "user",
+        emailVerifiedAt: null,
+        createdAt: new Date(now - TOKEN_TTL_MS - 1000),
+      })
+      .returning({ id: users.id });
+
+    await pruneAbandonedRegistrations({ now: () => now });
+
+    const remaining = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(like(users.email, `${PREFIX}%`));
+    const remainingIds = remaining.map((u) => u.id);
+    expect(remainingIds).toContain(freshNoToken.id); // survives: too young to judge, not abandoned
+    expect(remainingIds).not.toContain(oldNoToken.id); // swept: old enough, no live token, genuinely abandoned
   });
 });

@@ -3,7 +3,10 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { emailVerificationTokens, users } from "@/lib/db/schema";
 
-const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+// Exported: pruneAbandonedRegistrations (src/lib/auth/prune.ts) needs the exact
+// same TTL to tell "no token yet" (too young to judge) apart from "no live token
+// anymore" (genuinely abandoned) — see its comment for why.
+export const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface VerificationDeps {
   database?: typeof defaultDb;

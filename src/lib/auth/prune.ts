@@ -1,6 +1,7 @@
 import { and, eq, isNull, lt, notExists } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { emailVerificationTokens, users } from "@/lib/db/schema";
+import { TOKEN_TTL_MS } from "@/lib/auth/verification";
 
 export interface PruneDeps {
   database?: typeof defaultDb;
@@ -37,6 +38,16 @@ export function __resetRegistrationPruneThrottle(): void {
 // Order matters: tokens are deleted first, so "no live token" for the users
 // query below means exactly that — a token that hasn't expired yet is never
 // mistaken for an abandoned one just because it's about to be swept next hour.
+//
+// "No live token" alone is not the same as "every link ever sent has expired":
+// a row that never had a token minted yet ALSO has zero live tokens. That gap is
+// real, not hypothetical — registerUser has a ~1ms window between
+// createUnverifiedUser and createVerificationToken where exactly this is true,
+// and scripts/seed-admin.ts has the identical gap between createUser and the
+// emailVerifiedAt UPDATE. The createdAt guard below closes both at once: a row
+// younger than the token TTL cannot yet have had a link expire, full stop —
+// whether or not a token row happens to exist for it right now — so this
+// matches the definition above exactly instead of approximating it.
 export async function pruneAbandonedRegistrations(deps: PruneDeps = {}): Promise<void> {
   const database = deps.database ?? defaultDb;
   const now = deps.now ? deps.now() : Date.now();
@@ -47,6 +58,7 @@ export async function pruneAbandonedRegistrations(deps: PruneDeps = {}): Promise
   await database.delete(users).where(
     and(
       isNull(users.emailVerifiedAt),
+      lt(users.createdAt, new Date(now - TOKEN_TTL_MS)),
       notExists(database.select().from(emailVerificationTokens).where(eq(emailVerificationTokens.userId, users.id))),
     ),
   );

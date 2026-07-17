@@ -37,6 +37,7 @@ const req = (body: unknown) => new Request("http://test/api/register", {
   method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 });
 const GOOD = { email: "a@company.com" };
+const HOUR_MS = 60 * 60 * 1000;
 
 describe("registerUser (verified mode)", () => {
   it("creates an unverified user with no password of its own and emails a link", async () => {
@@ -269,6 +270,101 @@ describe("registerUser rate limiting", () => {
     const other = await registerUser(req({ email: "other@company.com" }), deps);
     expect(other.status).toBe(201);
     expect(deps.sendEmailFn).toHaveBeenCalledTimes(6);
+  });
+
+  // The finding this bucket exists to close: the per-address bucket above keys
+  // on the exact address string, so it never sees "victim+0@company.com" ..
+  // "victim+5@company.com" as the same target — yet Gmail, Google Workspace,
+  // Fastmail and Proton all deliver every one of those to the ONE real
+  // "victim@company.com" mailbox. Before this bucket existed, six such variants
+  // produced six emails (unbounded). The register:domain: bucket below is what
+  // actually bounds it, because it counts every attempt at the domain
+  // regardless of local part.
+  //
+  // Non-vacuity: temporarily remove the `register:domain:` entry from the
+  // rate-limit loop in handler.ts and re-run this file — this test fails (all
+  // six variants get through, sendEmailFn called 6 times).
+  it("bounds the plus-address evasion: six victim+N@ variants do not all get through once the domain's shared quota is spent", async () => {
+    const db = fakeRateLimitDb();
+    const now = () => 1_700_000_000_000;
+    const deps = baseDeps();
+    deps.rateLimitFn = vi.fn((key: string, limit: number, windowMs: number) =>
+      consume(key, limit, windowMs, { database: db, now }),
+    );
+
+    // Must match REGISTER_DOMAIN_RATE_LIMIT_PER_HOUR in handler.ts.
+    const DOMAIN_LIMIT = 50;
+    // Simulate the domain's hourly quota already mostly spent (prior real
+    // signups, or the attacker's own earlier attempts under other invented
+    // local parts) so only 3 slots remain — a completely fresh bucket would
+    // take 50 requests to reach the interesting part of this test.
+    for (let i = 0; i < DOMAIN_LIMIT - 3; i++) {
+      await consume("register:domain:company.com", DOMAIN_LIMIT, HOUR_MS, { database: db, now });
+    }
+
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      const res = await registerUser(req({ email: `victim+${i}@company.com` }), deps);
+      statuses.push(res.status);
+    }
+
+    expect(statuses.filter((s) => s === 201).length).toBe(3); // only the 3 remaining domain slots
+    expect(statuses.filter((s) => s === 429).length).toBe(3);
+    expect(deps.sendEmailFn).toHaveBeenCalledTimes(3); // NOT six — the whole point of the finding
+  });
+
+  it("a different domain is a separate bucket, unaffected by another domain's exhausted quota", async () => {
+    const db = fakeRateLimitDb();
+    const now = () => 1_700_000_000_000;
+    const deps = baseDeps();
+    deps.getSettingsFn = vi.fn(async () => ({ ...SETTINGS, allowedEmailDomains: "company.com,other.org" }));
+    deps.rateLimitFn = vi.fn((key: string, limit: number, windowMs: number) =>
+      consume(key, limit, windowMs, { database: db, now }),
+    );
+
+    const DOMAIN_LIMIT = 50;
+    for (let i = 0; i < DOMAIN_LIMIT; i++) {
+      await consume("register:domain:company.com", DOMAIN_LIMIT, HOUR_MS, { database: db, now });
+    }
+    const blocked = await registerUser(req({ email: "someone@company.com" }), deps);
+    expect(blocked.status).toBe(429);
+
+    // A wholly different domain's bucket was never touched by the above.
+    const ok = await registerUser(req({ email: "someone@other.org" }), deps);
+    expect(ok.status).toBe(201);
+    expect(deps.sendEmailFn).toHaveBeenCalledTimes(1);
+  });
+
+  // Ordering constraint #3 (the new one): a request already refused by the
+  // tighter per-address bucket must not spend any of the shared domain
+  // bucket's budget.
+  it("does not consult the domain bucket once the per-address bucket has already refused", async () => {
+    const deps = baseDeps();
+    const calls: string[] = [];
+    deps.rateLimitFn = vi.fn(async (key: string) => {
+      calls.push(key);
+      if (key.startsWith("register:email:")) return { allowed: false, retryAfterSeconds: 5 };
+      return { allowed: true, retryAfterSeconds: 0 };
+    });
+    const res = await registerUser(req(GOOD), deps);
+    expect(res.status).toBe(429);
+    expect(calls).toEqual(["register:email:a@company.com"]); // the domain bucket key was never even requested
+  });
+
+  // The domain bucket alone can also refuse — and must produce the same
+  // "no mail, no user" outcome as the per-address bucket.
+  it("refuses with 429 when only the domain bucket denies, sending no mail and creating no user", async () => {
+    const deps = baseDeps();
+    deps.rateLimitFn = vi.fn(async (key: string) => {
+      if (key.startsWith("register:domain:")) return { allowed: false, retryAfterSeconds: 9 };
+      return { allowed: true, retryAfterSeconds: 0 };
+    });
+    const res = await registerUser(req(GOOD), deps);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("9");
+    expect(deps.findUserFn).not.toHaveBeenCalled();
+    expect(deps.createUserFn).not.toHaveBeenCalled();
+    expect(deps.sendEmailFn).not.toHaveBeenCalled();
   });
 });
 

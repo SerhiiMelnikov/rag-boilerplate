@@ -2,6 +2,7 @@ import { registerSchema } from "@/lib/validation";
 import { createUnverifiedUser, DuplicateEmailError, findUserForRegistration, deleteUser } from "@/lib/auth/users";
 import { getRegistrationSettings } from "@/lib/config/settings-service";
 import { isEmailDomainAllowed } from "@/lib/auth/domains";
+import { domainOf } from "@/lib/auth/seed-domains";
 import { createVerificationToken } from "@/lib/auth/verification";
 import { pruneAbandonedRegistrations } from "@/lib/auth/prune";
 import { sendEmail, EmailNotConfiguredError } from "@/lib/email/sender";
@@ -18,6 +19,29 @@ import { consume } from "@/lib/ratelimit/store";
 // reputation into the ground.
 const REGISTER_RATE_LIMIT_PER_EMAIL = 5;
 const REGISTER_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+// Second bucket, shared by every address at the same domain — the per-address
+// bucket above is evadable for free and does not, on its own, bound anything.
+// Subaddressing: "victim+0@company.com" .. "victim+N@company.com" are all
+// delivered to the ONE real "victim@company.com" mailbox on Gmail, Google
+// Workspace, Fastmail and Proton, yet each variant is a distinct string and so
+// gets its own untouched per-address bucket — the mail-bomb this limiter exists
+// to stop still lands in full. Enumeration is the same shape: "a@", "b@",
+// "c@...@company.com" each get their own bucket too, so total outbound mail
+// (and the bounce rate from invented addresses, which is exactly what gets a
+// sending domain blacklisted) is otherwise unbounded. Deliberately NOT fixed by
+// normalizing the local part: stripping "+" is incomplete (Gmail also ignores
+// dots, so "v.i.c.t.i.m@" evades that too) and wrong in general ("+" is a
+// genuinely distinct mailbox on some providers) — chasing provider-specific
+// rules is a losing game. A shared per-domain cap sidesteps all of that: it
+// bounds total mail to one domain no matter what the local part looks like.
+//
+// 50/hour is generous on purpose: large enough to be invisible against real
+// corporate signup volume (e.g. a 40-person new-hire cohort onboarding within
+// the same hour) yet small enough that a flood or enumeration script can never
+// turn into a real mail bomb or run the owner's sender reputation into the
+// ground, no matter how many distinct local parts it invents.
+const REGISTER_DOMAIN_RATE_LIMIT_PER_HOUR = 50;
 
 export interface RegisterDeps {
   getSettingsFn?: typeof getRegistrationSettings;
@@ -121,26 +145,53 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
   // one. Key it on the normalized address so "Boss@Company.com" and
   // " boss@company.com " share one bucket with "boss@company.com".
   //
-  // Ordering, deliberate on both sides:
-  //  - AFTER the domain check: a disallowed domain was never going to be
-  //    accepted anyway, so it must not spend any of the limiter's budget (nor
-  //    a row in the rate_limits table) — the free, DB-less check goes first.
+  // A second, domain-scoped bucket runs right after it (see
+  // REGISTER_DOMAIN_RATE_LIMIT_PER_HOUR above for why the per-address bucket
+  // alone is not enough). Two independent buckets checked in a short-circuiting
+  // loop — same shape as the chat handler's minute/day pair in
+  // src/app/api/chat/handler.ts — so:
+  //  - the tighter, more specific per-address bucket is checked FIRST: a
+  //    request it already refuses must not also spend a slot of the domain's
+  //    shared budget.
+  //  - whichever bucket denies, the response is identical (429, no mail, no
+  //    user): both checks sit before findUserFn/createUserFn below, so neither
+  //    can be distinguished from the other by a caller, and a request refused
+  //    by EITHER never reaches the code that would send mail or create a row.
+  //
+  // Ordering versus the rest of the handler, deliberate on both sides:
+  //  - AFTER the domain-allowlist check: a disallowed domain was never going to
+  //    be accepted anyway, so it must not spend any of the limiter's budget
+  //    (nor a row in the rate_limits table) — the free, DB-less check goes first.
   //  - BEFORE findUserFn (the existence lookup): the limiter's key and verdict
   //    depend only on the address string, never on whether a row exists for
   //    it, so checking it first means a 429 can never be correlated with
   //    existence — the same request for a brand-new address and for an
-  //    already-registered one hits the identical check before either code path
+  //    already-registered one hits the identical checks before either code path
   //    has looked the address up.
-  const rateLimit = await rateLimitFn(
-    `register:email:${email.trim().toLowerCase()}`,
-    REGISTER_RATE_LIMIT_PER_EMAIL,
-    REGISTER_RATE_LIMIT_WINDOW_MS,
-  );
-  if (!rateLimit.allowed) {
-    return Response.json(
-      { error: "Too many registration attempts for this address. Try again later." },
-      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } },
-    );
+  //
+  // isEmailDomainAllowed above already parsed this exact address with the same
+  // rule domainOf uses (lastIndexOf("@"), rejecting an empty local or domain
+  // part) and found a match on the allowlist, so domainOf cannot return null here.
+  const domain = domainOf(email)!;
+  for (const [key, limit, message] of [
+    [
+      `register:email:${email.trim().toLowerCase()}`,
+      REGISTER_RATE_LIMIT_PER_EMAIL,
+      "Too many registration attempts for this address. Try again later.",
+    ],
+    [
+      `register:domain:${domain}`,
+      REGISTER_DOMAIN_RATE_LIMIT_PER_HOUR,
+      "Too many registration attempts for this domain. Try again later.",
+    ],
+  ] as const) {
+    const rateLimit = await rateLimitFn(key, limit, REGISTER_RATE_LIMIT_WINDOW_MS);
+    if (!rateLimit.allowed) {
+      return Response.json(
+        { error: message },
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } },
+      );
+    }
   }
 
   const existing = await findUserFn(email);

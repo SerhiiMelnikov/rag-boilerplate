@@ -3,8 +3,21 @@ import { createUnverifiedUser, DuplicateEmailError, findUserForRegistration, del
 import { getRegistrationSettings } from "@/lib/config/settings-service";
 import { isEmailDomainAllowed } from "@/lib/auth/domains";
 import { createVerificationToken } from "@/lib/auth/verification";
+import { pruneAbandonedRegistrations } from "@/lib/auth/prune";
 import { sendEmail, EmailNotConfiguredError } from "@/lib/email/sender";
 import { verificationEmail } from "@/lib/email/templates";
+import { consume } from "@/lib/ratelimit/store";
+
+// Anti-abuse only — a named constant, not a tunable admin setting. This branch
+// already removed one settings-backed rate-limit column (registrationMode's
+// sibling, dropped with the open-registration mode itself); re-adding a
+// registerRateLimitPerHour column here would be exactly the churn that removal
+// was for. Five requests per address per hour is generous for a human (a lost
+// email, a typo corrected on the next try, an impatient resend) and useless for
+// a script trying to flood one inbox or run the owner's SMTP quota/sender
+// reputation into the ground.
+const REGISTER_RATE_LIMIT_PER_EMAIL = 5;
+const REGISTER_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 export interface RegisterDeps {
   getSettingsFn?: typeof getRegistrationSettings;
@@ -13,6 +26,8 @@ export interface RegisterDeps {
   deleteUserFn?: typeof deleteUser;
   createTokenFn?: typeof createVerificationToken;
   sendEmailFn?: typeof sendEmail;
+  rateLimitFn?: typeof consume;
+  pruneFn?: typeof pruneAbandonedRegistrations;
 }
 
 // Thrown when we cannot mint a link we would be willing to send. Caught the same
@@ -49,6 +64,17 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
   const deleteUserFn = deps.deleteUserFn ?? deleteUser;
   const createTokenFn = deps.createTokenFn ?? createVerificationToken;
   const sendEmailFn = deps.sendEmailFn ?? sendEmail;
+  const rateLimitFn = deps.rateLimitFn ?? consume;
+  const pruneFn = deps.pruneFn ?? pruneAbandonedRegistrations;
+
+  // Opportunistic housekeeping, fire-and-forget exactly like ratelimit/store.ts's
+  // own prune: this unauthenticated endpoint is the only source of expired
+  // tokens and abandoned (never-verified) registrations, so it's the natural
+  // place to sweep them, but a sweep must never delay or fail the request
+  // riding on it — a caller here does not need to know or care that it happened.
+  pruneFn().catch((err: unknown) => {
+    console.error("register: prune failed", err);
+  });
 
   let body: unknown;
   try {
@@ -84,6 +110,36 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
     return Response.json(
       { error: "That email domain is not allowed to register.", allowedDomains: settings.allowedEmailDomains },
       { status: 403 },
+    );
+  }
+
+  // Throttle per address, not per IP. `x-forwarded-for` is attacker-forgeable —
+  // that is why the per-IP limit was dropped in 6a578ca — so an IP-keyed limit
+  // only ever bounds requests behind an honest, non-overwriting proxy. The email
+  // address has no such hole: it IS the resource being protected, so an
+  // attacker who sends a different address is, by definition, not bombing this
+  // one. Key it on the normalized address so "Boss@Company.com" and
+  // " boss@company.com " share one bucket with "boss@company.com".
+  //
+  // Ordering, deliberate on both sides:
+  //  - AFTER the domain check: a disallowed domain was never going to be
+  //    accepted anyway, so it must not spend any of the limiter's budget (nor
+  //    a row in the rate_limits table) — the free, DB-less check goes first.
+  //  - BEFORE findUserFn (the existence lookup): the limiter's key and verdict
+  //    depend only on the address string, never on whether a row exists for
+  //    it, so checking it first means a 429 can never be correlated with
+  //    existence — the same request for a brand-new address and for an
+  //    already-registered one hits the identical check before either code path
+  //    has looked the address up.
+  const rateLimit = await rateLimitFn(
+    `register:email:${email.trim().toLowerCase()}`,
+    REGISTER_RATE_LIMIT_PER_EMAIL,
+    REGISTER_RATE_LIMIT_WINDOW_MS,
+  );
+  if (!rateLimit.allowed) {
+    return Response.json(
+      { error: "Too many registration attempts for this address. Try again later." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } },
     );
   }
 

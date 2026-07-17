@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { registerUser } from "./handler";
 import { EmailNotConfiguredError } from "@/lib/email/sender";
+import { consume, __resetPruneThrottle } from "@/lib/ratelimit/store";
 
 const SETTINGS = {
   allowedEmailDomains: "company.com",
@@ -23,6 +24,12 @@ function baseDeps() {
     // Explicit param type: without it, TS infers a zero-arg mock, and
     // `mock.calls[0][0]` below would not type-check.
     sendEmailFn: vi.fn(async (_msg: { to: string; subject: string; html: string }) => undefined),
+    // Defaults to "always allowed" / "no-op sweep" so every test above the
+    // "rate limiting" and "housekeeping" describe blocks below is exercising
+    // registration logic, not the throttle or the prune — those get their own
+    // dedicated tests further down.
+    rateLimitFn: vi.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })),
+    pruneFn: vi.fn(async () => undefined),
   };
 }
 
@@ -165,5 +172,120 @@ describe("registerUser verification link", () => {
     expect(deps.sendEmailFn).not.toHaveBeenCalled();
     expect(deps.createTokenFn).not.toHaveBeenCalled();
     expect(deps.createUserFn).not.toHaveBeenCalled();
+  });
+});
+
+// Minimal fake modelling the same (key, windowStart) counter store.test.ts's own
+// suite uses for ratelimit/store.ts — just enough for the REAL consume() to do
+// its real atomic-upsert-style counting against, with no Postgres involved.
+// `delete` is a no-op: consume()'s own opportunistic prune fires on every call,
+// and it must not blow up here even though nothing in this file cares about it.
+function fakeRateLimitDb() {
+  const counters = new Map<string, number>();
+  return {
+    insert: () => ({
+      values: ({ key, windowStart }: { key: string; windowStart: Date }) => ({
+        onConflictDoUpdate: () => ({
+          returning: async () => {
+            const k = `${key}@${windowStart.toISOString()}`;
+            const next = (counters.get(k) ?? 0) + 1;
+            counters.set(k, next);
+            return [{ count: next }];
+          },
+        }),
+      }),
+    }),
+    delete: () => ({ where: async () => undefined }),
+  } as never;
+}
+
+describe("registerUser rate limiting", () => {
+  beforeEach(() => {
+    // consume()'s own module-level prune throttle is process-wide state; reset
+    // it so one test's timing can't silently skip another's opportunistic prune.
+    __resetPruneThrottle();
+  });
+
+  // Ordering constraint #1: a domain the allowlist was always going to refuse
+  // must not spend any of the limiter's budget — the free, DB-less domain
+  // check runs first and short-circuits before the limiter is ever touched.
+  it("does not consult the rate limiter for a domain the allowlist refuses", async () => {
+    const deps = baseDeps();
+    const res = await registerUser(req({ email: "a@evil.com" }), deps);
+    expect(res.status).toBe(403);
+    expect(deps.rateLimitFn).not.toHaveBeenCalled();
+  });
+
+  it("keys the limiter on the trimmed, lowercased address", async () => {
+    const deps = baseDeps();
+    await registerUser(req({ email: "A@Company.com" }), deps);
+    expect(deps.rateLimitFn).toHaveBeenCalledWith(
+      "register:email:a@company.com",
+      expect.any(Number),
+      expect.any(Number),
+    );
+  });
+
+  // Ordering constraint #2: the limiter's verdict must never be correlated with
+  // whether the address is already registered — it is checked (and can refuse)
+  // strictly before findUserFn, the only thing that would tell them apart.
+  it("refuses with 429 and Retry-After, before ever looking up or emailing the address, once the limiter denies", async () => {
+    const deps = baseDeps();
+    deps.rateLimitFn = vi.fn(async () => ({ allowed: false, retryAfterSeconds: 17 }));
+    const res = await registerUser(req(GOOD), deps);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("17");
+    expect(deps.findUserFn).not.toHaveBeenCalled();
+    expect(deps.createUserFn).not.toHaveBeenCalled();
+    expect(deps.createTokenFn).not.toHaveBeenCalled();
+    expect(deps.sendEmailFn).not.toHaveBeenCalled();
+  });
+
+  // The finding, made non-vacuous against the REAL consume() (not a mock): five
+  // registrations for one address succeed, the sixth is refused with no mail
+  // sent, and a completely different address is unaffected. To see this fail,
+  // remove the rate-limit block from handler.ts (or raise
+  // REGISTER_RATE_LIMIT_PER_EMAIL past 6) and re-run this file.
+  it("throttles a single address to REGISTER_RATE_LIMIT_PER_EMAIL requests per window, using the real limiter", async () => {
+    const db = fakeRateLimitDb();
+    const now = () => 1_700_000_000_000;
+    const deps = baseDeps();
+    deps.rateLimitFn = vi.fn((key: string, limit: number, windowMs: number) =>
+      consume(key, limit, windowMs, { database: db, now }),
+    );
+
+    for (let i = 0; i < 5; i++) {
+      const res = await registerUser(req(GOOD), deps);
+      expect(res.status).toBe(201);
+    }
+    expect(deps.sendEmailFn).toHaveBeenCalledTimes(5);
+
+    const sixth = await registerUser(req(GOOD), deps);
+    expect(sixth.status).toBe(429);
+    expect(sixth.headers.get("Retry-After")).toBeTruthy();
+    expect(deps.sendEmailFn).toHaveBeenCalledTimes(5); // the 6th sent no mail
+
+    // A different address is an entirely separate bucket.
+    const other = await registerUser(req({ email: "other@company.com" }), deps);
+    expect(other.status).toBe(201);
+    expect(deps.sendEmailFn).toHaveBeenCalledTimes(6);
+  });
+});
+
+describe("registerUser opportunistic housekeeping", () => {
+  it("sweeps expired tokens/abandoned registrations on every request", async () => {
+    const deps = baseDeps();
+    await registerUser(req(GOOD), deps);
+    expect(deps.pruneFn).toHaveBeenCalled();
+  });
+
+  // Housekeeping rides along on the request; it must never be able to break it.
+  it("a failing sweep does not fail or change the response it rode in on", async () => {
+    const deps = baseDeps();
+    deps.pruneFn = vi.fn(async () => {
+      throw new Error("db hiccup");
+    });
+    const res = await registerUser(req(GOOD), deps);
+    expect(res.status).toBe(201);
   });
 });

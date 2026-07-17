@@ -1,11 +1,69 @@
 import "dotenv/config";
 import { eq } from "drizzle-orm";
-import { db } from "@/lib/db/client";
+import { db as defaultDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { createUser, getUserByEmail } from "@/lib/auth/users";
+import { hashPassword } from "@/lib/auth/password";
 import { ensureDefaultWorkspace } from "@/lib/workspaces/ensure-default";
 import { domainOf } from "@/lib/auth/seed-domains";
 import { getAdminSettings, updateSettings } from "@/lib/config/settings-service";
+
+// Narrow injectable type, deliberately not `typeof getUserByEmail`: that
+// function has no explicit return type annotation, so TS infers its `rows[0]
+// ?? null` as always-non-null (the same inference trap findUserForRegistration's
+// comment in src/lib/auth/users.ts documents) and drops the `| null` a test
+// mock needs to return. ensureAdminUser only ever tests this for truthiness, so
+// the id is all it needs.
+type LookupFn = (email: string, database?: typeof defaultDb) => Promise<{ id: string } | null>;
+
+export interface EnsureAdminDeps {
+  database?: typeof defaultDb;
+  getUserByEmailFn?: LookupFn;
+  createUserFn?: typeof createUser;
+  hashPasswordFn?: typeof hashPassword;
+}
+
+// Ensure ADMIN_EMAIL exists as a verified super-admin whose ADMIN_PASSWORD
+// actually authenticates — including when the row already existed.
+//
+// seed:admin is an owner-only, env-driven bootstrap; its whole contract is
+// "make ADMIN_EMAIL/ADMIN_PASSWORD work". That means it must be authoritative
+// over the password on an existing row too, not just role/isSuperAdmin: an
+// unverified registration (see createUnverifiedUser in src/lib/auth/users.ts)
+// leaves password_hash set to a hash of 32 random bytes that nothing can ever
+// authenticate against. Without overwriting it here, a squatter who registers
+// (but never verifies) the operator's intended admin address would get
+// promoted straight to verified super-admin by this script while
+// ADMIN_PASSWORD silently still doesn't work — and the verify flow can't
+// rescue it afterward either, since consumeVerificationToken only ever
+// touches a row whose emailVerifiedAt is still null (see verification.ts).
+// The same trap catches an ordinary admin who registers, forgets to click the
+// link, and runs this script to "fix" it.
+export async function ensureAdminUser(
+  email: string,
+  password: string,
+  deps: EnsureAdminDeps = {},
+): Promise<"updated" | "created"> {
+  const database = deps.database ?? defaultDb;
+  const getUserByEmailFn = deps.getUserByEmailFn ?? getUserByEmail;
+  const createUserFn = deps.createUserFn ?? createUser;
+  const hashPasswordFn = deps.hashPasswordFn ?? hashPassword;
+
+  const existing = await getUserByEmailFn(email, database);
+  if (existing) {
+    const passwordHash = await hashPasswordFn(password);
+    await database
+      .update(users)
+      .set({ role: "admin", isSuperAdmin: true, emailVerifiedAt: new Date(), passwordHash })
+      .where(eq(users.email, email));
+    return "updated";
+  }
+
+  const user = await createUserFn({ email, password, role: "admin" }, database);
+  // Same reasoning as above: the admin must be able to log in immediately.
+  await database.update(users).set({ isSuperAdmin: true, emailVerifiedAt: new Date() }).where(eq(users.id, user.id));
+  return "created";
+}
 
 // Idempotently create the admin user and the default workspace from environment
 // variables. Both are prerequisites for a usable install: every workspace lookup
@@ -41,20 +99,12 @@ async function main() {
     }
   }
 
-  const existing = await getUserByEmail(email);
-  if (existing) {
-    // Ensure the env admin is the super-admin (and an admin), even if pre-existing.
-    // The admin must be able to log in: the gate rejects a null emailVerifiedAt, and
-    // an admin who cannot sign in cannot configure SMTP to fix it.
-    await db.update(users).set({ role: "admin", isSuperAdmin: true, emailVerifiedAt: new Date() }).where(eq(users.email, email));
-    console.log(`Admin ensured super-admin: ${email}.`);
-    process.exit(0);
-  }
-  const user = await createUser({ email, password, role: "admin" });
-  // Same reasoning as above: the admin must be able to log in immediately.
-  await db.update(users).set({ isSuperAdmin: true, emailVerifiedAt: new Date() }).where(eq(users.id, user.id));
-  console.log(`Created super-admin: ${user.email}`);
+  const outcome = await ensureAdminUser(email, password);
+  console.log(outcome === "updated" ? `Admin ensured super-admin: ${email}.` : `Created super-admin: ${email}`);
   process.exit(0);
 }
 
-main();
+// Only run when executed directly (`tsx scripts/seed-admin.ts`), not when
+// imported — e.g. by seed-admin.test.ts, which needs `ensureAdminUser` without
+// triggering a real run (and its `process.exit` calls) as an import side effect.
+if (process.argv[1] === import.meta.filename) main();

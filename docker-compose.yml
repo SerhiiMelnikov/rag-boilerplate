@@ -42,6 +42,13 @@ services:
       # put this behind a real reverse proxy, keep this true and make sure the
       # proxy sets Host / X-Forwarded-* correctly.
       AUTH_TRUST_HOST: "true"
+      # /api/register refuses to mint a verification link from the request's
+      # Host in production (see resolveAuthBase in
+      # src/app/api/register/handler.ts) and 503s without this set. This
+      # default only works for the exact `docker compose --profile app up`
+      # path on your own machine — change it to your real, public URL for any
+      # deployment reachable from somewhere other than localhost.
+      AUTH_URL: http://localhost:3000
     ports:
       - "3000:3000"
   minio:

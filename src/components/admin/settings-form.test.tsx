@@ -56,8 +56,11 @@ describe("SettingsForm", () => {
     expect(screen.getByText(/Comma-separated\. Empty means nobody can register\./i)).toBeInTheDocument();
   });
 
-  // registrationMode is a scaffold-time CLI choice the template pruning step removes
-  // for; it must never come back as a runtime admin setting.
+  // registrationMode existed briefly earlier on this branch (a settings column
+  // gating "open" vs "gated" registration) and was dropped entirely — see
+  // 962565f. Registration is gated unconditionally now, by the allowed-domains
+  // list above; there is no mode to choose, at scaffold time or at runtime, so
+  // this field must never come back.
   it("never renders a registration-mode field", async () => {
     render(<SettingsForm />);
     await screen.findByLabelText("Allowed email domains");

@@ -137,6 +137,13 @@ in **24 hours**. Clicking it — not registering — is what sets the password;
 the registration request itself never carries one. Submitting that form
 verifies the email and enables login.
 
+**Upgrading an existing install:** migration `0013` marks every pre-existing
+user as verified, including any at a domain the new allowlist would refuse —
+the alternative (locking real users out on upgrade) is worse, but it means
+anyone who self-registered through the old open endpoint keeps both their
+account and their access to the shared budget. Audit `users` after upgrading
+and block (**Admin → Users**) anyone you don't want to keep.
+
 ## Development
 
 This repo's root (outside `cli/`) is the source the template snapshot is
@@ -191,7 +198,7 @@ npm run seed:admin
 
 The container exposes `GET /api/health`, which returns `200` when it can reach Postgres and `503` when it cannot. Docker's own healthcheck uses it, so `docker compose ps` reports the app as `healthy` only once the database is genuinely reachable.
 
-Deploying the image somewhere other than compose: supply `DATABASE_URL`, `AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`, `AUTH_TRUST_HOST=true` and the `S3_*` variables as real environment variables. `.env` is deliberately excluded from the image — secrets are never baked into a layer. `AUTH_TRUST_HOST` is required because Auth.js rejects the incoming Host header in production otherwise ("UntrustedHost"), and every login fails with a 500 — `docker-compose.yml` already sets it for the `app` service.
+Deploying the image somewhere other than compose: supply `DATABASE_URL`, `AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`, `AUTH_TRUST_HOST=true`, `AUTH_URL` and the `S3_*` variables as real environment variables. `.env` is deliberately excluded from the image — secrets are never baked into a layer. `AUTH_TRUST_HOST` is required because Auth.js rejects the incoming Host header in production otherwise ("UntrustedHost"), and every login fails with a 500. `AUTH_URL` is required for the same reason registration needs it everywhere else (see [Registration](#registration)) — without it, every registration 503s instead. `docker-compose.yml` already sets both for the `app` service, pointed at `http://localhost:3000`; change that value for any real deployment.
 
 For building, testing, and publishing the installer package, see
 [`cli/README.md`](cli/README.md).

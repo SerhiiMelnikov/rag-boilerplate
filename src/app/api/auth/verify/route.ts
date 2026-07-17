@@ -1,9 +1,5 @@
-import { verifyEmail } from "./handler";
+import { submitVerification } from "./handler";
 
-// Never cache: a cached redirect would verify one person and then claim success for
-// everyone who follows.
-export const dynamic = "force-dynamic";
-
-export async function GET(request: Request) {
-  return verifyEmail(request);
+export async function POST(request: Request) {
+  return submitVerification(request);
 }

@@ -172,15 +172,15 @@ export const rateLimits = pgTable(
 // Single-use, short-lived proof that someone controls an email address. Stored raw:
 // the token grants exactly one state change on one row, so hashing costs more than
 // it buys. Cascade so deleting a user cannot orphan tokens.
+//
+// Deliberately carries no password. The password is chosen by whoever clicks the
+// link and submits the "set your password" form — never by whoever triggered the
+// email. That is what makes multiple live tokens for the same address harmless:
+// none of them can set anything on its own, so a re-registration by someone else
+// can never retarget a link already sitting in the real owner's inbox. See the
+// design doc's "Why the password cannot travel with the registration".
 export const emailVerificationTokens = pgTable("email_verification_tokens", {
   token: text("token").primaryKey(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  // The password this link was minted for. A re-registration on the same address
-  // must never overwrite users.password_hash directly — that would retarget every
-  // verification link already sitting in an inbox to whichever password overwrote
-  // it last. Binding the hash to the token instead means consuming a token always
-  // restores the exact password it was minted with, no matter how many later
-  // tokens exist for the same user.
-  passwordHash: text("password_hash").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
@@ -60,6 +61,23 @@ export async function createUser(input: NewUser, database = defaultDb): Promise<
     }
     throw err;
   }
+}
+
+export interface NewUnverifiedUser {
+  email: string;
+  role?: "admin" | "user";
+}
+
+// Registration (verified mode) no longer supplies a password — it is chosen by
+// whoever clicks the verification link, and consumeVerificationToken overwrites
+// this the moment they do. Until then the row needs SOME password_hash (the
+// column is NOT NULL) that nothing can ever authenticate against, so it is a
+// hash of 32 random bytes — never a constant, which would be a shared backdoor
+// across every unverified row. emailVerifiedAt is left null by createUser as-is,
+// which is exactly the "unverified" state this row should start in.
+export async function createUnverifiedUser(input: NewUnverifiedUser, database = defaultDb): Promise<UserRecord> {
+  const placeholder = randomBytes(32).toString("base64url");
+  return createUser({ email: input.email, password: placeholder, role: input.role }, database);
 }
 
 // Fetch a user by email, including the password hash (for credential verification).

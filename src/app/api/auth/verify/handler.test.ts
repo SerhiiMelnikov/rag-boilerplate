@@ -1,33 +1,62 @@
 import { describe, it, expect, vi } from "vitest";
-import { verifyEmail } from "./handler";
+import { submitVerification } from "./handler";
 
-const req = (qs: string) => new Request(`http://test/api/auth/verify${qs}`);
+const req = (fields: Record<string, string>) => {
+  const body = new URLSearchParams(fields);
+  return new Request("http://test/api/auth/verify", { method: "POST", body });
+};
 
-describe("verifyEmail", () => {
-  it("redirects to login with a success marker on a good token", async () => {
-    const res = await verifyEmail(req("?token=tok"), { consumeFn: vi.fn(async () => true) });
-    expect(res.status).toBe(302);
+function deps(consumeResult = true) {
+  return {
+    consumeFn: vi.fn(async () => consumeResult),
+    // A stub, not real bcrypt, so the test can assert exactly what travels to
+    // consumeFn without paying (or depending on) real hashing cost.
+    hashPasswordFn: vi.fn(async (pw: string) => `hashed:${pw}`),
+  };
+}
+
+describe("submitVerification", () => {
+  it("hashes the submitted password and consumes the token with it", async () => {
+    const d = deps(true);
+    const res = await submitVerification(req({ token: "tok", password: "my-new-password" }), d);
+    expect(d.hashPasswordFn).toHaveBeenCalledWith("my-new-password");
+    expect(d.consumeFn).toHaveBeenCalledWith("tok", "hashed:my-new-password");
+    expect(res.status).toBe(303);
     expect(res.headers.get("location")).toContain("/login?verified=1");
   });
 
-  it("redirects to login with an error on a bad token", async () => {
-    const res = await verifyEmail(req("?token=nope"), { consumeFn: vi.fn(async () => false) });
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toContain("error=invalid_token");
+  it("sends the clicker back to the same link with an error when the token is bad", async () => {
+    const d = deps(false);
+    const res = await submitVerification(req({ token: "tok", password: "my-new-password" }), d);
+    expect(res.status).toBe(303);
+    const location = res.headers.get("location")!;
+    expect(location).toContain("/verify?token=tok");
+    expect(location).toContain("error=1");
   });
 
-  it("redirects with an error when no token is given", async () => {
-    const consumeFn = vi.fn(async () => true);
-    const res = await verifyEmail(req(""), { consumeFn });
-    expect(res.headers.get("location")).toContain("error=invalid_token");
-    expect(consumeFn).not.toHaveBeenCalled();
+  // Unknown, expired, already-used and already-verified must be indistinguishable
+  // in the response: telling them apart tells a guesser which guesses are close.
+  it("gives the same answer regardless of why the token was rejected", async () => {
+    const a = await submitVerification(req({ token: "unknown", password: "my-new-password" }), deps(false));
+    const b = await submitVerification(req({ token: "expired", password: "my-new-password" }), deps(false));
+    expect(a.headers.get("location")).toContain("error=1");
+    expect(b.headers.get("location")).toContain("error=1");
   });
 
-  // Unknown, expired and already-used must be indistinguishable: telling them apart
-  // tells a guesser which guesses are close.
-  it("gives the same answer for every kind of bad token", async () => {
-    const a = await verifyEmail(req("?token=unknown"), { consumeFn: vi.fn(async () => false) });
-    const b = await verifyEmail(req("?token=expired"), { consumeFn: vi.fn(async () => false) });
-    expect(a.headers.get("location")).toBe(b.headers.get("location"));
+  it("rejects a too-short password without ever calling consumeFn — the token is untouched", async () => {
+    const d = deps(true);
+    const res = await submitVerification(req({ token: "tok", password: "short" }), d);
+    expect(d.consumeFn).not.toHaveBeenCalled();
+    expect(res.status).toBe(303);
+    const location = res.headers.get("location")!;
+    expect(location).toContain("/verify?token=tok");
+    expect(location).toContain("error=1");
+  });
+
+  it("rejects a missing token without calling consumeFn", async () => {
+    const d = deps(true);
+    const res = await submitVerification(req({ password: "my-new-password" }), d);
+    expect(d.consumeFn).not.toHaveBeenCalled();
+    expect(res.status).toBe(303);
   });
 });

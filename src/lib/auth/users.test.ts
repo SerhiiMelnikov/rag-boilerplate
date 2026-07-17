@@ -1,5 +1,16 @@
-import { describe, it, expect } from "vitest";
-import { createUser, getUserByEmail, getAuthUserById, DuplicateEmailError } from "@/lib/auth/users";
+import { describe, it, expect, vi } from "vitest";
+
+// Wraps the real node:crypto so createUnverifiedUser's call to randomBytes can be
+// observed directly — the point of the test below is to prove the placeholder
+// password comes from randomBytes and not from a constant, and comparing two
+// bcrypt hashes wouldn't prove that (bcrypt salts randomly regardless of input).
+vi.mock("node:crypto", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:crypto")>();
+  return { ...actual, randomBytes: vi.fn(actual.randomBytes) };
+});
+
+import { randomBytes } from "node:crypto";
+import { createUser, createUnverifiedUser, getUserByEmail, getAuthUserById, DuplicateEmailError } from "@/lib/auth/users";
 
 // Minimal fake matching the Drizzle calls used by the service.
 function fakeDb(opts: { existing?: unknown[]; insertResult?: unknown[]; insertThrows?: unknown } = {}) {
@@ -28,6 +39,32 @@ describe("createUser", () => {
     const pgUnique = Object.assign(new Error("dup"), { code: "23505" });
     const db = fakeDb({ insertThrows: pgUnique });
     await expect(createUser({ email: "a@b.com", password: "x" }, db)).rejects.toBeInstanceOf(DuplicateEmailError);
+  });
+});
+
+describe("createUnverifiedUser", () => {
+  it("creates the user via createUser and returns the record without the hash", async () => {
+    const db = fakeDb({ insertResult: [{ id: "u1", email: "a@b.com", role: "user" }] });
+    const rec = await createUnverifiedUser({ email: "a@b.com" }, db);
+    expect(rec).toEqual({ id: "u1", email: "a@b.com", role: "user" });
+  });
+
+  // The placeholder must be unguessable — the row's password_hash is NOT NULL
+  // and nothing may ever authenticate against it — so it has to come from
+  // randomBytes, never a constant string. Asserting on the resulting bcrypt
+  // hashes wouldn't prove this (bcrypt salts randomly on every call regardless
+  // of input), so this asserts on the actual randomBytes(32) call instead.
+  it("generates the placeholder password from randomBytes(32), not a constant", async () => {
+    const db = fakeDb({ insertResult: [{ id: "u1", email: "a@b.com", role: "user" }] });
+    vi.mocked(randomBytes).mockClear();
+    await createUnverifiedUser({ email: "a@b.com" }, db);
+    expect(randomBytes).toHaveBeenCalledWith(32);
+  });
+
+  it("maps a unique-violation to DuplicateEmailError, same as createUser", async () => {
+    const pgUnique = Object.assign(new Error("dup"), { code: "23505" });
+    const db = fakeDb({ insertThrows: pgUnique });
+    await expect(createUnverifiedUser({ email: "a@b.com" }, db)).rejects.toBeInstanceOf(DuplicateEmailError);
   });
 });
 

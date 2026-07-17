@@ -1,6 +1,5 @@
-import { credentialsSchema } from "@/lib/validation";
-import { createUser, DuplicateEmailError, findUserForRegistration, deleteUser } from "@/lib/auth/users";
-import { hashPassword } from "@/lib/auth/password";
+import { registerSchema } from "@/lib/validation";
+import { createUnverifiedUser, DuplicateEmailError, findUserForRegistration, deleteUser } from "@/lib/auth/users";
 import { getRegistrationSettings } from "@/lib/config/settings-service";
 import { isEmailDomainAllowed } from "@/lib/auth/domains";
 import { createVerificationToken } from "@/lib/auth/verification";
@@ -10,10 +9,9 @@ import { verificationEmail } from "@/lib/email/templates";
 export interface RegisterDeps {
   getSettingsFn?: typeof getRegistrationSettings;
   findUserFn?: typeof findUserForRegistration;
-  createUserFn?: typeof createUser;
+  createUserFn?: typeof createUnverifiedUser;
   deleteUserFn?: typeof deleteUser;
   createTokenFn?: typeof createVerificationToken;
-  hashPasswordFn?: typeof hashPassword;
   sendEmailFn?: typeof sendEmail;
 }
 
@@ -38,17 +36,18 @@ function resolveAuthBase(request: Request): string {
   return new URL(request.url).origin;
 }
 
+// Points at the page that asks the clicker to choose a password — NOT an API
+// route that consumes the token on GET. See src/app/verify/page.tsx.
 function verifyLink(base: string, token: string): string {
-  return `${base.replace(/\/$/, "")}/api/auth/verify?token=${encodeURIComponent(token)}`;
+  return `${base.replace(/\/$/, "")}/verify?token=${encodeURIComponent(token)}`;
 }
 
 export async function registerUser(request: Request, deps: RegisterDeps = {}): Promise<Response> {
   const getSettingsFn = deps.getSettingsFn ?? getRegistrationSettings;
   const findUserFn = deps.findUserFn ?? findUserForRegistration;
-  const createUserFn = deps.createUserFn ?? createUser;
+  const createUserFn = deps.createUserFn ?? createUnverifiedUser;
   const deleteUserFn = deps.deleteUserFn ?? deleteUser;
   const createTokenFn = deps.createTokenFn ?? createVerificationToken;
-  const hashPasswordFn = deps.hashPasswordFn ?? hashPassword;
   const sendEmailFn = deps.sendEmailFn ?? sendEmail;
 
   let body: unknown;
@@ -57,11 +56,11 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
   } catch {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const parsed = credentialsSchema.safeParse(body);
+  const parsed = registerSchema.safeParse(body);
   if (!parsed.success) {
     return Response.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 });
   }
-  const { email, password } = parsed.data;
+  const { email } = parsed.data;
 
   // Fail before touching the database at all: if we cannot trust a base for the
   // link, no amount of further processing makes sending one safe.
@@ -93,22 +92,21 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
     return Response.json({ error: "Email already registered" }, { status: 409 });
   }
 
-  // An unverified row confers no login and no session on its own — but it DOES
-  // confer a live token already sitting in that address's inbox. Overwriting
-  // users.passwordHash here would retarget every link already in flight to
-  // whichever password overwrote it last (account pre-hijacking). So a
-  // pre-existing unverified row is never touched: we only ever mint a new token,
-  // carrying the new password, and leave the old token(s) and the users row alone.
-  // Whoever clicks their own link gets their own password — see
-  // createVerificationToken/consumeVerificationToken.
-  const passwordHash = await hashPasswordFn(password);
+  // An unverified row confers no login and no password worth protecting — the
+  // row's password_hash is a random placeholder nothing can authenticate against
+  // (see createUnverifiedUser), and the real password is never decided here at
+  // all. So a pre-existing unverified row is never touched: we only ever mint a
+  // new token and leave the users row and any earlier token(s) alone. Multiple
+  // live tokens for the same address are harmless — none of them carries a
+  // password, so every one of them leads to the same "set your password" form,
+  // reachable only by whoever controls that mailbox.
   let userId: string;
   let created = false;
   if (existing) {
     userId = existing.id;
   } else {
     try {
-      const user = await createUserFn({ email, password, role: "user" });
+      const user = await createUserFn({ email, role: "user" });
       userId = user.id;
       created = true;
     } catch (err) {
@@ -120,7 +118,7 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
   }
 
   try {
-    const token = await createTokenFn(userId, passwordHash);
+    const token = await createTokenFn(userId);
     const { subject, html } = verificationEmail(verifyLink(authBase, token));
     await sendEmailFn({ to: email, subject, html });
   } catch (err) {

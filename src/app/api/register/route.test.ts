@@ -20,12 +20,8 @@ function baseDeps() {
     createUserFn: vi.fn(async () => ({ id: "u1", email: "a@company.com", role: "user" as const })),
     deleteUserFn: vi.fn(async () => undefined),
     createTokenFn: vi.fn(async () => "tok"),
-    // A stub, not the real bcrypt hash, so assertions can check exactly what
-    // travels to createTokenFn without paying (or depending on) real hashing cost.
-    hashPasswordFn: vi.fn(async (pw: string) => `hashed:${pw}`),
-    // Explicit param type: without it, TS infers a zero-arg mock (same inference
-    // gap as findUserForRegistration — see users.ts), and `mock.calls[0][0]` below
-    // would not type-check.
+    // Explicit param type: without it, TS infers a zero-arg mock, and
+    // `mock.calls[0][0]` below would not type-check.
     sendEmailFn: vi.fn(async (_msg: { to: string; subject: string; html: string }) => undefined),
   };
 }
@@ -33,15 +29,18 @@ function baseDeps() {
 const req = (body: unknown) => new Request("http://test/api/register", {
   method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 });
-const GOOD = { email: "a@company.com", password: "password123" };
+const GOOD = { email: "a@company.com" };
 
 describe("registerUser (verified mode)", () => {
-  it("creates an unverified user and emails a link", async () => {
+  it("creates an unverified user with no password of its own and emails a link", async () => {
     const deps = baseDeps();
     const res = await registerUser(req(GOOD), deps);
     expect(res.status).toBe(201);
     await expect(res.json()).resolves.toEqual({ status: "verification_sent" });
-    expect(deps.createTokenFn).toHaveBeenCalledWith("u1", "hashed:password123");
+    // The password is never decided at registration time: createUserFn/createTokenFn
+    // take only what registerSchema parsed out — an email, nothing else.
+    expect(deps.createUserFn).toHaveBeenCalledWith({ email: "a@company.com", role: "user" });
+    expect(deps.createTokenFn).toHaveBeenCalledWith("u1");
     expect(deps.sendEmailFn).toHaveBeenCalled();
   });
 
@@ -52,9 +51,17 @@ describe("registerUser (verified mode)", () => {
     expect(body).not.toHaveProperty("email");
   });
 
+  it("the emailed link points at the choose-a-password page, not an API route", async () => {
+    const deps = baseDeps();
+    await registerUser(req(GOOD), deps);
+    const { html } = deps.sendEmailFn.mock.calls[0][0];
+    expect(html).toContain("/verify?token=tok");
+    expect(html).not.toContain("/api/auth/verify");
+  });
+
   it("refuses a disallowed domain with 403 and names the allowed list", async () => {
     const deps = baseDeps();
-    const res = await registerUser(req({ ...GOOD, email: "a@evil.com" }), deps);
+    const res = await registerUser(req({ email: "a@evil.com" }), deps);
     expect(res.status).toBe(403);
     expect(JSON.stringify(await res.json())).toContain("company.com");
     expect(deps.createUserFn).not.toHaveBeenCalled();
@@ -75,19 +82,17 @@ describe("registerUser (verified mode)", () => {
   });
 
   // Without this, one unverified registration squats an address forever. Note
-  // what does NOT happen here: no function exists any more that can write
-  // users.passwordHash for a pre-existing row (createUserFn — the only thing
-  // that can — must stay uncalled), which is the account-pre-hijack fix: a
-  // re-registration only ever mints a new token carrying the new hash, so the
-  // previous owner's already-mailed link is left to resolve to whatever
-  // password it was minted with (see verification.test.ts for the full attack
-  // reproduction).
+  // what does NOT happen here: createUserFn (the only thing that can write a new
+  // users row) must stay uncalled — a re-registration only ever mints a new
+  // token, and multiple live tokens for the same address are harmless, since
+  // none of them carries a password (see verification.test.ts for the full
+  // attack reproduction).
   it("resends for an unverified address instead of squatting it", async () => {
     const deps = baseDeps();
     deps.findUserFn = vi.fn(async () => ({ id: "old", emailVerifiedAt: null }));
     const res = await registerUser(req(GOOD), deps);
     expect(res.status).toBe(201);
-    expect(deps.createTokenFn).toHaveBeenCalledWith("old", "hashed:password123");
+    expect(deps.createTokenFn).toHaveBeenCalledWith("old");
     expect(deps.sendEmailFn).toHaveBeenCalled();
     expect(deps.createUserFn).not.toHaveBeenCalled();
   });
@@ -116,7 +121,11 @@ describe("registerUser (verified mode)", () => {
   });
 
   it("still rejects invalid input with 400", async () => {
-    expect((await registerUser(req({ email: "nope", password: "x" }), baseDeps())).status).toBe(400);
+    expect((await registerUser(req({ email: "nope" }), baseDeps())).status).toBe(400);
+  });
+
+  it("400s when the body has no email at all", async () => {
+    expect((await registerUser(req({}), baseDeps())).status).toBe(400);
   });
 });
 
@@ -126,7 +135,7 @@ describe("registerUser verification link", () => {
     const deps = baseDeps();
     await registerUser(req(GOOD), deps);
     const { html } = deps.sendEmailFn.mock.calls[0][0];
-    expect(html).toContain("https://app.example.com/api/auth/verify?token=tok");
+    expect(html).toContain("https://app.example.com/verify?token=tok");
     expect(html).not.toContain("localhost:3000");
   });
 
@@ -138,7 +147,7 @@ describe("registerUser verification link", () => {
     const { html } = deps.sendEmailFn.mock.calls[0][0];
     // req() builds its Request against "http://test/..." — the link must be
     // derived from that origin, never a hardcoded default.
-    expect(html).toContain("http://test/api/auth/verify?token=tok");
+    expect(html).toContain("http://test/verify?token=tok");
     expect(html).not.toContain("localhost:3000");
   });
 

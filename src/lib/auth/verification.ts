@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { emailVerificationTokens, users } from "@/lib/db/schema";
 
@@ -17,28 +17,45 @@ function defaultToken(): string {
   return randomBytes(32).toString("base64url");
 }
 
-// passwordHash is the hash this link is minted for. It travels with the token —
-// not the users row — so a later re-registration on the same address can never
-// retarget a link that is already in flight (see the schema comment on
-// emailVerificationTokens).
+// Mints a token proving control of a mailbox. Deliberately carries no password —
+// see the schema comment on emailVerificationTokens for why.
 export async function createVerificationToken(
   userId: string,
-  passwordHash: string,
   deps: VerificationDeps = {},
 ): Promise<string> {
   const database = deps.database ?? defaultDb;
   const now = deps.now ? deps.now() : Date.now();
   const token = (deps.randomToken ?? defaultToken)();
   await database.insert(emailVerificationTokens).values({
-    token, userId, passwordHash, expiresAt: new Date(now + TOKEN_TTL_MS),
+    token, userId, expiresAt: new Date(now + TOKEN_TTL_MS),
   });
   return token;
 }
 
-// Verify the token's owner, then destroy the token. Returns false for unknown,
-// expired, and already-used alike — the caller must not tell them apart, or it
-// tells a guesser which guesses are close.
-export async function consumeVerificationToken(token: string, deps: VerificationDeps = {}): Promise<boolean> {
+// Read-only existence + expiry check, for the GET that renders the "choose your
+// password" form. Deliberately does not touch the row: Outlook Safe Links and
+// every corporate mail scanner fetch every URL in every email with no human
+// involved, and any mutation here would let one of them complete or destroy a
+// registration on the user's behalf.
+export async function isVerificationTokenValid(token: string, deps: VerificationDeps = {}): Promise<boolean> {
+  const database = deps.database ?? defaultDb;
+  const now = deps.now ? deps.now() : Date.now();
+  const [row] = await database.select().from(emailVerificationTokens)
+    .where(eq(emailVerificationTokens.token, token)).limit(1);
+  if (!row) return false;
+  return row.expiresAt.getTime() > now;
+}
+
+// Consume the token the clicker landed on: set the password THEY just chose,
+// mark the address verified, and disarm everything else this user has in flight.
+// Returns false for unknown, expired, already-used, and already-verified alike —
+// the caller must not tell them apart, or it tells a token-guesser which guesses
+// are close.
+export async function consumeVerificationToken(
+  token: string,
+  passwordHash: string,
+  deps: VerificationDeps = {},
+): Promise<boolean> {
   const database = deps.database ?? defaultDb;
   const now = deps.now ? deps.now() : Date.now();
 
@@ -51,15 +68,21 @@ export async function consumeVerificationToken(token: string, deps: Verification
       await tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.token, token));
       return false;
     }
-    // Verification and deletion are one transaction: a crash between them would
-    // leave a live token for an already-verified user, letting it be replayed.
-    // The password rides on the token, so consuming it is what actually sets the
-    // user's password — whichever link the user clicks wins with its own
-    // password, regardless of how many newer tokens exist for the same user.
-    await tx.update(users)
-      .set({ passwordHash: row.passwordHash, emailVerifiedAt: new Date(now) })
-      .where(eq(users.id, row.userId));
-    await tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.token, token));
+
+    // Scoped to emailVerifiedAt IS NULL: a token must never re-set the password
+    // of an account that is already verified and in use. Without this scope, a
+    // token left over from a race (or a bug elsewhere) could silently reset a
+    // live account's password to whatever the holder of that token chooses.
+    const updated = await tx.update(users)
+      .set({ passwordHash, emailVerifiedAt: new Date(now) })
+      .where(and(eq(users.id, row.userId), isNull(users.emailVerifiedAt)))
+      .returning({ id: users.id });
+    if (updated.length === 0) return false;
+
+    // Disarm EVERYTHING this user has outstanding, not just the token that was
+    // clicked — the instant verification succeeds, every other live link for
+    // this address (e.g. from a re-registration by someone else) becomes inert.
+    await tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, row.userId));
     return true;
   });
 }

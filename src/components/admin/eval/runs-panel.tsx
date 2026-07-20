@@ -3,11 +3,12 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { Play, ChevronDown, ChevronRight } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
-import type { EvalAggregate, RetrievedDoc } from "@/lib/eval/types";
+import type { EvalAggregate, EvalSettingsSnapshot, RetrievedDoc } from "@/lib/eval/types";
 
 interface RunRow {
   id: string;
   status: "pending" | "running" | "done" | "error";
+  settingsSnapshot: EvalSettingsSnapshot;
   aggregate: EvalAggregate | null;
   error: string | null;
   createdAt: string;
@@ -47,6 +48,33 @@ function Tile({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-zinc-200 p-2 dark:border-zinc-800">
       <div className="text-lg font-semibold">{value}</div>
       <div className="text-xs text-zinc-500">{label}</div>
+    </div>
+  );
+}
+
+// Missing/malformed fields (e.g. an older or hand-edited snapshot) fall back to
+// an em dash rather than rendering "undefined" or crashing.
+function fmtNum(n: number | undefined | null): string {
+  return typeof n === "number" ? String(n) : "—";
+}
+
+function fmtModel(provider: string | undefined | null, model: string | undefined | null): string {
+  if (!model) return "—";
+  return provider ? `${provider}/${model}` : model;
+}
+
+// Compact readout of the settings that produced a run, so an admin can compare
+// runs before/after tuning without cross-referencing the Settings page. The
+// systemPrompt is intentionally omitted here — it can be long and isn't one of
+// the knobs an admin scans across runs.
+function SettingsSnapshotSummary({ snapshot }: { snapshot: EvalSettingsSnapshot | null | undefined }) {
+  if (!snapshot) return null;
+  return (
+    <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <Tile label="Top-K" value={fmtNum(snapshot.topK)} />
+      <Tile label="Min similarity" value={fmtNum(snapshot.minSimilarity)} />
+      <Tile label="Chat model" value={fmtModel(snapshot.chatProvider, snapshot.chatModel)} />
+      <Tile label="Temperature" value={fmtNum(snapshot.temperature)} />
     </div>
   );
 }
@@ -151,65 +179,70 @@ export function RunsPanel() {
           <h3 className="mb-2 text-sm font-medium">Run detail</h3>
           {!detail ? (
             <p className="text-sm text-zinc-500">Loading...</p>
-          ) : detail.results.length === 0 ? (
-            <p className="text-sm text-zinc-500">No results yet.</p>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs text-zinc-500">
-                <tr>
-                  <th className="py-1">Question</th>
-                  <th>Hit</th>
-                  <th>Recall</th>
-                  <th>Precision</th>
-                  <th>MRR</th>
-                  <th>Judge</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.results.map((res) => {
-                  const isOpen = openResultId === res.id;
-                  return (
-                    <Fragment key={res.id}>
-                      <tr className="border-t border-zinc-200 dark:border-zinc-800">
-                        <td className="py-1">
-                          <button
-                            type="button"
-                            onClick={() => setOpenResultId(isOpen ? null : res.id)}
-                            className="flex items-center gap-1 text-left"
-                          >
-                            {isOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
-                            {res.questionText}
-                          </button>
-                        </td>
-                        <td>{res.hit ? "✓" : "✗"}</td>
-                        <td>{pct(res.recall)}</td>
-                        <td>{pct(res.precision)}</td>
-                        <td>{pct(res.mrr)}</td>
-                        <td>
-                          {res.judgeScore === null ? "—" : `${res.judgeScore}/5`}
-                          {/* Rationale stays visible without expanding the disclosure so an
-                              admin can scan why a question scored low at a glance. */}
-                          {res.judgeRationale && (
-                            <div className="mt-0.5 text-xs font-normal text-zinc-500">{res.judgeRationale}</div>
+            <>
+              <SettingsSnapshotSummary snapshot={detail.run.settingsSnapshot} />
+              {detail.results.length === 0 ? (
+                <p className="text-sm text-zinc-500">No results yet.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="text-left text-xs text-zinc-500">
+                    <tr>
+                      <th className="py-1">Question</th>
+                      <th>Hit</th>
+                      <th>Recall</th>
+                      <th>Precision</th>
+                      <th>MRR</th>
+                      <th>Judge</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.results.map((res) => {
+                      const isOpen = openResultId === res.id;
+                      return (
+                        <Fragment key={res.id}>
+                          <tr className="border-t border-zinc-200 dark:border-zinc-800">
+                            <td className="py-1">
+                              <button
+                                type="button"
+                                onClick={() => setOpenResultId(isOpen ? null : res.id)}
+                                className="flex items-center gap-1 text-left"
+                              >
+                                {isOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                                {res.questionText}
+                              </button>
+                            </td>
+                            <td>{res.hit ? "✓" : "✗"}</td>
+                            <td>{pct(res.recall)}</td>
+                            <td>{pct(res.precision)}</td>
+                            <td>{pct(res.mrr)}</td>
+                            <td>
+                              {res.judgeScore === null ? "—" : `${res.judgeScore}/5`}
+                              {/* Rationale stays visible without expanding the disclosure so an
+                                  admin can scan why a question scored low at a glance. */}
+                              {res.judgeRationale && (
+                                <div className="mt-0.5 text-xs font-normal text-zinc-500">{res.judgeRationale}</div>
+                              )}
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr className="border-t border-zinc-100 dark:border-zinc-900">
+                              <td colSpan={6} className="pb-2 text-xs text-zinc-500">
+                                {res.generatedAnswer && <p><span className="font-medium">Answer: </span>{res.generatedAnswer}</p>}
+                                {res.retrieved.length > 0 && (
+                                  <p className="mt-1">Sources: {res.retrieved.map((d) => d.filename).join(", ")}</p>
+                                )}
+                                {res.error && <p className="mt-1 text-red-600">{res.error}</p>}
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                      </tr>
-                      {isOpen && (
-                        <tr className="border-t border-zinc-100 dark:border-zinc-900">
-                          <td colSpan={6} className="pb-2 text-xs text-zinc-500">
-                            {res.generatedAnswer && <p><span className="font-medium">Answer: </span>{res.generatedAnswer}</p>}
-                            {res.retrieved.length > 0 && (
-                              <p className="mt-1">Sources: {res.retrieved.map((d) => d.filename).join(", ")}</p>
-                            )}
-                            {res.error && <p className="mt-1 text-red-600">{res.error}</p>}
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </>
           )}
         </div>
       )}

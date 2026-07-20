@@ -6,10 +6,24 @@ import { RunsPanel } from "./runs-panel";
 
 const AGGREGATE = { avgRecall: 0.8, avgPrecision: 0.6, avgMrr: 0.5, avgJudgeScore: 4.2, passRate: 0.75, questionCount: 4 };
 
+// The settings that produced DONE_RUN, so the run-detail test can assert these
+// tuning knobs are visible without expanding anything.
+const SETTINGS_SNAPSHOT = {
+  topK: 5,
+  minSimilarity: 0.3,
+  contextTokenBudget: 3000,
+  chatProvider: "openai",
+  chatModel: "gpt-4o-mini",
+  embeddingProvider: "openai",
+  embeddingModel: "text-embedding-3-small",
+  temperature: 0.2,
+  systemPrompt: "Answer only from the provided context.",
+};
+
 const DONE_RUN = {
   id: "r1",
   status: "done" as const,
-  settingsSnapshot: {},
+  settingsSnapshot: SETTINGS_SNAPSHOT,
   aggregate: AGGREGATE,
   error: null,
   createdAt: "2026-01-01T00:00:00Z",
@@ -113,6 +127,10 @@ describe("RunsPanel", () => {
     expect(screen.getByText("Correct and grounded in the context.")).toBeInTheDocument();
     // Collapsed by default: the generated answer is not shown until expanded.
     expect(screen.queryByText(/Refunds are available within 30 days/)).not.toBeInTheDocument();
+    // The settings that produced the run are visible so an admin can compare
+    // runs before/after tuning, without needing to expand anything.
+    expect(screen.getByText(/openai\/gpt-4o-mini/)).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument(); // topK
 
     fireEvent.click(screen.getByText("What is the refund policy?"));
     expect(await screen.findByText(/Refunds are available within 30 days/)).toBeInTheDocument();

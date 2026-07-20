@@ -23,4 +23,9 @@ describe("buildOpenApiDocument", () => {
     expect(doc.paths?.["/api/register"]?.post).toBeTruthy(); // public: no security
     expect(doc.paths?.["/api/register"]?.post?.security).toBeUndefined();
   });
+  it("documents admin endpoints as guarded, with a 403 response", () => {
+    const usersGet = doc.paths?.["/api/admin/users"]?.get;
+    expect(usersGet?.security).toEqual([{ sessionCookie: [] }]);
+    expect(usersGet?.responses?.[403]).toBeTruthy();
+  });
 });

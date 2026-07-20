@@ -12,7 +12,13 @@ import "./paths/messages";
 import "./paths/workspaces";
 import "./paths/images";
 import "./paths/openapi";
-// Task 3-4 groups (admin endpoints, etc.) are added here in later tasks.
+import "./paths/admin-documents";
+import "./paths/admin-files";
+import "./paths/admin-images";
+import "./paths/admin-users";
+import "./paths/admin-workspaces";
+import "./paths/admin-settings";
+// Task 4 groups (evaluation endpoints, etc.) are added here in a later task.
 
 const API_VERSION = "0.5.1";
 

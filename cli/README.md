@@ -128,7 +128,9 @@ you set it.
   workspaces at once.
 - **Switch** workspace from the chat header: the assistant then answers only from
   that workspace plus General. (Users who can see only General get no switcher —
-  there is nothing to switch between.)
+  there is nothing to switch between.) Each conversation belongs to the workspace
+  it was started in, so the chat list shows only that workspace's conversations —
+  switching workspace resets the open chat.
 - **Ask for a picture** ("show me a red bike") and matching images come back inline;
   click one to open it in a lightbox.
 - **Tune retrieval** and the chat rate limits under **Settings**; see how answers

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { WORKSPACE_CHANGED_EVENT } from "@/lib/workspaces/cookie";
 
 interface ConversationRow {
   id: string;
@@ -31,6 +32,12 @@ export function Sidebar({
   useEffect(() => {
     void load();
   }, [load, refreshKey]);
+
+  useEffect(() => {
+    const onSwitch = () => void load();
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, onSwitch);
+    return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, onSwitch);
+  }, [load]);
 
   async function newChat() {
     const res = await fetch("/api/conversations", { method: "POST" });

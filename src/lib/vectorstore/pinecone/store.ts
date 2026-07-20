@@ -17,6 +17,34 @@ export interface PineconeSparseLike {
   deleteMany(ids: string[]): Promise<unknown>;
 }
 
+// Pinecone caps a fetch or delete request at ~1000 ids. A document large enough to
+// produce more chunks than that would otherwise fail the whole operation, so split.
+const PINECONE_BATCH = 1000;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+async function fetchAllRecords(
+  dense: PineconeDenseLike,
+  ids: string[],
+): Promise<Record<string, { id: string; values?: number[]; metadata?: Record<string, unknown> }>> {
+  const records: Record<string, { id: string; values?: number[]; metadata?: Record<string, unknown> }> = {};
+  for (const batch of chunk(ids, PINECONE_BATCH)) {
+    const res = await dense.fetch(batch);
+    Object.assign(records, res.records);
+  }
+  return records;
+}
+
+async function deleteAllIds(index: { deleteMany(ids: string[]): Promise<unknown> }, ids: string[]): Promise<void> {
+  for (const batch of chunk(ids, PINECONE_BATCH)) {
+    await index.deleteMany(batch);
+  }
+}
+
 function metaToChunk(id: string, meta: Record<string, unknown>, score: number): RetrievedChunk {
   return {
     chunkId: id,
@@ -74,8 +102,8 @@ export function createPineconeStore(
       const ids = await idsForDocument(dense, documentId);
       const hashes = new Set<string>();
       if (ids.length === 0) return hashes;
-      const res = await dense.fetch(ids);
-      for (const rec of Object.values(res.records)) {
+      const records = await fetchAllRecords(dense, ids);
+      for (const rec of Object.values(records)) {
         const h = (rec.metadata ?? {}).contentHash;
         if (typeof h === "string") hashes.add(h);
       }
@@ -87,8 +115,8 @@ export function createPineconeStore(
       const sparse = sparseFn();
       const ids = await idsForDocument(dense, documentId);
       if (ids.length === 0) return;
-      await dense.deleteMany(ids);
-      await sparse.deleteMany(ids);
+      await deleteAllIds(dense, ids);
+      await deleteAllIds(sparse, ids);
     },
 
     async searchVector(embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]> {
@@ -112,12 +140,12 @@ export function createPineconeStore(
       const hits = await sparse.searchRecords({ query: { topK: limit, inputs: { text } } });
       const ids = hits.result.hits.map((h) => h._id);
       if (ids.length === 0) return [];
-      const fetched = await dense.fetch(ids);
+      const fetched = await fetchAllRecords(dense, ids);
       // The sparse index has no metadata to filter on, so scope post-fetch by the
       // documentId carried in each dense record's metadata. Preserve keyword order.
       const allow = allowedDocumentIds ? new Set(allowedDocumentIds) : null;
       return ids
-        .map((id) => fetched.records[id])
+        .map((id) => fetched[id])
         .filter((rec): rec is NonNullable<typeof rec> => Boolean(rec))
         .filter((rec) => !allow || allow.has(String((rec.metadata ?? {}).documentId ?? "")))
         .map((rec) => metaToChunk(rec.id, rec.metadata ?? {}, cosineSimilarity(embedding, rec.values ?? [])));

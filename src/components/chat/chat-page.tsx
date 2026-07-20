@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sidebar } from "./sidebar";
 import { ChatView } from "./chat-view";
+import { WORKSPACE_CHANGED_EVENT } from "@/lib/workspaces/cookie";
 
 // Composition: sidebar + the active conversation's chat.
 export function ChatPage() {
@@ -13,6 +14,15 @@ export function ChatPage() {
   function handleDeleted(id: string) {
     if (id === activeId) setActiveId(null);
   }
+
+  // Switching the active workspace invalidates the open chat: a conversation
+  // belongs to exactly one workspace, so keeping it open across a switch would
+  // show a chat that no longer belongs to the visible list.
+  useEffect(() => {
+    const onSwitch = () => setActiveId(null);
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, onSwitch);
+    return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, onSwitch);
+  }, []);
 
   return (
     <div className="flex h-full">

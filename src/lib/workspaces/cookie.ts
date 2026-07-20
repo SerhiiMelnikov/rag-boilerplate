@@ -1,6 +1,10 @@
 // Name of the cookie the chat header sets to remember the active workspace.
 export const ACTIVE_WORKSPACE_COOKIE = "active_workspace";
 
+// Fired on the window when the user switches the active workspace, so decoupled
+// components (the sidebar list, the open chat) can react without a shared parent.
+export const WORKSPACE_CHANGED_EVENT = "workspace-changed";
+
 // Read the active-workspace id out of a raw Cookie string. Returns undefined when
 // absent or undecodable — the value is a preference, never trusted: the server
 // re-validates it against the user's visible workspaces on every request.

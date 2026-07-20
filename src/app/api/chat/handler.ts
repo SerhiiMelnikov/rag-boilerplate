@@ -158,7 +158,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
       .map((m) => m.content)
       .join("\n") || content;
   // Persist an assistant message and stream it verbatim (no model call).
-  const replyWithMessage = async (textOut: string, images: Array<{ imageId: string; filename: string; score: number }> = []) => {
+  const replyWithMessage = async (textOut: string, images: Array<{ imageId: string; caption: string }> = []) => {
     await addMessageFn({ conversationId, role: "assistant", content: textOut, sources: [], images, usage: null, workspaceId });
     return createDataStreamResponse({
       execute: (dataStream) => {
@@ -186,13 +186,15 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
       // The vector search only ranks; the verifier decides which captions actually
       // answer the request, so we never present an image we cannot vouch for. Its
       // relevance order wins over cosine order, hence the trim happens after it.
-      matches = (await verifyImageMatchesFn(intent.query, hits, settings)).slice(0, IMAGE_TOP_N);
+      const displayCount =
+        intent.count != null ? Math.min(Math.max(intent.count, 1), IMAGE_CANDIDATES) : IMAGE_TOP_N;
+      matches = (await verifyImageMatchesFn(intent.query, hits, settings)).slice(0, displayCount);
     } catch (err) {
       if (isProviderError(err)) return replyWithMessage((err as Error).message);
       throw err;
     }
     if (matches.length === 0) return replyWithMessage(NO_IMAGE_ANSWER);
-    const images = matches.map((h) => ({ imageId: h.imageId, filename: h.filename, score: h.score }));
+    const images = matches.map((h) => ({ imageId: h.imageId, caption: h.caption }));
     return replyWithMessage(IMAGE_INTRO, images);
   }
 

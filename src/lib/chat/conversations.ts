@@ -11,34 +11,32 @@ export interface SourceRef {
 
 export interface ImageResultRef {
   imageId: string;
-  filename: string;
-  score: number;
+  caption: string;
 }
 
 export interface MessageRecord {
   id: string;
   role: "user" | "assistant";
   content: string;
-  sources: SourceRef[];
   images: ImageResultRef[];
   rating: number | null;
   usage: { promptTokens: number; completionTokens: number } | null;
   createdAt: Date;
 }
 
-export async function createConversation(userId: string, title: string, database = defaultDb) {
+export async function createConversation(userId: string, title: string, workspaceId: string | null = null, database = defaultDb) {
   const [row] = await database
     .insert(conversations)
-    .values({ userId, title })
+    .values({ userId, title, workspaceId })
     .returning({ id: conversations.id });
   return row;
 }
 
-export async function listConversations(userId: string, database = defaultDb) {
+export async function listConversations(userId: string, workspaceId: string, database = defaultDb) {
   return database
     .select({ id: conversations.id, title: conversations.title, createdAt: conversations.createdAt })
     .from(conversations)
-    .where(eq(conversations.userId, userId))
+    .where(and(eq(conversations.userId, userId), eq(conversations.workspaceId, workspaceId)))
     .orderBy(desc(conversations.createdAt));
 }
 
@@ -54,7 +52,6 @@ export async function getConversationWithMessages(userId: string, id: string, da
       id: messages.id,
       role: messages.role,
       content: messages.content,
-      sources: messages.sources,
       images: messages.images,
       rating: messages.rating,
       usage: messages.usage,

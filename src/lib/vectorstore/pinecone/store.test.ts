@@ -131,4 +131,29 @@ describe("pinecone store", () => {
     const out = await createPineconeStore(() => dense, () => sparse).searchKeyword("hello", [0.1], 5, ["d1"]);
     expect(out.map((c) => c.documentId)).toEqual(["d1"]);
   });
+
+  it("existingHashes fetches ids in batches of 1000", async () => {
+    const ids = Array.from({ length: 2500 }, (_, i) => `d1#${i}`);
+    const dense = fakeDense({
+      listPaginated: vi.fn(async () => ({ vectors: ids.map((id) => ({ id })), pagination: undefined })),
+      fetch: vi.fn(async (batch: string[]) => ({
+        records: Object.fromEntries(batch.map((id) => [id, { id, metadata: { contentHash: id } }])),
+      })),
+    });
+    const out = await createPineconeStore(() => dense, () => fakeSparse()).existingHashes("d1");
+    expect(dense.fetch).toHaveBeenCalledTimes(3);
+    expect(dense.fetch.mock.calls.map((c) => c[0].length)).toEqual([1000, 1000, 500]);
+    expect(out.size).toBe(2500);
+  });
+
+  it("deleteByDocument deletes ids in batches of 1000 from both indexes", async () => {
+    const ids = Array.from({ length: 2500 }, (_, i) => `d1#${i}`);
+    const dense = fakeDense({ listPaginated: vi.fn(async () => ({ vectors: ids.map((id) => ({ id })), pagination: undefined })) });
+    const sparse = fakeSparse();
+    await createPineconeStore(() => dense, () => sparse).deleteByDocument("d1");
+    expect(dense.deleteMany).toHaveBeenCalledTimes(3);
+    expect(sparse.deleteMany).toHaveBeenCalledTimes(3);
+    expect(dense.deleteMany.mock.calls.map((c) => c[0].length)).toEqual([1000, 1000, 500]);
+    expect(sparse.deleteMany.mock.calls.map((c) => c[0].length)).toEqual([1000, 1000, 500]);
+  });
 });

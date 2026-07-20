@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Select } from "@/components/ui/select";
-import { ACTIVE_WORKSPACE_COOKIE, readActiveWorkspaceFromCookieString } from "@/lib/workspaces/cookie";
+import { ACTIVE_WORKSPACE_COOKIE, readActiveWorkspaceFromCookieString, WORKSPACE_CHANGED_EVENT } from "@/lib/workspaces/cookie";
 
 interface Workspace { id: string; name: string; isDefault: boolean }
 
@@ -50,6 +50,7 @@ export function WorkspaceSwitcher() {
     if (!picked) return;
     writeCookie(picked.id);
     setActiveId(picked.id);
+    window.dispatchEvent(new Event(WORKSPACE_CHANGED_EVENT));
   }
 
   return (

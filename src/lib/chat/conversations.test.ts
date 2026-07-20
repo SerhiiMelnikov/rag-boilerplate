@@ -1,14 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
+import { and, eq } from "drizzle-orm";
 import {
   createConversation, listConversations, getConversationWithMessages,
   deleteConversation, addMessage, setRating, setConversationTitleIfDefault,
   type ImageResultRef,
 } from "@/lib/chat/conversations";
+import { conversations } from "@/lib/db/schema";
 
 describe("createConversation", () => {
   it("inserts and returns the new id", async () => {
     const db = { insert: () => ({ values: () => ({ returning: async () => [{ id: "c1" }] }) }) } as never;
-    expect(await createConversation("u1", "Hello", db)).toEqual({ id: "c1" });
+    expect(await createConversation("u1", "Hello", null, db)).toEqual({ id: "c1" });
   });
 });
 
@@ -16,7 +18,42 @@ describe("listConversations", () => {
   it("returns the user's conversations", async () => {
     const rows = [{ id: "c1", title: "t", createdAt: new Date(0) }];
     const db = { select: () => ({ from: () => ({ where: () => ({ orderBy: async () => rows }) }) }) } as never;
-    expect(await listConversations("u1", db)).toEqual(rows);
+    expect(await listConversations("u1", "ws-1", db)).toEqual(rows);
+  });
+
+  it("filters by both userId and workspaceId", async () => {
+    let capturedWhere: unknown;
+    const rows = [{ id: "c1", title: "t", createdAt: new Date(0) }];
+    const db = {
+      select: () => ({
+        from: () => ({
+          where: (w: unknown) => {
+            capturedWhere = w;
+            return { orderBy: async () => rows };
+          },
+        }),
+      }),
+    } as never;
+    expect(await listConversations("u1", "ws-1", db)).toEqual(rows);
+    // Structurally compare the captured drizzle AND expression against a freshly
+    // built one with the same two conditions (userId + workspaceId).
+    expect(capturedWhere).toEqual(and(eq(conversations.userId, "u1"), eq(conversations.workspaceId, "ws-1")));
+  });
+});
+
+describe("createConversation workspaceId", () => {
+  it("stamps the workspaceId on insert", async () => {
+    let inserted: unknown;
+    const db = {
+      insert: () => ({
+        values: (v: unknown) => {
+          inserted = v;
+          return { returning: async () => [{ id: "c1" }] };
+        },
+      }),
+    } as never;
+    expect(await createConversation("u1", "t", "ws-1", db)).toEqual({ id: "c1" });
+    expect(inserted).toMatchObject({ userId: "u1", title: "t", workspaceId: "ws-1" });
   });
 });
 
@@ -120,11 +157,11 @@ describe("addMessage + getConversationWithMessages (images)", () => {
     } as never;
 
     await addMessage(
-      { conversationId: "c1", role: "assistant", content: "here", images: [{ imageId: "img-1", filename: "bike.png", score: 0.9 }] },
+      { conversationId: "c1", role: "assistant", content: "here", images: [{ imageId: "img-1", caption: "a red bicycle" }] },
       db,
     );
     const out = await getConversationWithMessages("u1", "c1", db);
-    expect(out?.messages.at(-1)?.images).toEqual([{ imageId: "img-1", filename: "bike.png", score: 0.9 }]);
+    expect(out?.messages.at(-1)?.images).toEqual([{ imageId: "img-1", caption: "a red bicycle" }]);
   });
 });
 

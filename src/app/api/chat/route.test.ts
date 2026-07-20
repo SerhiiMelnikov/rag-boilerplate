@@ -206,7 +206,7 @@ describe("handleChat", () => {
     expect(res.status).toBe(200);
     // assistant message persisted with the images
     const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
-    expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", filename: "bike.png", score: 0.9 }]);
+    expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", caption: "a red bicycle" }]);
     expect(prepareContextFn).not.toHaveBeenCalled();
   });
 
@@ -250,7 +250,7 @@ describe("handleChat", () => {
     await chat(body(msg("a young man")), deps);
     expect(verifyImageMatchesFn).toHaveBeenCalledWith("a young man", hits, expect.anything());
     const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
-    expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", filename: "man.png", score: 0.26 }]);
+    expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", caption: "a young man" }]);
   });
 
   // The verifier's relevance order must survive the trim — a future refactor that
@@ -271,6 +271,20 @@ describe("handleChat", () => {
     await chat(body(msg("q")), deps);
     const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
     expect(assistantCall?.[0].images?.map((i) => i.imageId)).toEqual(["i4", "i3", "i2"]);
+  });
+
+  it("IMAGE intent: an explicit count limits how many images are returned", async () => {
+    const deps = baseDeps({
+      routeIntentFn: vi.fn(async () => ({ kind: "image", query: "red bikes", count: 1 }) as const),
+      searchImagesFn: vi.fn(async () => [
+        { imageId: "img-1", filename: "a.png", caption: "red bike one", score: 0.9 },
+        { imageId: "img-2", filename: "b.png", caption: "red bike two", score: 0.8 },
+        { imageId: "img-3", filename: "c.png", caption: "red bike three", score: 0.7 },
+      ]),
+    });
+    await chat(body(msg("one red bike")), deps);
+    const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
+    expect(assistantCall?.[0].images).toHaveLength(1);
   });
 
   it("IMAGE intent: reports a provider error from the verifier instead of 'not found'", async () => {

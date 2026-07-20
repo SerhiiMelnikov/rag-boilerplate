@@ -3,13 +3,14 @@ import type { RuntimeSettings } from "@/lib/config/settings-service";
 import { getChatModel } from "@/lib/providers";
 import { isProviderError } from "@/lib/providers/types";
 
-export type Intent = { kind: "image"; query: string } | { kind: "text" };
+export type Intent = { kind: "image"; query: string; count?: number } | { kind: "text" };
 
 const ROUTER_PROMPT =
   "Classify the user's request. If they want to SEE or FIND an image, photo, " +
-  "picture, diagram, or screenshot, respond with exactly \"IMAGE: <a short " +
-  "description of what they want to see>\". Otherwise respond with exactly " +
-  "\"TEXT\". Output only that one line, nothing else.";
+  "picture, diagram, or screenshot, respond with exactly \"IMAGE|<count>|<a short " +
+  "description of what they want to see>\", where <count> is the number of images " +
+  "they explicitly asked for as a digit, or \"-\" if they did not name a number. " +
+  "Otherwise respond with exactly \"TEXT\". Output only that one line, nothing else.";
 
 export interface RouteIntentDeps {
   generate?: (prompt: string) => Promise<string>;
@@ -52,9 +53,19 @@ export async function routeIntent(
     return { kind: "text" };
   }
 
-  if (/^IMAGE:/i.test(out)) {
-    const query = out.replace(/^IMAGE:/i, "").trim();
-    return { kind: "image", query: query.length > 0 ? query : userMessage };
+  const strict = /^IMAGE\|([^|]*)\|([\s\S]*)$/i.exec(out);
+  if (strict) {
+    const n = Number.parseInt(strict[1].trim(), 10);
+    const count = Number.isInteger(n) && n > 0 ? n : undefined;
+    const desc = strict[2].trim();
+    return { kind: "image", query: desc.length > 0 ? desc : userMessage, count };
+  }
+  // Lenient recovery: the model tagged it IMAGE but did not follow the pipe format
+  // (e.g. a legacy "IMAGE: ..."). Treat it as an image request with no explicit
+  // count rather than misrouting a clear image ask to the text path.
+  if (/^IMAGE\b/i.test(out)) {
+    const desc = out.replace(/^IMAGE\b[\s:|-]*/i, "").trim();
+    return { kind: "image", query: desc.length > 0 ? desc : userMessage };
   }
   return { kind: "text" };
 }

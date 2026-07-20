@@ -9,9 +9,19 @@ beforeEach(() => vi.spyOn(console, "error").mockImplementation(() => {}));
 afterEach(() => vi.restoreAllMocks());
 
 describe("routeIntent", () => {
-  it("parses an IMAGE classification into kind+query", async () => {
-    const r = await routeIntent("show me a red bike", settings, { generate: async () => "IMAGE: red bicycle" });
-    expect(r).toEqual({ kind: "image", query: "red bicycle" });
+  it("parses an IMAGE classification into kind+query with no count", async () => {
+    const r = await routeIntent("show me a red bike", settings, { generate: async () => "IMAGE|-|red bicycle" });
+    expect(r).toEqual({ kind: "image", query: "red bicycle", count: undefined });
+  });
+
+  it("extracts an explicit count", async () => {
+    const r = await routeIntent("show me two red bikes", settings, { generate: async () => "IMAGE|2|red bicycle" });
+    expect(r).toEqual({ kind: "image", query: "red bicycle", count: 2 });
+  });
+
+  it("ignores a non-numeric count", async () => {
+    const r = await routeIntent("show me bikes", settings, { generate: async () => "IMAGE|many|red bicycle" });
+    expect(r).toEqual({ kind: "image", query: "red bicycle", count: undefined });
   });
 
   it("returns text for a TEXT classification", async () => {
@@ -20,8 +30,13 @@ describe("routeIntent", () => {
   });
 
   it("falls back to the raw message when IMAGE has no description", async () => {
-    const r = await routeIntent("show me", settings, { generate: async () => "IMAGE:" });
-    expect(r).toEqual({ kind: "image", query: "show me" });
+    const r = await routeIntent("show me", settings, { generate: async () => "IMAGE|-|" });
+    expect(r).toEqual({ kind: "image", query: "show me", count: undefined });
+  });
+
+  it("recovers a legacy IMAGE: reply without a count", async () => {
+    const r = await routeIntent("show me a red bike", settings, { generate: async () => "IMAGE: red bicycle" });
+    expect(r).toEqual({ kind: "image", query: "red bicycle" });
   });
 
   it("falls back to text when the model call throws", async () => {

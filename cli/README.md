@@ -37,6 +37,11 @@ ships as a Docker image when you're ready.
   or workspace, sort, preview, edit captions and workspace membership in a modal),
   plus workspaces, users, provider API keys, SMTP, retrieval settings, rate limits,
   and answer-rating analytics.
+- **Evaluation harness** — curate a golden set of questions (each tagged with the
+  documents that should answer it), run them through the real retrieval + answer
+  pipeline, and score both retrieval (recall/precision/MRR) and the answer (an LLM
+  judge). Each run is stored with a snapshot of the settings it used, so you can tell
+  whether a `topK`/model change actually made answers better.
 - **RAG engine** — chunking, PDF/DOCX/Markdown parsing, embeddings, hybrid
   (vector + keyword) retrieval with reciprocal-rank fusion.
 - **Storage** — Postgres (+ your chosen vector store) for text; S3-compatible

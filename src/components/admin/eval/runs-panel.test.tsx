@@ -109,6 +109,8 @@ describe("RunsPanel", () => {
     fireEvent.click(screen.getByText("done").closest("button")!);
 
     expect(await screen.findByText("What is the refund policy?")).toBeInTheDocument();
+    // Judge rationale is always visible, no disclosure click required.
+    expect(screen.getByText("Correct and grounded in the context.")).toBeInTheDocument();
     // Collapsed by default: the generated answer is not shown until expanded.
     expect(screen.queryByText(/Refunds are available within 30 days/)).not.toBeInTheDocument();
 

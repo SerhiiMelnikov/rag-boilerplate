@@ -185,13 +185,19 @@ export function RunsPanel() {
                         <td>{pct(res.recall)}</td>
                         <td>{pct(res.precision)}</td>
                         <td>{pct(res.mrr)}</td>
-                        <td>{res.judgeScore === null ? "—" : `${res.judgeScore}/5`}</td>
+                        <td>
+                          {res.judgeScore === null ? "—" : `${res.judgeScore}/5`}
+                          {/* Rationale stays visible without expanding the disclosure so an
+                              admin can scan why a question scored low at a glance. */}
+                          {res.judgeRationale && (
+                            <div className="mt-0.5 text-xs font-normal text-zinc-500">{res.judgeRationale}</div>
+                          )}
+                        </td>
                       </tr>
                       {isOpen && (
                         <tr className="border-t border-zinc-100 dark:border-zinc-900">
                           <td colSpan={6} className="pb-2 text-xs text-zinc-500">
-                            {res.judgeRationale && <p><span className="font-medium">Rationale: </span>{res.judgeRationale}</p>}
-                            {res.generatedAnswer && <p className="mt-1"><span className="font-medium">Answer: </span>{res.generatedAnswer}</p>}
+                            {res.generatedAnswer && <p><span className="font-medium">Answer: </span>{res.generatedAnswer}</p>}
                             {res.retrieved.length > 0 && (
                               <p className="mt-1">Sources: {res.retrieved.map((d) => d.filename).join(", ")}</p>
                             )}

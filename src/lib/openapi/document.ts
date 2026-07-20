@@ -3,7 +3,16 @@ import { registry } from "./registry";
 import "./security";
 import "./schemas";
 // Path modules are imported for their registration side effects (added in Tasks 2-4):
-// import "./paths/health"; ... etc.
+import "./paths/health";
+import "./paths/auth";
+import "./paths/register";
+import "./paths/chat";
+import "./paths/conversations";
+import "./paths/messages";
+import "./paths/workspaces";
+import "./paths/images";
+import "./paths/openapi";
+// Task 3-4 groups (admin endpoints, etc.) are added here in later tasks.
 
 const API_VERSION = "0.5.1";
 

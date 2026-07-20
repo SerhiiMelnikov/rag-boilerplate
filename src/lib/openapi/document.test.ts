@@ -16,4 +16,11 @@ describe("buildOpenApiDocument", () => {
       expect(doc.components?.schemas?.[name]).toBeTruthy();
     }
   });
+  it("documents core client endpoints", () => {
+    expect(doc.paths?.["/api/health"]?.get).toBeTruthy();
+    expect(doc.paths?.["/api/conversations"]?.get?.security).toEqual([{ sessionCookie: [] }]);
+    expect(doc.paths?.["/api/chat"]?.post).toBeTruthy();
+    expect(doc.paths?.["/api/register"]?.post).toBeTruthy(); // public: no security
+    expect(doc.paths?.["/api/register"]?.post?.security).toBeUndefined();
+  });
 });

@@ -193,6 +193,7 @@ export const EvalResult = registry.register("EvalResult", z.object({
 
 // ---- Request bodies that already exist as zod schemas in src/lib/validation.ts ----
 // `.openapi(name)` on an already-created schema only attaches a ref name; it does not
-// mutate validation.ts's exported behaviour.
-registry.register("RegisterRequest", registerSchema.openapi("RegisterRequest"));
-registry.register("SetPasswordRequest", setPasswordSchema.openapi("SetPasswordRequest"));
+// mutate validation.ts's exported behaviour. Exported so path modules can reference the
+// exact registered instance (POST /api/register, POST /api/auth/verify).
+export const RegisterRequest = registry.register("RegisterRequest", registerSchema.openapi("RegisterRequest"));
+export const SetPasswordRequest = registry.register("SetPasswordRequest", setPasswordSchema.openapi("SetPasswordRequest"));

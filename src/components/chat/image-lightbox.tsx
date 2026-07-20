@@ -95,10 +95,11 @@ export function ImageLightbox({
         </button>
       )}
 
-      <div className="absolute bottom-4 flex flex-col items-center gap-1 text-sm text-white">
-        <span>{current.caption}</span>
-        {many && <span className="text-xs text-white/70">{index + 1} / {images.length}</span>}
-      </div>
+      {many && (
+        <div className="absolute bottom-4 text-xs text-white/70">
+          {index + 1} / {images.length}
+        </div>
+      )}
     </div>
   );
 }

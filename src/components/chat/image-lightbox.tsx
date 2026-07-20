@@ -5,8 +5,7 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 interface ImageResultRef {
   imageId: string;
-  filename: string;
-  score: number;
+  caption: string;
 }
 
 const iconButton =
@@ -51,7 +50,7 @@ export function ImageLightbox({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`Image ${current.filename}`}
+      aria-label={current.caption ? `Image: ${current.caption}` : "Image"}
       data-testid="lightbox-backdrop"
       onClick={onClose}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
@@ -80,7 +79,7 @@ export function ImageLightbox({
       {/* eslint-disable-next-line @next/next/no-img-element -- served bytes, not a static asset */}
       <img
         src={`/api/images/${current.imageId}`}
-        alt={current.filename}
+        alt={current.caption}
         onClick={(e) => e.stopPropagation()}
         className="max-h-[85vh] max-w-full rounded object-contain"
       />
@@ -97,7 +96,7 @@ export function ImageLightbox({
       )}
 
       <div className="absolute bottom-4 flex flex-col items-center gap-1 text-sm text-white">
-        <span>{current.filename}</span>
+        <span>{current.caption}</span>
         {many && <span className="text-xs text-white/70">{index + 1} / {images.length}</span>}
       </div>
     </div>

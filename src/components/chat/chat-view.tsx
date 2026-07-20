@@ -13,7 +13,7 @@ interface PersistedMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  images: { imageId: string; filename: string; score: number }[];
+  images: { imageId: string; caption: string }[];
   rating: number | null;
 }
 

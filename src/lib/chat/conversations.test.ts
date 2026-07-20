@@ -120,11 +120,11 @@ describe("addMessage + getConversationWithMessages (images)", () => {
     } as never;
 
     await addMessage(
-      { conversationId: "c1", role: "assistant", content: "here", images: [{ imageId: "img-1", filename: "bike.png", score: 0.9 }] },
+      { conversationId: "c1", role: "assistant", content: "here", images: [{ imageId: "img-1", caption: "a red bicycle" }] },
       db,
     );
     const out = await getConversationWithMessages("u1", "c1", db);
-    expect(out?.messages.at(-1)?.images).toEqual([{ imageId: "img-1", filename: "bike.png", score: 0.9 }]);
+    expect(out?.messages.at(-1)?.images).toEqual([{ imageId: "img-1", caption: "a red bicycle" }]);
   });
 });
 

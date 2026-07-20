@@ -206,7 +206,7 @@ describe("handleChat", () => {
     expect(res.status).toBe(200);
     // assistant message persisted with the images
     const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
-    expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", filename: "bike.png", score: 0.9 }]);
+    expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", caption: "a red bicycle" }]);
     expect(prepareContextFn).not.toHaveBeenCalled();
   });
 
@@ -250,7 +250,7 @@ describe("handleChat", () => {
     await chat(body(msg("a young man")), deps);
     expect(verifyImageMatchesFn).toHaveBeenCalledWith("a young man", hits, expect.anything());
     const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
-    expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", filename: "man.png", score: 0.26 }]);
+    expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", caption: "a young man" }]);
   });
 
   // The verifier's relevance order must survive the trim — a future refactor that

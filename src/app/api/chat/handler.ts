@@ -158,7 +158,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
       .map((m) => m.content)
       .join("\n") || content;
   // Persist an assistant message and stream it verbatim (no model call).
-  const replyWithMessage = async (textOut: string, images: Array<{ imageId: string; filename: string; score: number }> = []) => {
+  const replyWithMessage = async (textOut: string, images: Array<{ imageId: string; caption: string }> = []) => {
     await addMessageFn({ conversationId, role: "assistant", content: textOut, sources: [], images, usage: null, workspaceId });
     return createDataStreamResponse({
       execute: (dataStream) => {
@@ -194,7 +194,7 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
       throw err;
     }
     if (matches.length === 0) return replyWithMessage(NO_IMAGE_ANSWER);
-    const images = matches.map((h) => ({ imageId: h.imageId, filename: h.filename, score: h.score }));
+    const images = matches.map((h) => ({ imageId: h.imageId, caption: h.caption }));
     return replyWithMessage(IMAGE_INTRO, images);
   }
 

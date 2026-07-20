@@ -75,7 +75,7 @@ export const messages = pgTable("messages", {
   role: msgRoleEnum("role").notNull(),
   content: text("content").notNull(),
   sources: jsonb("sources").$type<Array<{ documentId: string; filename: string; chunkId: string; score: number }>>().notNull().default([]),
-  images: jsonb("images").$type<Array<{ imageId: string; filename: string; score: number }>>().notNull().default([]),
+  images: jsonb("images").$type<Array<{ imageId: string; caption: string }>>().notNull().default([]),
   workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "set null" }),
   rating: integer("rating"), // 1 | -1 | null
   usage: jsonb("usage").$type<{ promptTokens: number; completionTokens: number } | null>(),

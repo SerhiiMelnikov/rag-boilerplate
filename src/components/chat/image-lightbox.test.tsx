@@ -5,15 +5,15 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ImageLightbox } from "./image-lightbox";
 
 const THREE = [
-  { imageId: "i1", filename: "one.png", score: 0.9 },
-  { imageId: "i2", filename: "two.png", score: 0.8 },
-  { imageId: "i3", filename: "three.png", score: 0.7 },
+  { imageId: "i1", caption: "cat one" },
+  { imageId: "i2", caption: "cat two" },
+  { imageId: "i3", caption: "cat three" },
 ];
 
 describe("ImageLightbox", () => {
   it("shows the image it was opened at, full size", () => {
     render(<ImageLightbox images={THREE} startIndex={1} onClose={() => {}} />);
-    const img = screen.getByAltText("two.png") as HTMLImageElement;
+    const img = screen.getByAltText("cat two") as HTMLImageElement;
     expect(img.getAttribute("src")).toBe("/api/images/i2");
   });
 
@@ -21,7 +21,7 @@ describe("ImageLightbox", () => {
     render(<ImageLightbox images={THREE} startIndex={0} onClose={() => {}} />);
     const dialog = screen.getByRole("dialog");
     expect(dialog.getAttribute("aria-modal")).toBe("true");
-    expect(dialog.getAttribute("aria-label")).toMatch(/one\.png/);
+    expect(dialog.getAttribute("aria-label")).toMatch(/cat one/);
   });
 
   it("closes on Escape, on the close button, and on a backdrop click", () => {
@@ -41,32 +41,32 @@ describe("ImageLightbox", () => {
   it("does not close when the image itself is clicked", () => {
     const onClose = vi.fn();
     render(<ImageLightbox images={THREE} startIndex={0} onClose={onClose} />);
-    fireEvent.click(screen.getByAltText("one.png"));
+    fireEvent.click(screen.getByAltText("cat one"));
     expect(onClose).not.toHaveBeenCalled();
   });
 
   it("steps through the images with the next/previous buttons", () => {
     render(<ImageLightbox images={THREE} startIndex={0} onClose={() => {}} />);
     fireEvent.click(screen.getByLabelText("Next image"));
-    expect(screen.getByAltText("two.png")).toBeInTheDocument();
+    expect(screen.getByAltText("cat two")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Previous image"));
-    expect(screen.getByAltText("one.png")).toBeInTheDocument();
+    expect(screen.getByAltText("cat one")).toBeInTheDocument();
   });
 
   it("steps through the images with the arrow keys", () => {
     render(<ImageLightbox images={THREE} startIndex={0} onClose={() => {}} />);
     fireEvent.keyDown(window, { key: "ArrowRight" });
-    expect(screen.getByAltText("two.png")).toBeInTheDocument();
+    expect(screen.getByAltText("cat two")).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "ArrowLeft" });
-    expect(screen.getByAltText("one.png")).toBeInTheDocument();
+    expect(screen.getByAltText("cat one")).toBeInTheDocument();
   });
 
   it("wraps around at both ends", () => {
     render(<ImageLightbox images={THREE} startIndex={0} onClose={() => {}} />);
     fireEvent.click(screen.getByLabelText("Previous image"));
-    expect(screen.getByAltText("three.png")).toBeInTheDocument();
+    expect(screen.getByAltText("cat three")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Next image"));
-    expect(screen.getByAltText("one.png")).toBeInTheDocument();
+    expect(screen.getByAltText("cat one")).toBeInTheDocument();
   });
 
   it("shows the position among the images", () => {

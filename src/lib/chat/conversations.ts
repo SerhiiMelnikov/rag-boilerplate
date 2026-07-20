@@ -11,8 +11,7 @@ export interface SourceRef {
 
 export interface ImageResultRef {
   imageId: string;
-  filename: string;
-  score: number;
+  caption: string;
 }
 
 export interface MessageRecord {

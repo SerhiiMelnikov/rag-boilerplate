@@ -5,8 +5,7 @@ import { ImageLightbox } from "./image-lightbox";
 
 interface ImageResultRef {
   imageId: string;
-  filename: string;
-  score: number;
+  caption: string;
 }
 
 // Retrieved images as thumbnails. Clicking one opens it in the lightbox on this page,
@@ -22,13 +21,13 @@ export function ImageResults({ images }: { images: ImageResultRef[] }) {
           <button
             key={img.imageId}
             type="button"
-            aria-label={`Open ${img.filename}`}
-            title={`${img.filename} (${img.score.toFixed(2)})`}
+            aria-label={img.caption ? `Open image: ${img.caption}` : "Open image"}
+            title={img.caption}
             onClick={() => setOpenAt(i)}
             className="rounded transition-opacity hover:opacity-80"
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- served bytes, not a static asset */}
-            <img src={`/api/images/${img.imageId}`} alt={img.filename} className="h-32 w-32 rounded object-cover" />
+            <img src={`/api/images/${img.imageId}`} alt={img.caption} className="h-32 w-32 rounded object-cover" />
           </button>
         ))}
       </div>

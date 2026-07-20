@@ -99,6 +99,13 @@
       "when": 1784226836264,
       "tag": "0013_equal_mole_man",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784531503430,
+      "tag": "0014_smiling_tarantula",
+      "breakpoints": true
     }
   ]
 }

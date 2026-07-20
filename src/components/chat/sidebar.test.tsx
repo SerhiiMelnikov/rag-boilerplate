@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Sidebar } from "@/components/chat/sidebar";
 
@@ -37,5 +37,21 @@ describe("Sidebar", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
     expect(fetch).toHaveBeenCalledWith("/api/conversations/c1", expect.objectContaining({ method: "DELETE" }));
     expect(onDeleted).toHaveBeenCalledWith("c1");
+  });
+
+  it("refetches the conversation list when the workspace-changed event fires", async () => {
+    mockFetchList([{ id: "c1", title: "First", createdAt: new Date(0).toISOString() }]);
+    render(<Sidebar activeId="c1" onSelect={vi.fn()} onNew={vi.fn()} onDeleted={vi.fn()} />);
+    await screen.findByText("First");
+    const callsBefore = (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c: unknown[]) => c[0] === "/api/conversations" && !(c[1] as RequestInit)?.method,
+    ).length;
+    window.dispatchEvent(new Event("workspace-changed"));
+    await waitFor(() => {
+      const callsAfter = (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+        (c: unknown[]) => c[0] === "/api/conversations" && !(c[1] as RequestInit)?.method,
+      ).length;
+      expect(callsAfter).toBeGreaterThan(callsBefore);
+    });
   });
 });

@@ -62,4 +62,18 @@ describe("WorkspaceSwitcher", () => {
     await waitFor(() => expect(document.cookie).toContain("active_workspace=w2"));
     expect(screen.getByLabelText("Active workspace")).toHaveTextContent("Marketing");
   });
+
+  it("dispatches the workspace-changed event when a workspace is picked", async () => {
+    stubFetch(TWO);
+    const onSwitch = vi.fn();
+    window.addEventListener("workspace-changed", onSwitch);
+    try {
+      render(<WorkspaceSwitcher />);
+      fireEvent.click(await screen.findByLabelText("Active workspace"));
+      fireEvent.click(await screen.findByRole("option", { name: "Marketing" }));
+      await waitFor(() => expect(onSwitch).toHaveBeenCalledTimes(1));
+    } finally {
+      window.removeEventListener("workspace-changed", onSwitch);
+    }
+  });
 });

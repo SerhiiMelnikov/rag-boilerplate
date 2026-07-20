@@ -66,6 +66,7 @@ export const conversations = pgTable("conversations", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull().default("New conversation"),
+  workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

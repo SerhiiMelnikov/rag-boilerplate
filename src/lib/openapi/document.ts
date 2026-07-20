@@ -18,7 +18,7 @@ import "./paths/admin-images";
 import "./paths/admin-users";
 import "./paths/admin-workspaces";
 import "./paths/admin-settings";
-// Task 4 groups (evaluation endpoints, etc.) are added here in a later task.
+import "./paths/admin-evaluation";
 
 const API_VERSION = "0.5.1";
 

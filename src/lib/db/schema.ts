@@ -1,6 +1,7 @@
 import {
   pgTable, uuid, text, timestamp, integer, jsonb, vector, real, pgEnum, boolean, primaryKey,
 } from "drizzle-orm/pg-core";
+import type { EvalSettingsSnapshot, EvalAggregate, RetrievedDoc } from "@/lib/eval/types";
 
 // Embedding dimension is fixed to the embedding model. We use gemini-embedding-2
 // with outputDimensionality=768 (it defaults to 3072 but supports reduction),
@@ -184,4 +185,41 @@ export const emailVerificationTokens = pgTable("email_verification_tokens", {
   token: text("token").primaryKey(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+export const evalRunStatusEnum = pgEnum("eval_run_status", ["pending", "running", "done", "error"]);
+
+export const evalQuestions = pgTable("eval_questions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  question: text("question").notNull(),
+  expectedDocumentIds: jsonb("expected_document_ids").$type<string[]>().notNull().default([]),
+  referenceAnswer: text("reference_answer"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const evalRuns = pgTable("eval_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  status: evalRunStatusEnum("status").notNull().default("pending"),
+  settingsSnapshot: jsonb("settings_snapshot").$type<EvalSettingsSnapshot>().notNull(),
+  aggregate: jsonb("aggregate").$type<EvalAggregate | null>(),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const evalResults = pgTable("eval_results", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull().references(() => evalRuns.id, { onDelete: "cascade" }),
+  // Keep the run's history intact if the source question is later deleted: null the FK
+  // but keep the denormalised question text.
+  questionId: uuid("question_id").references(() => evalQuestions.id, { onDelete: "set null" }),
+  questionText: text("question_text").notNull(),
+  retrieved: jsonb("retrieved").$type<RetrievedDoc[]>().notNull().default([]),
+  hit: boolean("hit").notNull().default(false),
+  recall: real("recall").notNull().default(0),
+  precision: real("precision").notNull().default(0),
+  mrr: real("mrr").notNull().default(0),
+  judgeScore: integer("judge_score"),
+  judgeRationale: text("judge_rationale"),
+  generatedAnswer: text("generated_answer"),
+  error: text("error"),
 });

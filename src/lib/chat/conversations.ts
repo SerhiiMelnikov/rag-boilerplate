@@ -19,7 +19,6 @@ export interface MessageRecord {
   id: string;
   role: "user" | "assistant";
   content: string;
-  sources: SourceRef[];
   images: ImageResultRef[];
   rating: number | null;
   usage: { promptTokens: number; completionTokens: number } | null;
@@ -54,7 +53,6 @@ export async function getConversationWithMessages(userId: string, id: string, da
       id: messages.id,
       role: messages.role,
       content: messages.content,
-      sources: messages.sources,
       images: messages.images,
       rating: messages.rating,
       usage: messages.usage,

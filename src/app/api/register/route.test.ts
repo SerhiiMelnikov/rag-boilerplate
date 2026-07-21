@@ -159,6 +159,20 @@ describe("registerUser verification link", () => {
     expect(html).not.toContain("localhost:3000");
   });
 
+  // Headless (api-only) mode: there is no Next `/verify` page to point at, so
+  // the consumer's own frontend supplies the full URL of its verify screen.
+  // It must win over AUTH_URL when both are set — AUTH_URL is this app's own
+  // origin, not where a headless consumer's UI lives.
+  it("prefers VERIFY_URL over AUTH_URL when set, for a headless consumer's own verify page", async () => {
+    vi.stubEnv("VERIFY_URL", "https://consumer.app/verify");
+    vi.stubEnv("AUTH_URL", "https://app.example.com");
+    const deps = baseDeps();
+    await registerUser(req(GOOD), deps);
+    const { html } = deps.sendEmailFn.mock.calls[0][0];
+    expect(html).toContain("https://consumer.app/verify?token=tok");
+    expect(html).not.toContain("app.example.com");
+  });
+
   // A proxy that forwards the client's Host verbatim (proxy_set_header Host $host,
   // a very common recipe) would let an attacker POSTing with a spoofed Host mint a
   // victim's verification link pointing at the attacker's own server. /api/register

@@ -6,6 +6,13 @@ const req = (fields: Record<string, string>) => {
   return new Request("http://test/api/auth/verify", { method: "POST", body });
 };
 
+const jsonReq = (body: unknown) =>
+  new Request("http://test/api/auth/verify", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
 function deps(consumeResult = true) {
   return {
     consumeFn: vi.fn(async () => consumeResult),
@@ -62,5 +69,53 @@ describe("submitVerification", () => {
     const res = await submitVerification(req({ password: "my-new-password" }), d);
     expect(d.consumeFn).not.toHaveBeenCalled();
     expect(res.status).toBe(303);
+  });
+});
+
+// Headless consumers (a SPA/mobile app in api-only mode, not the Next `/verify`
+// page) POST JSON here instead of a form. Same underlying verification, a
+// different response shape: JSON in, JSON out, never a redirect.
+describe("submitVerification — JSON branch (headless clients)", () => {
+  it("hashes the submitted password, consumes the token, and returns { status: 'verified' } — no redirect", async () => {
+    const d = deps(true);
+    const res = await submitVerification(jsonReq({ token: "tok", password: "my-new-password" }), d);
+    expect(d.hashPasswordFn).toHaveBeenCalledWith("my-new-password");
+    expect(d.consumeFn).toHaveBeenCalledWith("tok", "hashed:my-new-password");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    await expect(res.json()).resolves.toEqual({ status: "verified" });
+  });
+
+  it("returns 400 JSON (not a redirect) when the token is unknown/expired/already-used", async () => {
+    const d = deps(false);
+    const res = await submitVerification(jsonReq({ token: "tok", password: "my-new-password" }), d);
+    expect(res.status).toBe(400);
+    expect(res.headers.get("location")).toBeNull();
+    const body = await res.json();
+    expect(body.error).toBeTruthy();
+  });
+
+  it("returns 400 JSON without ever calling consumeFn when the password is too short", async () => {
+    const d = deps(true);
+    const res = await submitVerification(jsonReq({ token: "tok", password: "short" }), d);
+    expect(d.consumeFn).not.toHaveBeenCalled();
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 JSON without ever calling consumeFn when the token is missing", async () => {
+    const d = deps(true);
+    const res = await submitVerification(jsonReq({ password: "my-new-password" }), d);
+    expect(d.consumeFn).not.toHaveBeenCalled();
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 JSON when the body is not valid JSON", async () => {
+    const req = new Request("http://test/api/auth/verify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not json",
+    });
+    const res = await submitVerification(req, deps(true));
+    expect(res.status).toBe(400);
   });
 });

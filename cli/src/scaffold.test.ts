@@ -42,7 +42,7 @@ afterEach(async () => { await rm(templateDir, { recursive: true, force: true });
 
 const opts = (over: Partial<InstallOptions> = {}): InstallOptions => ({
   projectName: "app", providers: ["google"], defaultProvider: "google", vectorStore: "qdrant",
-  git: false, install: false, packageManager: "npm", yes: true, ...over,
+  appKind: "full", git: false, install: false, packageManager: "npm", yes: true, ...over,
 });
 
 describe("settingsDefaultsFor", () => {
@@ -193,5 +193,123 @@ describe("cut pgvector for non-pgvector stores", () => {
 
     const schema = await readFile(join(targetDir, "src/lib/db/schema.ts"), "utf8");
     expect(schema).toContain('pgTable("chunks"');
+  });
+});
+
+describe("appKind pruning", () => {
+  // Extra fixture pieces that only the appKind branch touches: the Next.js/
+  // React-only surface deleted for "api", and the standalone server (already
+  // shipped in the real template) deleted for "full". Overwrites the base
+  // package.json with one carrying the deps/scripts both branches operate on.
+  async function setupAppKindFixtures() {
+    await writeFile(
+      join(templateDir, "package.json"),
+      JSON.stringify(
+        {
+          name: "app",
+          scripts: {
+            dev: "next dev", build: "next build", start: "next start",
+            "server:dev": "tsx watch src/server/index.ts", "server:build": "tsc --noEmit", "server:start": "tsx src/server/index.ts",
+            lint: "eslint .",
+          },
+          dependencies: {
+            "@ai-sdk/google": "1", "@ai-sdk/anthropic": "1", "chromadb": "1", "@qdrant/js-client-rest": "1", "weaviate-client": "1",
+            next: "15", react: "19", "react-dom": "19", "next-auth": "5", "next-themes": "1",
+            "@ai-sdk/react": "1", "@headlessui/react": "1", "lucide-react": "1",
+            hono: "4", "@hono/node-server": "2", "@scalar/hono-api-reference": "1", "@auth/core": "0.41.2",
+          },
+          devDependencies: { tailwindcss: "3", postcss: "8", autoprefixer: "10", "@types/react": "19", "@types/react-dom": "19" },
+        },
+        null,
+        2,
+      ),
+    );
+    await mkdir(join(templateDir, "src/app"), { recursive: true });
+    await writeFile(join(templateDir, "src/app/page.tsx"), "export default function Page() { return null; }");
+    await writeFile(join(templateDir, "src/app/globals.css"), "body { margin: 0; }");
+    await writeFile(join(templateDir, "middleware.ts"), "export const config = {};");
+    await writeFile(join(templateDir, "next.config.ts"), "export default {};");
+    await writeFile(join(templateDir, "next-env.d.ts"), "// next-env");
+    await writeFile(join(templateDir, "tailwind.config.ts"), "export default {};");
+    await writeFile(join(templateDir, "postcss.config.mjs"), "export default {};");
+    await writeFile(join(templateDir, "src/auth.ts"), "export const auth = 1;");
+    await writeFile(join(templateDir, "src/auth.config.ts"), "export const authConfig = 1;");
+    await mkdir(join(templateDir, "src/types"), { recursive: true });
+    await writeFile(join(templateDir, "src/types/next-auth.d.ts"), "export {};");
+    await mkdir(join(templateDir, "src/server"), { recursive: true });
+    await writeFile(join(templateDir, "src/server/index.ts"), "export const server = 1;");
+    await writeFile(join(templateDir, "Dockerfile"), 'FROM node:22-alpine\nRUN npm run build\nCMD ["node", "server.js"]\n');
+  }
+
+  it("appKind api: deletes the Next.js/React surface, keeps src/server, rewrites package.json + Dockerfile", async () => {
+    await setupAppKindFixtures();
+    const targetDir = join(targetParent, "app-api");
+    await scaffold(opts({ appKind: "api", vectorStore: "qdrant" }), { templateDir, targetDir });
+
+    for (const rel of [
+      "src/app", "middleware.ts", "next.config.ts", "next-env.d.ts", "tailwind.config.ts", "postcss.config.mjs",
+      "src/components", "src/auth.ts", "src/auth.config.ts", "src/types/next-auth.d.ts",
+    ]) {
+      expect(existsSync(join(targetDir, rel))).toBe(false);
+    }
+    expect(existsSync(join(targetDir, "src/server"))).toBe(true);
+    expect(existsSync(join(targetDir, "src/server/index.ts"))).toBe(true);
+
+    const pkg = JSON.parse(await readFile(join(targetDir, "package.json"), "utf8"));
+    expect(pkg.dependencies.next).toBeUndefined();
+    expect(pkg.dependencies.react).toBeUndefined();
+    expect(pkg.dependencies["react-dom"]).toBeUndefined();
+    expect(pkg.dependencies["next-auth"]).toBeUndefined();
+    expect(pkg.dependencies["next-themes"]).toBeUndefined();
+    expect(pkg.dependencies["@ai-sdk/react"]).toBeUndefined();
+    expect(pkg.dependencies["@headlessui/react"]).toBeUndefined();
+    expect(pkg.dependencies["lucide-react"]).toBeUndefined();
+    expect(pkg.devDependencies.tailwindcss).toBeUndefined();
+    expect(pkg.devDependencies.postcss).toBeUndefined();
+    expect(pkg.devDependencies.autoprefixer).toBeUndefined();
+    expect(pkg.devDependencies["@types/react"]).toBeUndefined();
+    expect(pkg.dependencies.hono).toBe("4");
+    expect(pkg.dependencies["@hono/node-server"]).toBe("2");
+    expect(pkg.dependencies["@scalar/hono-api-reference"]).toBe("1");
+    expect(pkg.dependencies["@auth/core"]).toBe("0.41.2");
+    expect(pkg.scripts.dev).toBe("tsx watch src/server/index.ts");
+    expect(pkg.scripts.build).toBe("tsc --noEmit");
+    expect(pkg.scripts.start).toBe("tsx src/server/index.ts");
+    expect(pkg.scripts["server:dev"]).toBeUndefined();
+    expect(pkg.scripts["server:build"]).toBeUndefined();
+    expect(pkg.scripts["server:start"]).toBeUndefined();
+    expect(pkg.scripts.lint).toBe("eslint ."); // untouched
+
+    const dockerfile = await readFile(join(targetDir, "Dockerfile"), "utf8");
+    expect(dockerfile).not.toContain("next build");
+    expect(dockerfile).toContain('"start"');
+    expect(dockerfile).toContain("/api/health");
+  });
+
+  it("appKind full: keeps src/app, deletes src/server, strips the hono deps but keeps @auth/core", async () => {
+    await setupAppKindFixtures();
+    const targetDir = join(targetParent, "app-full");
+    await scaffold(opts({ appKind: "full", vectorStore: "qdrant" }), { templateDir, targetDir });
+
+    expect(existsSync(join(targetDir, "src/app"))).toBe(true);
+    expect(existsSync(join(targetDir, "src/app/page.tsx"))).toBe(true);
+    expect(existsSync(join(targetDir, "src/server"))).toBe(false);
+
+    const pkg = JSON.parse(await readFile(join(targetDir, "package.json"), "utf8"));
+    expect(pkg.dependencies.next).toBeDefined();
+    expect(pkg.dependencies.react).toBeDefined();
+    expect(pkg.dependencies.hono).toBeUndefined();
+    expect(pkg.dependencies["@hono/node-server"]).toBeUndefined();
+    expect(pkg.dependencies["@scalar/hono-api-reference"]).toBeUndefined();
+    expect(pkg.dependencies["@auth/core"]).toBe("0.41.2"); // kept in both modes
+    expect(pkg.scripts.dev).toBe("next dev");
+    expect(pkg.scripts["server:dev"]).toBeUndefined();
+    expect(pkg.scripts["server:build"]).toBeUndefined();
+    expect(pkg.scripts["server:start"]).toBeUndefined();
+
+    // Dockerfile is untouched in full-app mode (still the fixture's Next-oriented one).
+    const dockerfile = await readFile(join(targetDir, "Dockerfile"), "utf8");
+    expect(dockerfile).toContain("npm run build");
+    expect(dockerfile).toContain('CMD ["node", "server.js"]');
   });
 });

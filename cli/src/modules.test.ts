@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PROVIDERS, VECTOR_STORES, providerDepsToRemove } from "./modules.js";
+import { PROVIDERS, VECTOR_STORES, providerDepsToRemove, API_ONLY_REMOVE_DEPS, FULL_APP_REMOVE_DEPS } from "./modules.js";
 
 describe("PROVIDERS manifest", () => {
   it("marks anthropic as not embedding-capable and the rest capable", () => {
@@ -46,5 +46,26 @@ describe("VECTOR_STORES manifest", () => {
     expect(VECTOR_STORES.qdrant.dockerService).toBe("qdrant");
     expect(VECTOR_STORES.qdrant.dockerVolume).toBe("rag_qdrant");
     expect(VECTOR_STORES.qdrant.initNeeded).toBe(true);
+  });
+});
+
+describe("API_ONLY_REMOVE_DEPS", () => {
+  it("lists the Next.js/React/UI deps, not @auth/core or the Hono deps", () => {
+    for (const d of [
+      "next", "react", "react-dom", "next-auth", "next-themes", "@ai-sdk/react", "@headlessui/react", "lucide-react",
+      "tailwindcss", "postcss", "autoprefixer", "react-markdown", "highlight.js", "@scalar/api-reference-react",
+    ]) {
+      expect(API_ONLY_REMOVE_DEPS).toContain(d);
+    }
+    expect(API_ONLY_REMOVE_DEPS).not.toContain("@auth/core");
+    expect(API_ONLY_REMOVE_DEPS).not.toContain("hono");
+    expect(API_ONLY_REMOVE_DEPS).not.toContain("@scalar/hono-api-reference"); // the api build's own /docs page needs this one
+  });
+});
+
+describe("FULL_APP_REMOVE_DEPS", () => {
+  it("lists only the standalone-server deps, not @auth/core", () => {
+    expect(FULL_APP_REMOVE_DEPS).toEqual(["hono", "@hono/node-server", "@scalar/hono-api-reference"]);
+    expect(FULL_APP_REMOVE_DEPS).not.toContain("@auth/core");
   });
 });

@@ -3,10 +3,29 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { InstallOptions } from "./options.js";
 import { PROVIDER_IDS, VECTOR_STORE_IDS, resolveEmbeddingProvider } from "./options.js";
-import { PROVIDERS, VECTOR_STORES, providerDepsToRemove } from "./modules.js";
-import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret, setDbImage, setAppEnvOverrides } from "./transforms/config.js";
+import { PROVIDERS, VECTOR_STORES, providerDepsToRemove, API_ONLY_REMOVE_DEPS, FULL_APP_REMOVE_DEPS } from "./modules.js";
+import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret, setDbImage, setAppEnvOverrides, rewriteScriptsForApiOnly, removeServerScripts } from "./transforms/config.js";
 import { applySourceTransforms } from "./transforms/source.js";
 import { generateReadme } from "./readme.js";
+import { API_ONLY_DOCKERFILE } from "./docker.js";
+
+// Paths deleted for appKind === "api": everything Next.js/React-only. Deleting
+// src/app/ also covers src/app/globals.css, so that file needs no separate entry.
+// Every extension a given config file could plausibly ship under is listed —
+// existsSync guards each one, so an absent variant (or an already-pruned path,
+// e.g. a second scaffold() call) is a silent no-op, never an error.
+const API_ONLY_DELETE_PATHS = [
+  "src/app",
+  "middleware.ts",
+  "next.config.ts", "next.config.js", "next.config.mjs",
+  "next-env.d.ts",
+  "tailwind.config.ts", "tailwind.config.js",
+  "postcss.config.mjs", "postcss.config.js", "postcss.config.ts",
+  "src/components",
+  "src/auth.ts",
+  "src/auth.config.ts",
+  "src/types/next-auth.d.ts",
+];
 
 // Compute the ten settings defaults from the chosen default provider + manifest.
 export function settingsDefaultsFor(o: InstallOptions) {
@@ -91,6 +110,31 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
 
   // 8. Generate .env with fresh secrets.
   await writeFile(join(opts.targetDir, ".env"), generateEnv({ vectorStore: o.vectorStore }, { authSecret: generateSecret(), encryptionKey: generateSecret() }));
+
+  // 8b. appKind branch: api-only prunes the Next.js/React frontend down to a
+  // standalone Hono server (src/server/, already shipped in the template);
+  // full removes that standalone server instead, since it is the Next.js app
+  // that actually gets served. Runs LAST (after applySourceTransforms in step
+  // 7), because that step still needs src/components/admin/*.tsx to exist —
+  // deleting src/components/ any earlier would crash ts-morph trying to load
+  // a file that is no longer there.
+  if (o.appKind === "api") {
+    for (const rel of API_ONLY_DELETE_PATHS) {
+      const p = join(opts.targetDir, rel);
+      if (existsSync(p)) await rm(p, { recursive: true, force: true });
+    }
+    const apiPkg = prunePackageJson(await readFile(pkgPath, "utf8"), API_ONLY_REMOVE_DEPS);
+    await writeFile(pkgPath, rewriteScriptsForApiOnly(apiPkg));
+
+    const dockerfilePath = join(opts.targetDir, "Dockerfile");
+    if (existsSync(dockerfilePath)) await writeFile(dockerfilePath, API_ONLY_DOCKERFILE);
+  } else {
+    const serverDir = join(opts.targetDir, "src/server");
+    if (existsSync(serverDir)) await rm(serverDir, { recursive: true, force: true });
+
+    const fullPkg = prunePackageJson(await readFile(pkgPath, "utf8"), FULL_APP_REMOVE_DEPS);
+    await writeFile(pkgPath, removeServerScripts(fullPkg));
+  }
 
   // 9. Generate a README tailored to this selection (the template ships none).
   await writeFile(join(opts.targetDir, "README.md"), generateReadme(o));

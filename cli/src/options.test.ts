@@ -17,11 +17,16 @@ describe("parseArgs", () => {
     const o = parseArgs(["app"]);
     expect(o.providers).toBeUndefined();
     expect(o.vectorStore).toBeUndefined();
+    expect(o.appKind).toBeUndefined();
+  });
+  it("parses --app-kind", () => {
+    expect(parseArgs(["app", "--app-kind=api"]).appKind).toBe("api");
+    expect(parseArgs(["app", "--app-kind=full"]).appKind).toBe("full");
   });
 });
 
 describe("validateSelection", () => {
-  const base = { providers: ["google"] as const, defaultProvider: "google" as const, vectorStore: "pgvector" as const };
+  const base = { providers: ["google"] as const, defaultProvider: "google" as const, vectorStore: "pgvector" as const, appKind: "full" as const };
   it("accepts a valid selection", () => {
     expect(validateSelection({ ...base, providers: ["google"] })).toEqual([]);
   });
@@ -29,12 +34,16 @@ describe("validateSelection", () => {
     expect(validateSelection({ ...base, providers: [] })).toContain("Select at least one provider.");
   });
   it("rejects a selection with no embedding-capable provider", () => {
-    const errs = validateSelection({ providers: ["anthropic"], defaultProvider: "anthropic", vectorStore: "pgvector" });
+    const errs = validateSelection({ providers: ["anthropic"], defaultProvider: "anthropic", vectorStore: "pgvector", appKind: "full" });
     expect(errs.some((e) => /embedding-capable/i.test(e))).toBe(true);
   });
   it("rejects a default provider not in the selection", () => {
-    const errs = validateSelection({ providers: ["google"], defaultProvider: "openai", vectorStore: "pgvector" });
+    const errs = validateSelection({ providers: ["google"], defaultProvider: "openai", vectorStore: "pgvector", appKind: "full" });
     expect(errs.some((e) => /default provider/i.test(e))).toBe(true);
+  });
+  it("rejects an unknown app kind", () => {
+    const errs = validateSelection({ ...base, providers: ["google"], appKind: "bogus" as unknown as "full" });
+    expect(errs.some((e) => /app kind/i.test(e))).toBe(true);
   });
 });
 

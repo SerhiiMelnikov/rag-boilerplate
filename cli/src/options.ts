@@ -3,12 +3,16 @@ import { parseArgs as nodeParseArgs } from "node:util";
 export type ProviderId = "google" | "openai" | "anthropic" | "ollama";
 export type VectorStoreId = "pgvector" | "qdrant" | "chroma" | "weaviate" | "pinecone";
 export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
+// "full" = the current Next.js app (unchanged). "api" = a standalone Hono
+// server with no Next.js, no React, and no admin UI at all (see scaffold.ts).
+export type AppKind = "full" | "api";
 
 export interface InstallOptions {
   projectName: string;
   providers: ProviderId[];
   defaultProvider: ProviderId;
   vectorStore: VectorStoreId;
+  appKind: AppKind;
   git: boolean;
   install: boolean;
   packageManager: PackageManager;
@@ -17,6 +21,7 @@ export interface InstallOptions {
 
 export const PROVIDER_IDS: ProviderId[] = ["google", "openai", "anthropic", "ollama"];
 export const VECTOR_STORE_IDS: VectorStoreId[] = ["pgvector", "qdrant", "chroma", "weaviate", "pinecone"];
+export const APP_KIND_IDS: AppKind[] = ["full", "api"];
 export const EMBEDDING_CAPABLE: ProviderId[] = ["google", "openai", "ollama"];
 
 // Parse argv into a partial option set. Missing values are filled by prompts later.
@@ -28,6 +33,7 @@ export function parseArgs(argv: string[]): Partial<InstallOptions> & { yes: bool
       providers: { type: "string" },
       "vector-store": { type: "string" },
       "default-provider": { type: "string" },
+      "app-kind": { type: "string" },
       install: { type: "boolean" },
       "no-install": { type: "boolean" },
       git: { type: "boolean" },
@@ -42,6 +48,7 @@ export function parseArgs(argv: string[]): Partial<InstallOptions> & { yes: bool
   }
   if (typeof values["vector-store"] === "string") out.vectorStore = values["vector-store"] as VectorStoreId;
   if (typeof values["default-provider"] === "string") out.defaultProvider = values["default-provider"] as ProviderId;
+  if (typeof values["app-kind"] === "string") out.appKind = values["app-kind"] as AppKind;
   if (values["no-install"]) out.install = false;
   else if (values.install) out.install = true;
   if (values["no-git"]) out.git = false;
@@ -50,7 +57,7 @@ export function parseArgs(argv: string[]): Partial<InstallOptions> & { yes: bool
 }
 
 // Return a list of human-readable validation errors; empty means valid.
-export function validateSelection(o: { providers: ProviderId[]; defaultProvider: ProviderId; vectorStore: VectorStoreId }): string[] {
+export function validateSelection(o: { providers: ProviderId[]; defaultProvider: ProviderId; vectorStore: VectorStoreId; appKind: AppKind }): string[] {
   const errors: string[] = [];
   if (o.providers.length === 0) errors.push("Select at least one provider.");
   if (o.providers.length > 0 && !o.providers.some((p) => EMBEDDING_CAPABLE.includes(p))) {
@@ -60,6 +67,7 @@ export function validateSelection(o: { providers: ProviderId[]; defaultProvider:
     errors.push("The default provider must be one of the selected providers.");
   }
   if (!VECTOR_STORE_IDS.includes(o.vectorStore)) errors.push(`Unknown vector store: ${o.vectorStore}.`);
+  if (!APP_KIND_IDS.includes(o.appKind)) errors.push(`Unknown app kind: ${o.appKind}.`);
   return errors;
 }
 

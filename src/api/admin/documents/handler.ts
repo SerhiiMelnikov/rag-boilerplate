@@ -1,4 +1,3 @@
-import { after } from "next/server";
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
 import { ingestExistingDocument } from "@/lib/rag/ingest";
 import { getVectorStore, getDocumentRepo } from "@/lib/vectorstore";
@@ -27,7 +26,13 @@ export async function uploadDocument(request: Request, deps: UploadDocumentDeps 
   const setDocumentWorkspacesFn = deps.setDocumentWorkspacesFn ?? setDocumentWorkspaces;
   const getSettings = deps.getSettings ?? getRuntimeSettings;
   const ingest = deps.ingest ?? ingestExistingDocument;
-  const schedule = deps.schedule ?? ((fn) => after(fn));
+  const schedule =
+    deps.schedule ??
+    ((fn: () => Promise<unknown>) => {
+      void Promise.resolve()
+        .then(fn)
+        .catch((e) => console.error("background job failed", e));
+    });
 
   try {
     await getAdmin();

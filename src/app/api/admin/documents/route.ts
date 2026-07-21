@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
 import { listDocuments } from "@/lib/documents/service";
 import { uploadDocument } from "@/api/admin/documents/handler";
@@ -14,5 +15,5 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  return uploadDocument(request);
+  return uploadDocument(request, { schedule: (fn) => { after(fn); } });
 }

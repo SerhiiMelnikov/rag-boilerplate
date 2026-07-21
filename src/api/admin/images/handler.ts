@@ -1,4 +1,3 @@
-import { after } from "next/server";
 import { randomUUID } from "node:crypto";
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
 import { getObjectStore, type ObjectStore } from "@/lib/images/storage";
@@ -38,7 +37,13 @@ export async function uploadImage(request: Request, deps: UploadImageDeps = {}):
   const setImageWorkspacesFn = deps.setImageWorkspacesFn ?? setImageWorkspaces;
   const getSettings = deps.getSettings ?? getRuntimeSettings;
   const ingest = deps.ingest ?? ingestImage;
-  const schedule = deps.schedule ?? ((fn) => after(fn));
+  const schedule =
+    deps.schedule ??
+    ((fn: () => Promise<unknown>) => {
+      void Promise.resolve()
+        .then(fn)
+        .catch((e) => console.error("background job failed", e));
+    });
   const newId = deps.newId ?? randomUUID;
 
   let admin;

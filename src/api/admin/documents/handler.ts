@@ -1,4 +1,5 @@
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
+import { listDocuments } from "@/lib/documents/service";
 import { ingestExistingDocument } from "@/lib/rag/ingest";
 import { getVectorStore, getDocumentRepo } from "@/lib/vectorstore";
 import type { VectorStore, DocumentRepo } from "@/lib/vectorstore/types";
@@ -6,6 +7,25 @@ import { createWorkspaceRepo, type WorkspaceRepo } from "@/lib/workspaces/repo";
 import { setDocumentWorkspaces } from "@/lib/workspaces/membership";
 import { resolveUploadWorkspaceIds } from "@/lib/workspaces/upload-ids";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
+
+export interface ListDocumentsResponseDeps {
+  getAdmin?: typeof requireAdmin;
+  list?: typeof listDocuments;
+}
+
+export async function listDocumentsResponse(request: Request, deps: ListDocumentsResponseDeps = {}): Promise<Response> {
+  const getAdmin = deps.getAdmin ?? requireAdmin;
+  const list = deps.list ?? listDocuments;
+
+  try {
+    await getAdmin();
+  } catch (err) {
+    const res = errorToResponse(err);
+    if (res) return res;
+    throw err;
+  }
+  return Response.json({ documents: await list() });
+}
 
 export interface UploadDocumentDeps {
   getAdmin?: typeof requireAdmin;

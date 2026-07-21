@@ -1,10 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
-import { uploadDocument } from "./handler";
+import { uploadDocument, listDocumentsResponse } from "./handler";
+import { UnauthorizedError } from "@/lib/auth/guards";
 
 function form(file: File) {
   const f = new FormData();
   f.set("file", file);
   return new Request("http://x/api/admin/documents", { method: "POST", body: f });
+}
+
+function listReq() {
+  return new Request("http://x/api/admin/documents");
 }
 
 const baseDeps = () => ({
@@ -62,5 +67,23 @@ describe("uploadDocument", () => {
     const deps = { ...baseDeps(), setDocumentWorkspacesFn, workspaceRepo: { getDefaultId: async () => "ws-general" } };
     await uploadDocument(req, deps as never);
     expect(setDocumentWorkspacesFn).toHaveBeenCalledWith("doc-1", []);
+  });
+});
+
+describe("listDocumentsResponse", () => {
+  it("returns the document list for an admin", async () => {
+    const docs = [{ id: "doc-1", filename: "a.md", status: "ready" as const, error: null, createdAt: new Date() }];
+    const deps = { getAdmin: vi.fn(async () => ({ id: "admin-1" })), list: vi.fn(async () => docs) };
+    const res = await listDocumentsResponse(listReq(), deps as never);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ documents: JSON.parse(JSON.stringify(docs)) });
+    expect(deps.list).toHaveBeenCalled();
+  });
+
+  it("401s an anonymous caller and never lists", async () => {
+    const deps = { getAdmin: (async () => { throw new UnauthorizedError(); }) as never, list: vi.fn() };
+    const res = await listDocumentsResponse(listReq(), deps as never);
+    expect(res.status).toBe(401);
+    expect(deps.list).not.toHaveBeenCalled();
   });
 });

@@ -195,6 +195,17 @@ describe("generateReadme registration", () => {
   });
 });
 
+describe("generateReadme API docs", () => {
+  // The scaffolded app ships /docs (Scalar) and /api/openapi.json (Tasks 1-5 of
+  // the OpenAPI feature); the generated README must tell the user both exist.
+  it("mentions the interactive API reference and the raw OpenAPI document", () => {
+    const readme = generateReadme(opts());
+    expect(readme).toContain("## API docs");
+    expect(readme).toContain("/docs");
+    expect(readme).toContain("/api/openapi.json");
+  });
+});
+
 describe("generateReadme secrets", () => {
   // The scaffolder writes both secrets, but rotating the encryption key silently
   // orphans every provider key already stored in the DB — that must be stated.

@@ -93,6 +93,12 @@ export function generateReadme(o: InstallOptions): string {
   lines.push("- **Analytics** — see how answers were rated.");
   lines.push("");
 
+  lines.push("## API docs", "");
+  lines.push("An interactive API reference is served at `/docs` (Scalar, self-hosted, no");
+  lines.push("CDN), backed by the raw OpenAPI document at `/api/openapi.json`. Both are public");
+  lines.push("(not gated behind login).");
+  lines.push("");
+
   lines.push("## Rate limits", "");
   lines.push("These are on by default and take effect immediately: the migration that adds");
   lines.push("them backfills the existing settings row, so if this app was already deployed");

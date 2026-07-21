@@ -18,7 +18,7 @@ export interface RecaptionImageDeps {
 
 // Re-run the vision model on an already-uploaded image. Slow (a model call), so it runs
 // in the background and the client polls the Files list for the status to settle.
-export async function recaptionImageResponse(id: string, deps: RecaptionImageDeps = {}): Promise<Response> {
+export async function recaptionImageResponse(id: string, request: Request, deps: RecaptionImageDeps = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const imageRepo = deps.imageRepo ?? createImageRepo();
   const imageVectorStore = deps.imageVectorStore ?? getImageVectorStore();
@@ -34,7 +34,7 @@ export async function recaptionImageResponse(id: string, deps: RecaptionImageDep
     });
 
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

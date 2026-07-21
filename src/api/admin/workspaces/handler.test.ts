@@ -4,10 +4,11 @@ import { DuplicateWorkspaceNameError } from "@/lib/workspaces/admin";
 
 const admin = vi.fn(async () => ({ id: "a1", role: "admin" }));
 const json = (b: unknown) => new Request("http://x/api/admin/workspaces", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) });
+const req = () => new Request("http://x/api/admin/workspaces");
 
 describe("listWorkspacesResponse", () => {
   it("returns the workspaces", async () => {
-    const res = await listWorkspacesResponse({ getAdmin: admin as never, listWorkspacesFn: (async () => [{ id: "w1", name: "General", description: null, isDefault: true, createdAt: new Date(0) }]) as never });
+    const res = await listWorkspacesResponse(req(), { getAdmin: admin as never, listWorkspacesFn: (async () => [{ id: "w1", name: "General", description: null, isDefault: true, createdAt: new Date(0) }]) as never });
     expect(res.status).toBe(200);
     expect((await res.json()).workspaces).toHaveLength(1);
   });

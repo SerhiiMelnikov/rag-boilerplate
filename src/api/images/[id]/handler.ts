@@ -10,13 +10,13 @@ export interface ServeImageDeps {
 
 // Auth-gated image byte serving. Any logged-in user may view admin-uploaded
 // images (they are referenced from chat answers). 404 for unknown ids.
-export async function serveImage(id: string, deps: ServeImageDeps = {}): Promise<Response> {
+export async function serveImage(id: string, request: Request, deps: ServeImageDeps = {}): Promise<Response> {
   const getUser = deps.getUser ?? requireUser;
   const imageRepo = deps.imageRepo ?? createImageRepo();
   const objectStore = deps.objectStore ?? getObjectStore();
 
   try {
-    await getUser();
+    await getUser(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

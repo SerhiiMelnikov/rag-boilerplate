@@ -25,11 +25,11 @@ function parseBody(body: unknown): QuestionInput | null {
   };
 }
 
-export async function listQuestionsResponse(deps: QuestionsDeps = {}): Promise<Response> {
+export async function listQuestionsResponse(request: Request, deps: QuestionsDeps = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const repo = deps.repo ?? evalRepo;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -42,7 +42,7 @@ export async function createQuestionResponse(request: Request, deps: QuestionsDe
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const repo = deps.repo ?? evalRepo;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -60,7 +60,7 @@ export async function updateQuestionResponse(id: string, request: Request, deps:
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const repo = deps.repo ?? evalRepo;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -75,11 +75,11 @@ export async function updateQuestionResponse(id: string, request: Request, deps:
   return Response.json({ ok: true });
 }
 
-export async function deleteQuestionResponse(id: string, deps: QuestionsDeps = {}): Promise<Response> {
+export async function deleteQuestionResponse(id: string, request: Request, deps: QuestionsDeps = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const repo = deps.repo ?? evalRepo;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

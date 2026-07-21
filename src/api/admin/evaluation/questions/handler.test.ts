@@ -16,6 +16,8 @@ const json = (b: unknown, method = "POST") =>
     body: JSON.stringify(b),
   });
 
+const req = () => new Request("http://x/api/admin/evaluation/questions");
+
 const question = {
   id: "q1",
   question: "What is X?",
@@ -28,7 +30,7 @@ describe("admin guard", () => {
   it("403s a forbidden (non-admin) caller and does not touch the repo", async () => {
     const forbidden = vi.fn(async () => { throw new ForbiddenError(); });
     const listQuestions = vi.fn(async () => [question]);
-    const res = await listQuestionsResponse({ getAdmin: forbidden as never, repo: { listQuestions } as never });
+    const res = await listQuestionsResponse(req(), { getAdmin: forbidden as never, repo: { listQuestions } as never });
     expect(res.status).toBe(403);
     expect(listQuestions).not.toHaveBeenCalled();
   });
@@ -48,7 +50,7 @@ describe("admin guard", () => {
 describe("listQuestionsResponse", () => {
   it("returns the questions", async () => {
     const listQuestions = vi.fn(async () => [question]);
-    const res = await listQuestionsResponse({ getAdmin: admin as never, repo: { listQuestions } as never });
+    const res = await listQuestionsResponse(req(), { getAdmin: admin as never, repo: { listQuestions } as never });
     expect(res.status).toBe(200);
     expect((await res.json()).questions).toHaveLength(1);
   });
@@ -157,14 +159,14 @@ describe("updateQuestionResponse", () => {
 describe("deleteQuestionResponse", () => {
   it("deletes and returns ok", async () => {
     const deleteQuestion = vi.fn(async () => true);
-    const res = await deleteQuestionResponse("q1", { getAdmin: admin as never, repo: { deleteQuestion } as never });
+    const res = await deleteQuestionResponse("q1", req(), { getAdmin: admin as never, repo: { deleteQuestion } as never });
     expect(res.status).toBe(200);
     expect(deleteQuestion).toHaveBeenCalledWith("q1");
   });
 
   it("404s on an unknown question", async () => {
     const deleteQuestion = vi.fn(async () => false);
-    const res = await deleteQuestionResponse("nope", { getAdmin: admin as never, repo: { deleteQuestion } as never });
+    const res = await deleteQuestionResponse("nope", req(), { getAdmin: admin as never, repo: { deleteQuestion } as never });
     expect(res.status).toBe(404);
   });
 });

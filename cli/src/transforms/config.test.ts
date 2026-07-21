@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parse as parseYaml } from "yaml";
-import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret, setDbImage, setAppEnvOverrides } from "./config.js";
+import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret, setDbImage, setAppEnvOverrides, rewriteScriptsForApiOnly, removeServerScripts } from "./config.js";
 
 const PKG = JSON.stringify({ dependencies: { "@ai-sdk/google": "1", "@ai-sdk/openai": "1", "chromadb": "1", "next": "15" } }, null, 2);
 
@@ -56,6 +56,47 @@ describe("removeTestTooling", () => {
     expect(out.devDependencies["vitest"]).toBeUndefined();
     expect(out.devDependencies["typescript"]).toBe("5");
     expect(out.dependencies["next"]).toBe("15");
+  });
+});
+
+const PKG_WITH_SERVER_SCRIPTS = JSON.stringify(
+  {
+    scripts: {
+      dev: "next dev", build: "next build", start: "next start",
+      "server:dev": "tsx watch src/server/index.ts", "server:build": "tsc --noEmit", "server:start": "tsx src/server/index.ts",
+      lint: "eslint .",
+    },
+  },
+  null,
+  2,
+);
+
+describe("rewriteScriptsForApiOnly", () => {
+  it("points dev/build/start at the standalone server and drops the now-redundant server:* trio", () => {
+    const out = JSON.parse(rewriteScriptsForApiOnly(PKG_WITH_SERVER_SCRIPTS));
+    expect(out.scripts.dev).toBe("tsx watch src/server/index.ts");
+    expect(out.scripts.build).toBe("tsc --noEmit");
+    expect(out.scripts.start).toBe("tsx src/server/index.ts");
+    expect(out.scripts["server:dev"]).toBeUndefined();
+    expect(out.scripts["server:build"]).toBeUndefined();
+    expect(out.scripts["server:start"]).toBeUndefined();
+    expect(out.scripts.lint).toBe("eslint ."); // untouched
+  });
+});
+
+describe("removeServerScripts", () => {
+  it("drops only the server:* trio, leaving the Next scripts untouched", () => {
+    const out = JSON.parse(removeServerScripts(PKG_WITH_SERVER_SCRIPTS));
+    expect(out.scripts.dev).toBe("next dev");
+    expect(out.scripts.build).toBe("next build");
+    expect(out.scripts.start).toBe("next start");
+    expect(out.scripts["server:dev"]).toBeUndefined();
+    expect(out.scripts["server:build"]).toBeUndefined();
+    expect(out.scripts["server:start"]).toBeUndefined();
+  });
+
+  it("is a no-op when there are no scripts at all", () => {
+    expect(() => removeServerScripts(JSON.stringify({ name: "x" }))).not.toThrow();
   });
 });
 

@@ -81,6 +81,35 @@ function verifyLink(base: string, token: string): string {
   return `${base.replace(/\/$/, "")}/verify?token=${encodeURIComponent(token)}`;
 }
 
+// In api-only (headless) mode there is no Next `/verify` page of our own to
+// point at — the consumer runs its own frontend and tells us, via VERIFY_URL,
+// the full address of ITS "choose your password" screen. VERIFY_URL is
+// therefore the complete link target already (e.g. "https://consumer.app/verify"),
+// not an origin to append "/verify" to like AUTH_URL is — only the token query
+// param gets added.
+function externalVerifyLink(verifyUrl: string, token: string): string {
+  return `${verifyUrl.replace(/\/$/, "")}?token=${encodeURIComponent(token)}`;
+}
+
+// Which base the emailed link will be built from, decided once up front (before
+// a token exists) so the "no trustworthy base" guard below still runs before any
+// database work — same as resolveAuthBase always has.
+type VerifyLinkBase = { kind: "external"; url: string } | { kind: "app"; origin: string };
+
+// VERIFY_URL takes priority over AUTH_URL whenever both are set: AUTH_URL names
+// this app's own origin, never the consumer's UI, and — unlike AUTH_URL — needs
+// no production guard, since it is always an explicit operator config value,
+// never derived from the (spoofable) request.
+function resolveVerifyLinkBase(request: Request): VerifyLinkBase {
+  const verifyUrl = process.env.VERIFY_URL;
+  if (verifyUrl) return { kind: "external", url: verifyUrl };
+  return { kind: "app", origin: resolveAuthBase(request) };
+}
+
+function buildVerifyLink(base: VerifyLinkBase, token: string): string {
+  return base.kind === "external" ? externalVerifyLink(base.url, token) : verifyLink(base.origin, token);
+}
+
 export async function registerUser(request: Request, deps: RegisterDeps = {}): Promise<Response> {
   const getSettingsFn = deps.getSettingsFn ?? getRegistrationSettings;
   const findUserFn = deps.findUserFn ?? findUserForRegistration;
@@ -114,9 +143,9 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
 
   // Fail before touching the database at all: if we cannot trust a base for the
   // link, no amount of further processing makes sending one safe.
-  let authBase: string;
+  let verifyBase: VerifyLinkBase;
   try {
-    authBase = resolveAuthBase(request);
+    verifyBase = resolveVerifyLinkBase(request);
   } catch (err) {
     if (err instanceof UntrustedAuthOriginError) {
       console.error("register: AUTH_URL is not set in production; refusing to mint a verification link from the request's Host header");
@@ -226,7 +255,7 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
 
   try {
     const token = await createTokenFn(userId);
-    const { subject, html } = verificationEmail(verifyLink(authBase, token));
+    const { subject, html } = verificationEmail(buildVerifyLink(verifyBase, token));
     await sendEmailFn({ to: email, subject, html });
   } catch (err) {
     // Roll back only what we created. Deleting a pre-existing row would destroy

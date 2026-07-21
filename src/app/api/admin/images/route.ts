@@ -5,6 +5,6 @@ export async function POST(request: Request) {
   return uploadImage(request, { schedule: (fn) => { after(fn); } });
 }
 
-export async function GET() {
-  return listImagesResponse();
+export async function GET(request: Request) {
+  return listImagesResponse(request);
 }

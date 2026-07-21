@@ -30,7 +30,7 @@ export async function patchWorkspaceResponse(id: string, request: Request, deps:
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const updateFn = deps.updateWorkspaceFn ?? updateWorkspace;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -50,11 +50,11 @@ export async function patchWorkspaceResponse(id: string, request: Request, deps:
   return Response.json({ ok: true });
 }
 
-export async function deleteWorkspaceResponse(id: string, deps: WorkspaceItemDeps = {}): Promise<Response> {
+export async function deleteWorkspaceResponse(id: string, request: Request, deps: WorkspaceItemDeps = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const deleteFn = deps.deleteWorkspaceFn ?? deleteWorkspace;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

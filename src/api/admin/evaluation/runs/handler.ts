@@ -29,7 +29,7 @@ function snapshot(s: Awaited<ReturnType<typeof getRuntimeSettings>>): EvalSettin
   };
 }
 
-export async function createRunResponse(deps: RunsDeps = {}): Promise<Response> {
+export async function createRunResponse(request: Request, deps: RunsDeps = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const repo = deps.repo ?? evalRepo;
   const getSettings = deps.getSettings ?? getRuntimeSettings;
@@ -42,7 +42,7 @@ export async function createRunResponse(deps: RunsDeps = {}): Promise<Response> 
         .catch((e) => console.error("background job failed", e));
     });
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -56,11 +56,11 @@ export async function createRunResponse(deps: RunsDeps = {}): Promise<Response> 
   return Response.json({ id, status: "pending" }, { status: 201 });
 }
 
-export async function listRunsResponse(deps: RunsDeps = {}): Promise<Response> {
+export async function listRunsResponse(request: Request, deps: RunsDeps = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const repo = deps.repo ?? evalRepo;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -69,11 +69,11 @@ export async function listRunsResponse(deps: RunsDeps = {}): Promise<Response> {
   return Response.json({ runs: await repo.listRuns() });
 }
 
-export async function getRunResponse(id: string, deps: RunsDeps = {}): Promise<Response> {
+export async function getRunResponse(id: string, request: Request, deps: RunsDeps = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const repo = deps.repo ?? evalRepo;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

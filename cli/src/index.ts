@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import * as p from "@clack/prompts";
-import { parseArgs, PROVIDER_IDS, VECTOR_STORE_IDS, type ProviderId, type VectorStoreId } from "./options.js";
+import { parseArgs, PROVIDER_IDS, VECTOR_STORE_IDS, APP_KIND_IDS, type ProviderId, type VectorStoreId, type AppKind } from "./options.js";
 import { PROVIDERS, VECTOR_STORES } from "./modules.js";
 import { resolveOptions, type Prompter } from "./prompts.js";
 import { scaffold } from "./scaffold.js";
@@ -19,6 +19,10 @@ const clackPrompter: Prompter = {
   askProviders: async () => (await p.multiselect({ message: "AI providers", options: PROVIDER_IDS.map((id) => ({ value: id, label: PROVIDERS[id].label })), initialValues: ["google"] as ProviderId[], required: true })) as ProviderId[],
   askDefaultProvider: async (providers) => (await p.select({ message: "Default provider", options: providers.map((id) => ({ value: id, label: PROVIDERS[id].label })) })) as ProviderId,
   askVectorStore: async () => (await p.select({ message: "Vector store", options: VECTOR_STORE_IDS.map((id) => ({ value: id, label: VECTOR_STORES[id].label })) })) as VectorStoreId,
+  askAppKind: async () => {
+    const labels: Record<AppKind, string> = { full: "Full app (Next.js UI + API)", api: "API only (standalone Hono server, no frontend)" };
+    return (await p.select({ message: "App kind", options: APP_KIND_IDS.map((id) => ({ value: id, label: labels[id] })), initialValue: "full" as AppKind })) as AppKind;
+  },
   askPostActions: async () => ({ git: Boolean(await p.confirm({ message: "Initialize a git repo?" })), install: Boolean(await p.confirm({ message: "Install dependencies?" })) }),
 };
 

@@ -4,6 +4,7 @@ import type { ImageRepo } from "@/lib/images/repo";
 import type { ObjectStore } from "@/lib/images/storage";
 
 const user = async () => ({ id: "u1", role: "user", isSuperAdmin: false });
+const req = () => new Request("http://x/api/images/img-1");
 
 function repoWith(records: { id: string; storageKey: string; contentType: string }[]): ImageRepo {
   return {
@@ -16,7 +17,7 @@ describe("serveImage", () => {
   it("streams the image bytes with its content type", async () => {
     const repo = repoWith([{ id: "img-1", storageKey: "images/a.png", contentType: "image/png" }]);
     const store: ObjectStore = { put: vi.fn(), delete: vi.fn(), get: vi.fn(async () => ({ body: Buffer.from([1, 2, 3]), contentType: "image/png" })) };
-    const res = await serveImage("img-1", { getUser: user as never, imageRepo: repo, objectStore: store });
+    const res = await serveImage("img-1", req(), { getUser: user as never, imageRepo: repo, objectStore: store });
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("image/png");
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
@@ -26,7 +27,7 @@ describe("serveImage", () => {
   it("404s an unknown image id", async () => {
     const repo = repoWith([]);
     const store: ObjectStore = { put: vi.fn(), delete: vi.fn(), get: vi.fn() };
-    const res = await serveImage("nope", { getUser: user as never, imageRepo: repo, objectStore: store });
+    const res = await serveImage("nope", req(), { getUser: user as never, imageRepo: repo, objectStore: store });
     expect(res.status).toBe(404);
     expect(store.get).not.toHaveBeenCalled();
   });
@@ -35,7 +36,7 @@ describe("serveImage", () => {
     const { UnauthorizedError } = await import("@/lib/auth/guards");
     const repo = repoWith([]);
     const store: ObjectStore = { put: vi.fn(), delete: vi.fn(), get: vi.fn() };
-    const res = await serveImage("img-1", { getUser: (async () => { throw new UnauthorizedError(); }) as never, imageRepo: repo, objectStore: store });
+    const res = await serveImage("img-1", req(), { getUser: (async () => { throw new UnauthorizedError(); }) as never, imageRepo: repo, objectStore: store });
     expect(res.status).toBe(401);
   });
 });

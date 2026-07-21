@@ -4,7 +4,7 @@ import type { InstallOptions } from "./options.js";
 
 const opts = (over: Partial<InstallOptions> = {}): InstallOptions => ({
   projectName: "my-rag-app", providers: ["google"], defaultProvider: "google", vectorStore: "pgvector",
-  git: false, install: false, packageManager: "npm", yes: true, ...over,
+  appKind: "full", git: false, install: false, packageManager: "npm", yes: true, ...over,
 });
 
 describe("generateReadme", () => {
@@ -203,6 +203,41 @@ describe("generateReadme API docs", () => {
     expect(readme).toContain("## API docs");
     expect(readme).toContain("/docs");
     expect(readme).toContain("/api/openapi.json");
+  });
+});
+
+describe("generateReadme appKind: api", () => {
+  it("says there is no frontend/admin UI and mentions the standalone Hono server", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toMatch(/no frontend/i);
+    expect(readme).toMatch(/Hono/);
+    expect(readme).not.toMatch(/profile menu/i); // full-app-only UI language
+  });
+
+  it("documents POST /api/auth/login issuing a bearer token", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("## Authentication");
+    expect(readme).toContain("/api/auth/login");
+    expect(readme).toMatch(/Authorization: Bearer/);
+  });
+
+  it("tells the operator to set VERIFY_URL because there is no /verify page", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("VERIFY_URL");
+    expect(readme).toMatch(/no `\/verify` page/i);
+    expect(readme).toContain("/api/auth/verify");
+  });
+
+  it("still documents /docs and /api/openapi.json", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("/docs");
+    expect(readme).toContain("/api/openapi.json");
+  });
+
+  it("tells the user how to run it (npm run dev / start)", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("npm run dev");
+    expect(readme).toContain("npm run start");
   });
 });
 

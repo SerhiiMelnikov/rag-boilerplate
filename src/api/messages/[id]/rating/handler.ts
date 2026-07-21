@@ -15,7 +15,7 @@ export async function rateMessageResponse(id: string, request: Request, deps: Ra
 
   let user;
   try {
-    user = await getUser();
+    user = await getUser(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

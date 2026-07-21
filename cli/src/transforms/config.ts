@@ -25,6 +25,35 @@ export function removeTestTooling(json: string): string {
   return JSON.stringify(pkg, null, 2) + "\n";
 }
 
+// The template's package.json ships both the Next.js app scripts (dev/build/
+// start = next dev/build/start) and, since an earlier task added the standalone
+// Hono server, a parallel server:dev/server:build/server:start trio (tsx watch /
+// tsc --noEmit / tsx). appKind decides which trio wins.
+const SERVER_SCRIPT_KEYS = ["server:dev", "server:build", "server:start"];
+
+// api-only build: dev/build/start now run the Hono server directly. `dev`/`start`
+// use tsx (not a compiled `node dist/...`) because tsx resolves the `@/*` path
+// aliases from tsconfig.json's `paths` at run time — a plain Node runner on a
+// tsc-compiled dist/ would need extra alias-resolution tooling to do the same, for
+// no benefit in a boilerplate. `build` therefore has nothing to bundle, so it
+// stays a type-check only, exactly like the server:build script it replaces.
+// The now-redundant server:* trio is dropped (dev/build/start already are it).
+export function rewriteScriptsForApiOnly(json: string): string {
+  const pkg = JSON.parse(json);
+  const scripts = { ...(pkg.scripts ?? {}) };
+  for (const k of SERVER_SCRIPT_KEYS) delete scripts[k];
+  pkg.scripts = { ...scripts, dev: "tsx watch src/server/index.ts", build: "tsc --noEmit", start: "tsx src/server/index.ts" };
+  return JSON.stringify(pkg, null, 2) + "\n";
+}
+
+// full-app build: src/server/ is deleted (see scaffold.ts), so the server:*
+// script trio would otherwise point at files that no longer exist.
+export function removeServerScripts(json: string): string {
+  const pkg = JSON.parse(json);
+  if (pkg.scripts) for (const k of SERVER_SCRIPT_KEYS) delete pkg.scripts[k];
+  return JSON.stringify(pkg, null, 2) + "\n";
+}
+
 // Keep only the named services; drop any top-level volume no longer referenced.
 export function pruneDockerCompose(yamlText: string, keepServices: string[]): string {
   const doc = parseYaml(yamlText) as { services?: Record<string, unknown>; volumes?: Record<string, unknown> };

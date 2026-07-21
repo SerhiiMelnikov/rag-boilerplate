@@ -7,7 +7,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   return patchWorkspaceResponse(id, request);
 }
 
-export async function DELETE(_request: Request, ctx: Ctx) {
+export async function DELETE(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
-  return deleteWorkspaceResponse(id);
+  return deleteWorkspaceResponse(id, request);
 }

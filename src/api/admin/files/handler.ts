@@ -6,11 +6,11 @@ export interface ListFilesDeps {
   listFilesFn?: typeof listFiles;
 }
 
-export async function listFilesResponse(deps: ListFilesDeps = {}): Promise<Response> {
+export async function listFilesResponse(request: Request, deps: ListFilesDeps = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const listFilesFn = deps.listFilesFn ?? listFiles;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

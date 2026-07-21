@@ -4,6 +4,7 @@ import { WorkspaceNotFoundError, DefaultWorkspaceProtectedError, DuplicateWorksp
 
 const admin = vi.fn(async () => ({ id: "a1", role: "admin" }));
 const json = (b: unknown) => new Request("http://x/api/admin/workspaces/w1", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(b) });
+const req = () => new Request("http://x/api/admin/workspaces/w1", { method: "DELETE" });
 
 describe("patchWorkspaceResponse", () => {
   it("updates and returns ok", async () => {
@@ -36,18 +37,18 @@ describe("patchWorkspaceResponse", () => {
 describe("deleteWorkspaceResponse", () => {
   it("deletes and returns ok", async () => {
     const deleteWorkspaceFn = vi.fn(async () => {});
-    const res = await deleteWorkspaceResponse("w1", { getAdmin: admin as never, deleteWorkspaceFn: deleteWorkspaceFn as never });
+    const res = await deleteWorkspaceResponse("w1", req(), { getAdmin: admin as never, deleteWorkspaceFn: deleteWorkspaceFn as never });
     expect(res.status).toBe(200);
     expect(deleteWorkspaceFn).toHaveBeenCalledWith("w1");
   });
   it("403s when deleting General", async () => {
     const deleteWorkspaceFn = vi.fn(async () => { throw new DefaultWorkspaceProtectedError(); });
-    const res = await deleteWorkspaceResponse("w1", { getAdmin: admin as never, deleteWorkspaceFn: deleteWorkspaceFn as never });
+    const res = await deleteWorkspaceResponse("w1", req(), { getAdmin: admin as never, deleteWorkspaceFn: deleteWorkspaceFn as never });
     expect(res.status).toBe(403);
   });
   it("404s on an unknown workspace", async () => {
     const deleteWorkspaceFn = vi.fn(async () => { throw new WorkspaceNotFoundError(); });
-    const res = await deleteWorkspaceResponse("nope", { getAdmin: admin as never, deleteWorkspaceFn: deleteWorkspaceFn as never });
+    const res = await deleteWorkspaceResponse("nope", req(), { getAdmin: admin as never, deleteWorkspaceFn: deleteWorkspaceFn as never });
     expect(res.status).toBe(404);
   });
 });

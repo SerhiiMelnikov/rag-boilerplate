@@ -64,6 +64,7 @@ pass flags for a non-interactive run:
 | `--providers <list>` | Providers to include: `google`, `openai`, `anthropic`, `ollama`. |
 | `--default-provider <id>` | Provider used by default for chat + document parsing. |
 | `--vector-store <id>` | `pgvector`, `qdrant`, `chroma`, `weaviate`, or `pinecone`. |
+| `--app-kind <full\|api>` | `full` (default) — the Next.js app below. `api` — a headless Hono backend with no Next.js, no React, no admin UI. See [API-only build](#api-only-build). |
 | `--no-install` / `--install` | Skip / force dependency install. |
 | `--no-git` / `--git` | Skip / force `git init`. |
 | `-y`, `--yes` | Accept defaults for anything not passed (no prompts). |
@@ -105,6 +106,37 @@ A `.env` is generated for you with fresh secrets. Sign in with its `ADMIN_EMAIL`
    confirmation link went out. Any relay works: Google Workspace, SES, Mailgun,
    Postmark, Resend, or your company's own. Locally you can point it at a catcher
    like MailHog and read the mail in a browser.
+
+## API-only build
+
+Pass `--app-kind api` to scaffold a headless backend instead of the Next.js app
+above: no Next.js, no React, no admin UI — just a standalone Hono server
+(`src/server/`) exposing the same RAG API as JSON. Useful when you already have
+your own frontend and only want the engine behind it.
+
+```bash
+npx rag-boilerplate my-api --app-kind api --providers google --default-provider google --vector-store pgvector
+```
+
+- **Auth** — there is no session-cookie sign-in page here; call
+  `POST /api/auth/login` with `{ email, password }` to get a bearer token, then
+  send it as `Authorization: Bearer <token>` on every subsequent request. The
+  token is minted with the same JWT the full-app build's Auth.js cookie uses,
+  so it is accepted by every guarded route.
+- **Registration** — set `VERIFY_URL` in `.env` to your own frontend's "choose
+  a password" page (e.g. `https://your-app.example.com/verify`); the emailed
+  confirmation link becomes `${VERIFY_URL}?token=...`. Without it, the link
+  falls back to `AUTH_URL` + `/verify`, a route this build doesn't ship.
+- **Docs** — `/docs` (Scalar) and `/api/openapi.json` are still served, exactly
+  like the full app; with no admin UI in this build, `/docs` is the fastest way
+  to see the full contract.
+- **Run it** — `npm run dev` (watches) or `npm run start`, same script names as
+  the full app, but both now run `src/server/index.ts` directly via `tsx`.
+  `npm run build` is a type-check only (`tsc --noEmit`) — there is nothing to
+  bundle.
+
+The generated project's own `README.md` covers this build in full
+(authentication, registration, rate limits, deploying).
 
 ## Who can sign up
 

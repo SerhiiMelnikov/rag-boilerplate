@@ -39,7 +39,7 @@ const msg = (content: string) => ({ messages: [{ role: "user", content }], conve
 // returning the wrong field types) fails `tsc --noEmit`.
 function baseDeps<T extends object = object>(over: T = {} as T) {
   return {
-    getSession: vi.fn(async () => ({ user: { id: "u1", role: "user" } })),
+    getSession: vi.fn(async () => ({ id: "u1", role: "user" })),
     // Cast through unknown: fixture returns only the fields getAuthUserById's callers read.
     getAuthUser: vi.fn(async () => ({ id: "u1", role: "user", isSuperAdmin: false, blockedAt: null })) as unknown as typeof getAuthUserById,
     // Cast through unknown: fixture returns only the fields used by handler; full RuntimeSettings not needed.

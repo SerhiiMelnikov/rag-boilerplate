@@ -30,7 +30,7 @@ export async function patchImageCaption(id: string, request: Request, deps: Patc
     });
 
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -68,7 +68,7 @@ export async function deleteImageResponse(request: Request, id: string, deps: De
   const removeImage = deps.deleteImage ?? deleteImage;
 
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

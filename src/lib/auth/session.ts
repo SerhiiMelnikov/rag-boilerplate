@@ -20,15 +20,19 @@ function secret(): string {
   return s;
 }
 
-// Extract the raw JWT: Authorization: Bearer wins; else either cookie name
-// (secure-prefixed cookie is what NextAuth sets under https/production).
-function extractToken(request: Request): { token: string; salt: string } | null {
+// Extract the raw JWT string: Authorization: Bearer wins; else either cookie
+// name (secure-prefixed cookie is what NextAuth sets under https/production).
+// The salt used to encrypt a given token is not knowable from its transport
+// (a __Secure-salted token can be forwarded via Bearer, e.g. by a non-browser
+// client that copied it from a production cookie), so we only extract the raw
+// token here and let the caller try every candidate salt.
+function extractToken(request: Request): string | null {
   const auth = request.headers.get("authorization");
-  if (auth?.startsWith("Bearer ")) return { token: auth.slice(7).trim(), salt: COOKIE_NAME };
+  if (auth?.startsWith("Bearer ")) return auth.slice(7).trim();
   const cookie = request.headers.get("cookie") ?? "";
   for (const salt of [SECURE_COOKIE_NAME, COOKIE_NAME]) {
     const m = new RegExp(`(?:^|; )${salt.replace(/[.$]/g, "\\$&")}=([^;]+)`).exec(cookie);
-    if (m) return { token: decodeURIComponent(m[1]), salt };
+    if (m) return decodeURIComponent(m[1]);
   }
   return null;
 }
@@ -45,14 +49,22 @@ export async function encodeSessionToken(user: SessionUser): Promise<string> {
 }
 
 export async function getSessionFromRequest(request: Request): Promise<SessionUser | null> {
-  const found = extractToken(request);
-  if (!found) return null;
-  try {
-    const payload = await decode({ token: found.token, secret: secret(), salt: found.salt });
-    if (!payload?.sub && !payload?.id) return null;
-    const id = String(payload.id ?? payload.sub);
-    return { id, role: String(payload.role ?? "user"), isSuperAdmin: Boolean(payload.isSuperAdmin) };
-  } catch {
-    return null;
+  const token = extractToken(request);
+  if (!token) return null;
+  const s = secret();
+  // Try every salt NextAuth might have encrypted this token with, regardless
+  // of which transport (Bearer or cookie) it arrived on: a production
+  // __Secure-salted token forwarded via Authorization: Bearer must still
+  // decode, not just a dev-salted one.
+  for (const salt of [SECURE_COOKIE_NAME, COOKIE_NAME]) {
+    try {
+      const payload = await decode({ token, secret: s, salt });
+      if (!payload?.sub && !payload?.id) continue;
+      const id = String(payload.id ?? payload.sub);
+      return { id, role: String(payload.role ?? "user"), isSuperAdmin: Boolean(payload.isSuperAdmin) };
+    } catch {
+      // Wrong salt (or malformed token) for this candidate; try the next one.
+    }
   }
+  return null;
 }

@@ -1,4 +1,3 @@
-import { after } from "next/server";
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
 import { evalRepo, type EvalRepo } from "@/lib/eval/repo";
@@ -35,7 +34,13 @@ export async function createRunResponse(deps: RunsDeps = {}): Promise<Response> 
   const repo = deps.repo ?? evalRepo;
   const getSettings = deps.getSettings ?? getRuntimeSettings;
   const runEval = deps.runEval ?? runEvaluation;
-  const schedule = deps.schedule ?? ((fn: () => void | Promise<void>) => after(fn));
+  const schedule =
+    deps.schedule ??
+    ((fn: () => void | Promise<void>) => {
+      void Promise.resolve()
+        .then(fn)
+        .catch((e) => console.error("background job failed", e));
+    });
   try {
     await getAdmin();
   } catch (err) {

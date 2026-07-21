@@ -1,4 +1,4 @@
-import { serveImage } from "./handler";
+import { serveImage } from "@/api/images/[id]/handler";
 
 type Ctx = { params: Promise<{ id: string }> };
 

@@ -1,34 +1,13 @@
-import { requireUser, errorToResponse } from "@/lib/auth/guards";
-import { getConversationWithMessages, deleteConversation } from "@/lib/chat/conversations";
+import { getConversationResponse, deleteConversationResponse } from "@/api/conversations/[id]/handler";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, ctx: Ctx) {
-  let user;
-  try {
-    user = await requireUser();
-  } catch (err) {
-    const res = errorToResponse(err);
-    if (res) return res;
-    throw err;
-  }
+export async function GET(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
-  const conversation = await getConversationWithMessages(user.id, id);
-  if (!conversation) return Response.json({ error: "Not found" }, { status: 404 });
-  return Response.json(conversation);
+  return getConversationResponse(request, id);
 }
 
-export async function DELETE(_request: Request, ctx: Ctx) {
-  let user;
-  try {
-    user = await requireUser();
-  } catch (err) {
-    const res = errorToResponse(err);
-    if (res) return res;
-    throw err;
-  }
+export async function DELETE(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
-  const ok = await deleteConversation(user.id, id);
-  if (!ok) return Response.json({ error: "Not found" }, { status: 404 });
-  return new Response(null, { status: 204 });
+  return deleteConversationResponse(request, id);
 }

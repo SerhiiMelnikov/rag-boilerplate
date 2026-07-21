@@ -1,9 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
-import { patchImageCaption } from "./handler";
+import { patchImageCaption, deleteImageResponse } from "./handler";
+import { UnauthorizedError } from "@/lib/auth/guards";
 
 const admin = async () => ({ id: "a1", role: "admin", isSuperAdmin: false });
 function req(body: unknown) {
   return new Request("http://x/api/admin/images/img-1", { method: "PATCH", body: JSON.stringify(body) });
+}
+function deleteReq() {
+  return new Request("http://x/api/admin/images/img-1", { method: "DELETE" });
 }
 const baseDeps = () => ({
   getAdmin: admin as never,
@@ -39,5 +43,28 @@ describe("patchImageCaption", () => {
     expect(res.status).toBe(404);
     expect(deps.imageRepo.setStatus).not.toHaveBeenCalled();
     expect(deps.reembed).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleteImageResponse", () => {
+  it("204s once the image is removed", async () => {
+    const deps = { getAdmin: admin as never, deleteImage: vi.fn(async () => true) };
+    const res = await deleteImageResponse(deleteReq(), "img-1", deps as never);
+    expect(res.status).toBe(204);
+    expect(deps.deleteImage).toHaveBeenCalledWith("img-1");
+  });
+
+  it("404s an unknown image id", async () => {
+    const deps = { getAdmin: admin as never, deleteImage: vi.fn(async () => false) };
+    const res = await deleteImageResponse(deleteReq(), "nope", deps as never);
+    expect(res.status).toBe(404);
+  });
+
+  it("401s an anonymous caller and never deletes", async () => {
+    const deleteImage = vi.fn(async () => true);
+    const deps = { getAdmin: (async () => { throw new UnauthorizedError(); }) as never, deleteImage };
+    const res = await deleteImageResponse(deleteReq(), "img-1", deps as never);
+    expect(res.status).toBe(401);
+    expect(deleteImage).not.toHaveBeenCalled();
   });
 });

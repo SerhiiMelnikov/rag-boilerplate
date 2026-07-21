@@ -1,4 +1,4 @@
-import { listWorkspacesResponse, createWorkspaceResponse } from "./handler";
+import { listWorkspacesResponse, createWorkspaceResponse } from "@/api/admin/workspaces/handler";
 
 export async function GET() {
   return listWorkspacesResponse();

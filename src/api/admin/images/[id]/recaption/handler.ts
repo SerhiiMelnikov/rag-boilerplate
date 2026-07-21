@@ -1,4 +1,3 @@
-import { after } from "next/server";
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
 import { createImageRepo, type ImageRepo } from "@/lib/images/repo";
 import { getObjectStore, type ObjectStore } from "@/lib/images/storage";
@@ -26,7 +25,13 @@ export async function recaptionImageResponse(id: string, deps: RecaptionImageDep
   const objectStore = deps.objectStore ?? getObjectStore();
   const getSettings = deps.getSettings ?? getRuntimeSettings;
   const recaption = deps.recaption ?? recaptionImageFromSource;
-  const schedule = deps.schedule ?? ((fn) => after(fn));
+  const schedule =
+    deps.schedule ??
+    ((fn: () => Promise<unknown>) => {
+      void Promise.resolve()
+        .then(fn)
+        .catch((e) => console.error("background job failed", e));
+    });
 
   try {
     await getAdmin();

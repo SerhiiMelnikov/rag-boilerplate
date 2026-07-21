@@ -1,10 +1,10 @@
-import { after } from "next/server";
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
 import { createImageRepo, type ImageRepo } from "@/lib/images/repo";
 import { getImageVectorStore } from "@/lib/vectorstore";
 import type { ImageVectorStore } from "@/lib/vectorstore/types";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
 import { reembedImageCaption } from "@/lib/images/recaption";
+import { deleteImage } from "@/lib/images/service";
 
 export interface PatchImageDeps {
   getAdmin?: typeof requireAdmin;
@@ -21,7 +21,13 @@ export async function patchImageCaption(id: string, request: Request, deps: Patc
   const imageVectorStore = deps.imageVectorStore ?? getImageVectorStore();
   const getSettings = deps.getSettings ?? getRuntimeSettings;
   const reembed = deps.reembed ?? reembedImageCaption;
-  const schedule = deps.schedule ?? ((fn) => after(fn));
+  const schedule =
+    deps.schedule ??
+    ((fn: () => Promise<unknown>) => {
+      void Promise.resolve()
+        .then(fn)
+        .catch((e) => console.error("background job failed", e));
+    });
 
   try {
     await getAdmin();
@@ -50,4 +56,25 @@ export async function patchImageCaption(id: string, request: Request, deps: Patc
   const settings = await getSettings();
   schedule(() => reembed(id, caption, { imageRepo, imageVectorStore, settings }));
   return Response.json({ status: "processing" });
+}
+
+export interface DeleteImageResponseDeps {
+  getAdmin?: typeof requireAdmin;
+  deleteImage?: typeof deleteImage;
+}
+
+export async function deleteImageResponse(request: Request, id: string, deps: DeleteImageResponseDeps = {}): Promise<Response> {
+  const getAdmin = deps.getAdmin ?? requireAdmin;
+  const removeImage = deps.deleteImage ?? deleteImage;
+
+  try {
+    await getAdmin();
+  } catch (err) {
+    const res = errorToResponse(err);
+    if (res) return res;
+    throw err;
+  }
+  const ok = await removeImage(id);
+  if (!ok) return Response.json({ error: "Not found" }, { status: 404 });
+  return new Response(null, { status: 204 });
 }

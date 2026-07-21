@@ -30,15 +30,19 @@ function uploadReq(filename = "a.md", content = "hello") {
   return new Request("http://localhost/api/admin/documents", { method: "POST", body: fd });
 }
 
+function listReq() {
+  return new Request("http://localhost/api/admin/documents");
+}
+
 describe("GET /api/admin/documents", () => {
   it("403 for non-admin", async () => {
     vi.mocked(requireAdmin).mockRejectedValue(new ForbiddenError());
-    expect((await GET()).status).toBe(403);
+    expect((await GET(listReq())).status).toBe(403);
   });
   it("lists documents for admin", async () => {
     vi.mocked(requireAdmin).mockResolvedValue({ id: "u1", role: "admin", isSuperAdmin: false });
     vi.mocked(listDocuments).mockResolvedValue([{ id: "d1", filename: "a.md", status: "ready", error: null, createdAt: new Date(0) }]);
-    const res = await GET();
+    const res = await GET(listReq());
     expect(res.status).toBe(200);
     expect((await res.json()).documents).toHaveLength(1);
   });

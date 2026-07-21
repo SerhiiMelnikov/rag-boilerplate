@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { registerUser } from "./handler";
+import { registerUser } from "@/api/register/handler";
 import { EmailNotConfiguredError } from "@/lib/email/sender";
 import { consume, __resetPruneThrottle } from "@/lib/ratelimit/store";
 

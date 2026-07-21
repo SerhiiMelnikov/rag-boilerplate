@@ -6,11 +6,11 @@ export interface DocumentItemDeps {
   deleteDocumentFn?: typeof deleteDocument;
 }
 
-export async function deleteDocumentResponse(id: string, deps: DocumentItemDeps = {}): Promise<Response> {
+export async function deleteDocumentResponse(id: string, request: Request, deps: DocumentItemDeps = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const deleteDocumentFn = deps.deleteDocumentFn ?? deleteDocument;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

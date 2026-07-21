@@ -6,11 +6,11 @@ export interface UsersDeps {
   listUsersFn?: typeof listUsers;
 }
 
-export async function listUsersResponse(deps: UsersDeps = {}): Promise<Response> {
+export async function listUsersResponse(request: Request, deps: UsersDeps = {}): Promise<Response> {
   const getSuperAdmin = deps.getSuperAdmin ?? requireSuperAdmin;
   const listFn = deps.listUsersFn ?? listUsers;
   try {
-    await getSuperAdmin();
+    await getSuperAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

@@ -21,7 +21,7 @@ export async function patchUserResponse(id: string, request: Request, deps: User
 
   let actor;
   try {
-    actor = await getSuperAdmin();
+    actor = await getSuperAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

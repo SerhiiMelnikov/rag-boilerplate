@@ -1,5 +1,4 @@
 import { streamText, createDataStreamResponse, formatDataStreamPart } from "ai";
-import type { auth } from "@/auth";
 import { requireUser, errorToResponse } from "@/lib/auth/guards";
 import { getAuthUserById } from "@/lib/auth/users";
 import { isConversationOwned, addMessage, setConversationTitleIfDefault } from "@/lib/chat/conversations";
@@ -33,9 +32,11 @@ const NO_IMAGE_ANSWER = "I couldn't find any image matching that description.";
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Narrow session type: unit-test mocks only need to return { user } or null,
-// without the full NextAuth Session shape (which requires `expires`).
-type SessionFn = () => Promise<{ user?: { id?: string; role?: string } | null } | null>;
+// Narrow session type: guards.ts now reads the session via getSessionFromRequest
+// (flat { id, role, isSuperAdmin }, no NextAuth `.user`/`expires` wrapper), keyed
+// off the Request itself rather than async context. Unit-test mocks only need to
+// return that flat shape (or null) — see the "cast through unknown" below.
+type SessionFn = (request: Request) => Promise<{ id?: string; role?: string } | null>;
 
 // Narrow streamText type: only the minimal contract used in handleChat.
 type StreamTextLike = (args: Parameters<typeof streamText>[0]) => { toDataStreamResponse: () => Response };
@@ -75,9 +76,13 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
 
   let user;
   try {
-    // Cast through unknown: our SessionFn is narrower than typeof auth (it omits
-    // `expires`) but satisfies the runtime contract used here (session?.user?.id).
-    user = await requireUser({ getSession: deps.getSession as unknown as typeof auth, getAuthUser: deps.getAuthUser });
+    // Cast through unknown: our SessionFn is narrower than requireUser's GuardDeps
+    // (it omits role/isSuperAdmin as required fields) but satisfies the runtime
+    // contract used here (requireUser only reads session.id off the result).
+    user = await requireUser(request, {
+      getSession: deps.getSession,
+      getAuthUser: deps.getAuthUser,
+    } as unknown as NonNullable<Parameters<typeof requireUser>[1]>);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

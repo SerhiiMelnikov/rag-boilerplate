@@ -22,11 +22,12 @@ const MASKED = {
 const req = (body: unknown) => new Request("http://localhost/api/admin/settings", {
   method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 });
+const getReq = () => new Request("http://localhost/api/admin/settings");
 
 describe("getSettingsResponse", () => {
   it("403s a non-admin", async () => {
     const getAdminSettingsFn = vi.fn();
-    const res = await getSettingsResponse({
+    const res = await getSettingsResponse(getReq(), {
       getAdmin: (async () => { throw new ForbiddenError(); }) as never,
       getAdminSettingsFn: getAdminSettingsFn as never,
     });
@@ -36,7 +37,7 @@ describe("getSettingsResponse", () => {
 
   it("returns masked settings for an admin", async () => {
     const getAdminSettingsFn = vi.fn(async () => MASKED);
-    const res = await getSettingsResponse({ getAdmin: admin as never, getAdminSettingsFn: getAdminSettingsFn as never });
+    const res = await getSettingsResponse(getReq(), { getAdmin: admin as never, getAdminSettingsFn: getAdminSettingsFn as never });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.keys.google).toEqual({ set: false, last4: null });

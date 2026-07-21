@@ -3,6 +3,7 @@ import { createRunResponse, listRunsResponse, getRunResponse } from "./handler";
 import { ForbiddenError, UnauthorizedError } from "@/lib/auth/guards";
 
 const admin = vi.fn(async () => ({ id: "a1", role: "admin", isSuperAdmin: false }));
+const req = () => new Request("http://x/api/admin/evaluation/runs");
 
 // Only the fields the handler's snapshot() helper picks off RuntimeSettings.
 const settings = {
@@ -30,7 +31,7 @@ describe("admin guard", () => {
   it("403s a forbidden (non-admin) caller on list and does not touch the repo", async () => {
     const forbidden = vi.fn(async () => { throw new ForbiddenError(); });
     const listRuns = vi.fn(async () => [run]);
-    const res = await listRunsResponse({ getAdmin: forbidden as never, repo: { listRuns } as never });
+    const res = await listRunsResponse(req(), { getAdmin: forbidden as never, repo: { listRuns } as never });
     expect(res.status).toBe(403);
     expect(listRuns).not.toHaveBeenCalled();
   });
@@ -39,7 +40,7 @@ describe("admin guard", () => {
     const unauthorized = vi.fn(async () => { throw new UnauthorizedError(); });
     const createRun = vi.fn(async () => ({ id: "r2" }));
     const schedule = vi.fn();
-    const res = await createRunResponse({
+    const res = await createRunResponse(req(), {
       getAdmin: unauthorized as never,
       repo: { createRun } as never,
       schedule,
@@ -52,7 +53,7 @@ describe("admin guard", () => {
   it("403s a forbidden caller on getRun and does not touch the repo", async () => {
     const forbidden = vi.fn(async () => { throw new ForbiddenError(); });
     const getRun = vi.fn(async () => run);
-    const res = await getRunResponse("r1", { getAdmin: forbidden as never, repo: { getRun } as never });
+    const res = await getRunResponse("r1", req(), { getAdmin: forbidden as never, repo: { getRun } as never });
     expect(res.status).toBe(403);
     expect(getRun).not.toHaveBeenCalled();
   });
@@ -68,7 +69,7 @@ describe("createRunResponse", () => {
       captured = fn;
     });
 
-    const res = await createRunResponse({
+    const res = await createRunResponse(req(), {
       getAdmin: admin as never,
       repo: { createRun } as never,
       getSettings: getSettings as never,
@@ -93,7 +94,7 @@ describe("createRunResponse", () => {
 describe("listRunsResponse", () => {
   it("returns the runs", async () => {
     const listRuns = vi.fn(async () => [run]);
-    const res = await listRunsResponse({ getAdmin: admin as never, repo: { listRuns } as never });
+    const res = await listRunsResponse(req(), { getAdmin: admin as never, repo: { listRuns } as never });
     expect(res.status).toBe(200);
     expect((await res.json()).runs).toHaveLength(1);
   });
@@ -103,7 +104,7 @@ describe("getRunResponse", () => {
   it("returns the run and its results", async () => {
     const getRun = vi.fn(async () => run);
     const getResults = vi.fn(async () => [{ id: "res1" }]);
-    const res = await getRunResponse("r1", { getAdmin: admin as never, repo: { getRun, getResults } as never });
+    const res = await getRunResponse("r1", req(), { getAdmin: admin as never, repo: { getRun, getResults } as never });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.run).toBeTruthy();
@@ -114,7 +115,7 @@ describe("getRunResponse", () => {
   it("404s when the run does not exist and does not fetch results", async () => {
     const getRun = vi.fn(async () => null);
     const getResults = vi.fn(async () => []);
-    const res = await getRunResponse("nope", { getAdmin: admin as never, repo: { getRun, getResults } as never });
+    const res = await getRunResponse("nope", req(), { getAdmin: admin as never, repo: { getRun, getResults } as never });
     expect(res.status).toBe(404);
     expect(getResults).not.toHaveBeenCalled();
   });

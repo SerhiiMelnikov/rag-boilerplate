@@ -7,13 +7,13 @@ export interface ConversationItemDeps {
   deleteConversationFn?: typeof deleteConversation;
 }
 
-export async function getConversationResponse(_request: Request, id: string, deps: ConversationItemDeps = {}): Promise<Response> {
+export async function getConversationResponse(request: Request, id: string, deps: ConversationItemDeps = {}): Promise<Response> {
   const getUser = deps.getUser ?? requireUser;
   const getFn = deps.getConversationWithMessagesFn ?? getConversationWithMessages;
 
   let user;
   try {
-    user = await getUser();
+    user = await getUser(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -24,13 +24,13 @@ export async function getConversationResponse(_request: Request, id: string, dep
   return Response.json(conversation);
 }
 
-export async function deleteConversationResponse(_request: Request, id: string, deps: ConversationItemDeps = {}): Promise<Response> {
+export async function deleteConversationResponse(request: Request, id: string, deps: ConversationItemDeps = {}): Promise<Response> {
   const getUser = deps.getUser ?? requireUser;
   const deleteFn = deps.deleteConversationFn ?? deleteConversation;
 
   let user;
   try {
-    user = await getUser();
+    user = await getUser(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

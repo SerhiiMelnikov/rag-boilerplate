@@ -18,7 +18,7 @@ export async function listDocumentsResponse(request: Request, deps: ListDocument
   const list = deps.list ?? listDocuments;
 
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -55,7 +55,7 @@ export async function uploadDocument(request: Request, deps: UploadDocumentDeps 
     });
 
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

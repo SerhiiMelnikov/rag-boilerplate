@@ -7,11 +7,11 @@ export interface SettingsDeps {
   updateSettingsFn?: typeof updateSettings;
 }
 
-export async function getSettingsResponse(deps: SettingsDeps = {}): Promise<Response> {
+export async function getSettingsResponse(request: Request, deps: SettingsDeps = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const getAdminSettingsFn = deps.getAdminSettingsFn ?? getAdminSettings;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -24,7 +24,7 @@ export async function updateSettingsResponse(request: Request, deps: SettingsDep
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const updateSettingsFn = deps.updateSettingsFn ?? updateSettings;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

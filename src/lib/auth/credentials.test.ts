@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { authorizeCredentials } from "@/auth";
+import { authorizeCredentials } from "@/lib/auth/credentials";
 
 describe("authorizeCredentials", () => {
   it("returns null when fields are missing", async () => {

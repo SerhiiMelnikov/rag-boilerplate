@@ -48,7 +48,7 @@ export async function uploadImage(request: Request, deps: UploadImageDeps = {}):
 
   let admin;
   try {
-    admin = await getAdmin();
+    admin = await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -77,10 +77,10 @@ export async function uploadImage(request: Request, deps: UploadImageDeps = {}):
   return Response.json({ imageId, status: "processing" });
 }
 
-export async function listImagesResponse(deps: { getAdmin?: typeof requireAdmin } = {}): Promise<Response> {
+export async function listImagesResponse(request: Request, deps: { getAdmin?: typeof requireAdmin } = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

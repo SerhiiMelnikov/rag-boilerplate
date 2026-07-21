@@ -13,11 +13,11 @@ export interface WorkspacesDeps {
   createWorkspaceFn?: typeof createWorkspace;
 }
 
-export async function listWorkspacesResponse(deps: WorkspacesDeps = {}): Promise<Response> {
+export async function listWorkspacesResponse(request: Request, deps: WorkspacesDeps = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const listFn = deps.listWorkspacesFn ?? listWorkspaces;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -30,7 +30,7 @@ export async function createWorkspaceResponse(request: Request, deps: Workspaces
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const createFn = deps.createWorkspaceFn ?? createWorkspace;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

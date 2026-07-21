@@ -19,11 +19,11 @@ function errorStatus(err: unknown): Response | null {
   return null;
 }
 
-export async function listWorkspaceUsersResponse(id: string, deps: WorkspaceUsersDeps = {}): Promise<Response> {
+export async function listWorkspaceUsersResponse(id: string, request: Request, deps: WorkspaceUsersDeps = {}): Promise<Response> {
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const listFn = deps.listWorkspaceUsersFn ?? listWorkspaceUsers;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -42,7 +42,7 @@ export async function setWorkspaceGrantResponse(id: string, request: Request, de
   const getAdmin = deps.getAdmin ?? requireAdmin;
   const setFn = deps.setWorkspaceGrantFn ?? setWorkspaceGrant;
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

@@ -24,7 +24,7 @@ export async function setFileWorkspacesResponse(
   const setImage = deps.setImageWorkspacesFn ?? setImageWorkspaces;
 
   try {
-    await getAdmin();
+    await getAdmin(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

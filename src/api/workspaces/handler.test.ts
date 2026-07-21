@@ -2,10 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import { listVisibleWorkspacesResponse } from "./handler";
 import { UnauthorizedError } from "@/lib/auth/guards";
 
+const req = () => new Request("http://x/api/workspaces");
+
 describe("listVisibleWorkspacesResponse", () => {
   it("returns the caller's visible workspaces", async () => {
     const listVisibleWorkspacesFn = vi.fn(async () => [{ id: "w1", name: "General", isDefault: true }]);
-    const res = await listVisibleWorkspacesResponse({
+    const res = await listVisibleWorkspacesResponse(req(), {
       getUser: (async () => ({ id: "u1", role: "user", isSuperAdmin: false })) as never,
       listVisibleWorkspacesFn: listVisibleWorkspacesFn as never,
     });
@@ -17,7 +19,7 @@ describe("listVisibleWorkspacesResponse", () => {
 
   it("401s for an anonymous caller and never lists anything", async () => {
     const listVisibleWorkspacesFn = vi.fn();
-    const res = await listVisibleWorkspacesResponse({
+    const res = await listVisibleWorkspacesResponse(req(), {
       getUser: (async () => { throw new UnauthorizedError(); }) as never,
       listVisibleWorkspacesFn: listVisibleWorkspacesFn as never,
     });

@@ -18,7 +18,7 @@ export async function listConversationsResponse(request: Request, deps: Conversa
 
   let user;
   try {
-    user = await getUser();
+    user = await getUser(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;
@@ -35,7 +35,7 @@ export async function createConversationResponse(request: Request, deps: Convers
 
   let user;
   try {
-    user = await getUser();
+    user = await getUser(request);
   } catch (err) {
     const res = errorToResponse(err);
     if (res) return res;

@@ -48,6 +48,8 @@ ships as a Docker image when you're ready.
   object storage (MinIO in local Docker) for image bytes.
 - **Deployable** — a multi-stage, non-root Docker image plus a `GET /api/health`
   probe; `docker compose --profile app up` runs the whole stack.
+- **API docs** — an interactive API reference at `/docs` (Scalar, self-hosted, no
+  CDN), backed by the raw OpenAPI document at `/api/openapi.json`.
 - **Your stack only** — the providers and vector store you pick; everything else
   is pruned out (code, dependencies, Docker services, env vars).
 

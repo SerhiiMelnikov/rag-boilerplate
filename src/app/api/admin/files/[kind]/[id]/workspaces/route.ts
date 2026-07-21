@@ -1,4 +1,4 @@
-import { setFileWorkspacesResponse } from "./handler";
+import { setFileWorkspacesResponse } from "@/api/admin/files/[kind]/[id]/workspaces/handler";
 
 type Ctx = { params: Promise<{ kind: string; id: string }> };
 

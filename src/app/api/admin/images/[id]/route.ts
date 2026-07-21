@@ -1,6 +1,6 @@
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
 import { deleteImage } from "@/lib/images/service";
-import { patchImageCaption } from "./handler";
+import { patchImageCaption } from "@/api/admin/images/[id]/handler";
 
 type Ctx = { params: Promise<{ id: string }> };
 

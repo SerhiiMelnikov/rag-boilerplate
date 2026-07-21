@@ -1,4 +1,4 @@
-import { updateQuestionResponse, deleteQuestionResponse } from "../handler";
+import { updateQuestionResponse, deleteQuestionResponse } from "@/api/admin/evaluation/questions/handler";
 
 type Ctx = { params: Promise<{ id: string }> };
 

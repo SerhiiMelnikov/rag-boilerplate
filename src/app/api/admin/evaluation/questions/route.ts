@@ -1,4 +1,4 @@
-import { listQuestionsResponse, createQuestionResponse } from "./handler";
+import { listQuestionsResponse, createQuestionResponse } from "@/api/admin/evaluation/questions/handler";
 
 export async function GET() {
   return listQuestionsResponse();

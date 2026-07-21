@@ -1,4 +1,4 @@
-import { recaptionImageResponse } from "./handler";
+import { recaptionImageResponse } from "@/api/admin/images/[id]/recaption/handler";
 
 type Ctx = { params: Promise<{ id: string }> };
 

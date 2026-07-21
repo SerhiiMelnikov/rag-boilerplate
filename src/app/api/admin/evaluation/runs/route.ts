@@ -1,4 +1,4 @@
-import { createRunResponse, listRunsResponse } from "./handler";
+import { createRunResponse, listRunsResponse } from "@/api/admin/evaluation/runs/handler";
 
 export async function GET() {
   return listRunsResponse();

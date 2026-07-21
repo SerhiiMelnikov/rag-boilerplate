@@ -1,4 +1,4 @@
-import { listWorkspaceUsersResponse, setWorkspaceGrantResponse } from "./handler";
+import { listWorkspaceUsersResponse, setWorkspaceGrantResponse } from "@/api/admin/workspaces/[id]/users/handler";
 
 type Ctx = { params: Promise<{ id: string }> };
 

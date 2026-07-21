@@ -1,6 +1,6 @@
 import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
 import { listDocuments } from "@/lib/documents/service";
-import { uploadDocument } from "./handler";
+import { uploadDocument } from "@/api/admin/documents/handler";
 
 export async function GET() {
   try {

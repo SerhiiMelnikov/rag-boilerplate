@@ -1,4 +1,4 @@
-import { patchWorkspaceResponse, deleteWorkspaceResponse } from "./handler";
+import { patchWorkspaceResponse, deleteWorkspaceResponse } from "@/api/admin/workspaces/[id]/handler";
 
 type Ctx = { params: Promise<{ id: string }> };
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleChat, type ChatDeps } from "@/app/api/chat/handler";
+import { handleChat, type ChatDeps } from "@/api/chat/handler";
 import { MissingProviderKeyError } from "@/lib/providers/types";
 import type { addMessage } from "@/lib/chat/conversations";
 import type { prepareContext } from "@/lib/rag/answer";

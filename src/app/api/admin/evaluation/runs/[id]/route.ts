@@ -1,4 +1,4 @@
-import { getRunResponse } from "../handler";
+import { getRunResponse } from "@/api/admin/evaluation/runs/handler";
 
 type Ctx = { params: Promise<{ id: string }> };
 

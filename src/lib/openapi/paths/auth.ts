@@ -1,6 +1,6 @@
 import { registry } from "../registry";
 import { z } from "../zod";
-import { SetPasswordRequest } from "../schemas";
+import { ErrorResponse, SetPasswordRequest } from "../schemas";
 
 // GET/POST /api/auth/{nextauth} (src/app/api/auth/[...nextauth]/route.ts): Auth.js v5's
 // own catch-all, re-exported verbatim. Its internals (providers, callbacks, CSRF,
@@ -41,6 +41,40 @@ registry.registerPath({
   responses: {
     303: {
       description: "Redirects to /login?verified=1 on success, or back to /verify?token=...&error=1 if the token is invalid/expired or the password fails validation",
+    },
+  },
+});
+
+// POST /api/auth/login (src/api/auth/login/handler.ts): api-only login — exchanges
+// email/password for a bearer session token, minted with the same claim shape/secret
+// that getSessionFromRequest decodes (see src/lib/auth/session.ts). Public: you log in
+// to GET a session, so no security requirement here.
+registry.registerPath({
+  method: "post",
+  path: "/api/auth/login",
+  tags: ["Auth"],
+  summary: "Exchange email/password credentials for a bearer session token",
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({ email: z.string(), password: z.string() }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Credentials verified; returns a bearer token usable as Authorization: Bearer <token>",
+      content: { "application/json": { schema: z.object({ token: z.string() }) } },
+    },
+    400: {
+      description: "Invalid JSON body, or email/password missing",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+    401: {
+      description: "Invalid credentials",
+      content: { "application/json": { schema: ErrorResponse } },
     },
   },
 });

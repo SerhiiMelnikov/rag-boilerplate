@@ -38,4 +38,25 @@ describe("MultiSelect", () => {
     fireEvent.click(screen.getByLabelText("Workspaces"));
     expect(await screen.findByText("everyone")).toBeInTheDocument();
   });
+
+  it("filters the options by the typed query", async () => {
+    render(<MultiSelect value={[]} onChange={() => {}} options={OPTIONS} ariaLabel="Workspaces" />);
+    fireEvent.click(screen.getByLabelText("Workspaces"));
+    expect(await screen.findByRole("option", { name: /General/ })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Filter workspaces"), { target: { value: "mark" } });
+
+    expect(await screen.findByRole("option", { name: /Marketing/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /General/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps a selected value that the filter hides", async () => {
+    const onChange = vi.fn();
+    render(<MultiSelect value={["w1"]} onChange={onChange} options={OPTIONS} ariaLabel="Workspaces" />);
+    fireEvent.click(screen.getByLabelText("Workspaces"));
+    fireEvent.change(screen.getByLabelText("Filter workspaces"), { target: { value: "mark" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Marketing/ }));
+    // w1 is filtered out of view but must not be dropped from the selection.
+    expect(onChange).toHaveBeenCalledWith(["w1", "w2"]);
+  });
 });

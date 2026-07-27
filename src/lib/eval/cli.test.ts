@@ -123,4 +123,27 @@ describe("runEvalCli", () => {
     expect(h.err.join("\n")).toContain("provider outage");
     expect(h.out.join("\n")).not.toContain("provider outage");
   });
+
+  // Every awaited repo call must sit inside the guard, not just the two above:
+  // a refactor that moved one outside would turn a database blip back into an
+  // unhandled rejection, which is the failure this module exists to prevent.
+  // --json is requested throughout, since a stray line on stdout is what would
+  // break a consumer piping the output.
+  it.each(["listQuestions", "createRun", "getRun", "getResults"] as const)(
+    "resolves to 1 instead of rejecting when repo.%s throws",
+    async (method) => {
+      const h = harness({ [method]: vi.fn(async () => { throw new Error(`${method} exploded`); }) });
+      await expect(runEvalCli(["--json"], h.deps)).resolves.toBe(1);
+      expect(h.err.join("\n")).toContain(`${method} exploded`);
+      expect(h.out.join("\n")).toBe("");
+    },
+  );
+
+  it("resolves to 1 instead of rejecting when getSettings throws", async () => {
+    const h = harness();
+    h.deps.getSettings = async () => { throw new Error("settings unavailable"); };
+    await expect(runEvalCli(["--json"], h.deps)).resolves.toBe(1);
+    expect(h.err.join("\n")).toContain("settings unavailable");
+    expect(h.out.join("\n")).toBe("");
+  });
 });

@@ -46,10 +46,16 @@ describe("runEvalCli", () => {
     expect(code).toBe(0);
     expect(h.repo.createRun).toHaveBeenCalled();
     const text = h.out.join("\n");
-    expect(text).toContain("80%");   // recall
-    expect(text).toContain("4.2");   // judge
-    expect(text).toContain("What is the refund policy?");
-    expect(text).toContain("Where is the office?");
+    // Each assertion is tied to its label (with the exact spacing reportLines
+    // produces) so a transposed avgRecall/avgPrecision fails the test instead
+    // of the same 80%/60% numbers passing on the other line.
+    expect(text).toContain("Recall     80%");
+    expect(text).toContain("Precision  60%");
+    expect(text).toContain("Judge      4.2/5");
+    // Per-question row: columns must appear in the order the header
+    // advertises (hit, recall, prec, mrr, judge, question).
+    expect(text).toContain("yes  100%    50%     100%    5/5    What is the refund policy?");
+    expect(text).toContain("no   0%      0%      0%      3/5    Where is the office?");
   });
 
   it("--json writes one JSON object and nothing else to stdout", async () => {
@@ -91,11 +97,30 @@ describe("runEvalCli", () => {
     expect(h.err.join("\n")).toContain("provider exploded");
   });
 
-  it("rejects a non-numeric threshold instead of ignoring it", async () => {
+  it("rejects a non-numeric or blank threshold instead of ignoring it", async () => {
+    // "   " would coerce to 0 via Number(), silently becoming an always-passing
+    // threshold — the exact no-op the adjacent comment warns against.
+    for (const raw of ["high", "   "]) {
+      const h = harness();
+      const code = await runEvalCli(["--min-judge", raw], h.deps);
+      expect(code).toBe(1);
+      expect(h.repo.createRun).not.toHaveBeenCalled();
+      expect(h.err.join("\n")).toMatch(/--min-judge/);
+    }
+  });
+
+  it("resolves to 1 instead of rejecting when the repo throws", async () => {
+    const h = harness({ createRun: vi.fn(async () => { throw new Error("db connection lost"); }) });
+    await expect(runEvalCli([], h.deps)).resolves.toBe(1);
+    expect(h.err.join("\n")).toContain("db connection lost");
+    expect(h.out.join("\n")).not.toContain("db connection lost");
+  });
+
+  it("resolves to 1 instead of rejecting when runEval throws", async () => {
     const h = harness();
-    const code = await runEvalCli(["--min-judge", "high"], h.deps);
-    expect(code).toBe(1);
-    expect(h.repo.createRun).not.toHaveBeenCalled();
-    expect(h.err.join("\n")).toMatch(/--min-judge/);
+    h.deps.runEval = vi.fn(async () => { throw new Error("provider outage"); });
+    await expect(runEvalCli([], h.deps)).resolves.toBe(1);
+    expect(h.err.join("\n")).toContain("provider outage");
+    expect(h.out.join("\n")).not.toContain("provider outage");
   });
 });

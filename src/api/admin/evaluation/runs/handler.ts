@@ -2,7 +2,7 @@ import { requireAdmin, errorToResponse } from "@/lib/auth/guards";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
 import { evalRepo, type EvalRepo } from "@/lib/eval/repo";
 import { runEvaluation } from "@/lib/eval/run";
-import type { EvalSettingsSnapshot } from "@/lib/eval/types";
+import { buildSettingsSnapshot } from "@/lib/eval/snapshot";
 
 export interface RunsDeps {
   getAdmin?: typeof requireAdmin;
@@ -10,23 +10,6 @@ export interface RunsDeps {
   getSettings?: typeof getRuntimeSettings;
   runEval?: typeof runEvaluation;
   schedule?: (fn: () => void | Promise<void>) => void;
-}
-
-// Project the specific RuntimeSettings fields that affect retrieval/generation into
-// a persisted snapshot, so a run's results stay attributable to the exact settings
-// used even if the admin changes settings again before the run finishes.
-function snapshot(s: Awaited<ReturnType<typeof getRuntimeSettings>>): EvalSettingsSnapshot {
-  return {
-    topK: s.topK,
-    minSimilarity: s.minSimilarity,
-    contextTokenBudget: s.contextTokenBudget,
-    chatProvider: s.chatProvider,
-    chatModel: s.chatModel,
-    embeddingProvider: s.embeddingProvider,
-    embeddingModel: s.embeddingModel,
-    temperature: s.temperature,
-    systemPrompt: s.systemPrompt,
-  };
 }
 
 export async function createRunResponse(request: Request, deps: RunsDeps = {}): Promise<Response> {
@@ -49,7 +32,7 @@ export async function createRunResponse(request: Request, deps: RunsDeps = {}): 
     throw err;
   }
   const settings = await getSettings();
-  const { id } = await repo.createRun(snapshot(settings));
+  const { id } = await repo.createRun(buildSettingsSnapshot(settings));
   // Schedule the (potentially long-running) evaluation job in the background;
   // the request returns immediately with the run left in "pending" status.
   schedule(() => runEval(id, settings));

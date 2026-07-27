@@ -234,4 +234,43 @@ describe("RunsPanel", () => {
     // Still expanded: a refresh that closed it would be worse than no refresh.
     expect(screen.getByText(/Refunds are available within 30 days/)).toBeInTheDocument();
   });
+
+  // Real timers here on purpose: both runs are settled, so nothing polls, and the
+  // race under test is about response ordering rather than the clock. That also
+  // keeps dom-testing-library's async queries usable (see the note above).
+  it("drops a slow detail response for a run the admin has already navigated away from", async () => {
+    const OTHER_RUN = { ...DONE_RUN, id: "r2", createdAt: "2026-01-03T00:00:00Z" };
+    const OTHER_RESULTS = [{ ...RESULTS[0], id: "res2", questionText: "Where is the office?", generatedAnswer: "On the third floor." }];
+
+    // r1's detail is held open until the test releases it, so it can land *after*
+    // the admin has already selected r2.
+    let releaseFirstDetail: (() => void) | undefined;
+    const firstDetailArrived = new Promise<void>((resolve) => { releaseFirstDetail = resolve; });
+
+    stubFetch((url, init) => {
+      if (url === "/api/admin/evaluation/runs" && !init?.method) {
+        return { ok: true, status: 200, json: async () => ({ runs: [DONE_RUN, OTHER_RUN] }) };
+      }
+      if (url === "/api/admin/evaluation/runs/r1") {
+        return { ok: true, status: 200, json: async () => { await firstDetailArrived; return { run: DONE_RUN, results: RESULTS }; } };
+      }
+      if (url === "/api/admin/evaluation/runs/r2") {
+        return { ok: true, status: 200, json: async () => ({ run: OTHER_RUN, results: OTHER_RESULTS }) };
+      }
+      return undefined;
+    });
+
+    render(<RunsPanel />);
+    const rows = await screen.findAllByText("done");
+    fireEvent.click(rows[0].closest("button")!);        // select r1 — its detail hangs
+    fireEvent.click(rows[1].closest("button")!);        // switch to r2 before r1 answers
+    expect(await screen.findByText("Where is the office?")).toBeInTheDocument();
+
+    releaseFirstDetail!();
+    await act(async () => { await firstDetailArrived; });
+
+    // r1's late response must be discarded: the panel still shows r2.
+    expect(screen.getByText("Where is the office?")).toBeInTheDocument();
+    expect(screen.queryByText("What is the refund policy?")).not.toBeInTheDocument();
+  });
 });

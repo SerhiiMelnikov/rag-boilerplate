@@ -269,6 +269,53 @@ export function pruneAdminProviderLists(project: Project, kept: ProviderId[]): v
   kf.saveSync();
 }
 
+// src/lib/openapi/*: the OpenAPI document hardcodes the full provider set, so a
+// generated single-provider project would otherwise ship docs advertising
+// providers its own API rejects. Narrow the same way the admin forms are narrowed.
+// Unlike settings-form's TS unions, these are zod values: an empty object literal
+// is valid, so no "collapses to never" guard is needed here.
+export function pruneOpenApiProviderLists(project: Project, kept: ProviderId[]): void {
+  const keptSet = new Set<string>(kept);
+  const removed = (["google", "openai", "anthropic", "ollama"] as ProviderId[]).filter((p) => !keptSet.has(p));
+  if (removed.length === 0) return;
+  const removedKeyProps = new Set(removed.map((p) => `${p}Key`));
+
+  // admin-settings.ts: the CHAT_PROVIDERS / EMBEDDING_PROVIDERS literal arrays and
+  // the per-provider *Key fields of SettingsUpdateRequest. The *Key suffix already
+  // scopes the property removal to the provider-key fields specifically, so a
+  // file-wide object-literal loop is safe (verified: no other object literal in
+  // this file has a property named e.g. "googleKey").
+  const as = resolveSourceFile(project, "src/lib/openapi/paths/admin-settings.ts");
+  for (const arr of as.getDescendantsOfKind(SyntaxKind.ArrayLiteralExpression)) {
+    const indicesToRemove: number[] = [];
+    arr.getElements().forEach((el, i) => {
+      if (Node.isStringLiteral(el) && removed.includes(el.getLiteralValue() as ProviderId)) indicesToRemove.push(i);
+    });
+    for (const i of indicesToRemove.reverse()) arr.removeElement(i);
+  }
+  for (const obj of as.getDescendantsOfKind(SyntaxKind.ObjectLiteralExpression)) {
+    for (const prop of [...obj.getProperties()]) {
+      if (Node.isPropertyAssignment(prop) && removedKeyProps.has(prop.getName().replace(/['"]/g, ""))) prop.remove();
+    }
+  }
+  as.saveSync();
+
+  // schemas.ts: the masked `keys` object (google/openai/anthropic KeyStatus entries).
+  // Scoped to properties whose initializer is the `KeyStatus` identifier (not just
+  // any property literally named after a provider) so an unrelated schema field
+  // that happens to share a provider's name (e.g. a locale code) is never touched.
+  const sc = resolveSourceFile(project, "src/lib/openapi/schemas.ts");
+  for (const obj of sc.getDescendantsOfKind(SyntaxKind.ObjectLiteralExpression)) {
+    for (const prop of [...obj.getProperties()]) {
+      if (!Node.isPropertyAssignment(prop)) continue;
+      if (!removed.includes(prop.getName().replace(/['"]/g, "") as ProviderId)) continue;
+      const init = prop.getInitializer();
+      if (init && Node.isIdentifier(init) && init.getText() === "KeyStatus") prop.remove();
+    }
+  }
+  sc.saveSync();
+}
+
 // Load the generated project's source files and apply every source transform.
 export async function applySourceTransforms(
   root: string,
@@ -294,7 +341,7 @@ export async function applySourceTransforms(
   for (const rel of [
     "src/lib/providers/index.ts", "src/lib/providers/types.ts", "src/lib/vectorstore/index.ts",
     "src/lib/db/schema.ts", "src/components/admin/settings-form.tsx", "src/components/admin/provider-keys-form.tsx",
-    "scripts/vectorstore-init.ts",
+    "scripts/vectorstore-init.ts", "src/lib/openapi/paths/admin-settings.ts", "src/lib/openapi/schemas.ts",
   ]) {
     project.addSourceFileAtPath(`${root}/${rel}`);
   }
@@ -303,6 +350,7 @@ export async function applySourceTransforms(
     pruneProviderFactory(project, removedProviders);
     narrowProviderUnions(project, o.keptProviders);
     pruneAdminProviderLists(project, o.keptProviders);
+    pruneOpenApiProviderLists(project, o.keptProviders);
   }
   if (removedStores.length) {
     pruneVectorFactory(project, removedStores);

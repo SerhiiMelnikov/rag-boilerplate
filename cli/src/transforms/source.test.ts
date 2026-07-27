@@ -3,7 +3,7 @@ import { Project } from "ts-morph";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneAdminProviderLists, rewriteSettingsDefaults, pruneChunksFromSchema } from "./source.js";
+import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneAdminProviderLists, pruneOpenApiProviderLists, rewriteSettingsDefaults, pruneChunksFromSchema } from "./source.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "test-fixtures");
 const read = (p: string) => readFileSync(join(FIX, p), "utf8");
@@ -121,6 +121,52 @@ describe("pruneAdminProviderLists", () => {
     // It's left un-narrowed (still the original three-provider union).
     expect(kf).not.toContain("never");
     expect(kf).toContain('type KeyName = "google"');
+  });
+});
+
+describe("pruneOpenApiProviderLists", () => {
+  it("narrows admin-settings.ts and schemas.ts to a single kept provider (google)", () => {
+    const project = new Project({ useInMemoryFileSystem: true });
+    project.createSourceFile("src/lib/openapi/paths/admin-settings.ts", read("admin-settings.ts"));
+    project.createSourceFile("src/lib/openapi/schemas.ts", read("schemas.ts"));
+    pruneOpenApiProviderLists(project, ["google"]);
+
+    const as = project.getSourceFileOrThrow("src/lib/openapi/paths/admin-settings.ts").getFullText();
+    expect(as).toContain('const CHAT_PROVIDERS = ["google"] as const;');
+    expect(as).toContain('const EMBEDDING_PROVIDERS = ["google"] as const;');
+    expect(as).not.toContain("openaiKey");
+    expect(as).not.toContain("anthropicKey");
+    expect(as).toContain("googleKey");
+    // Unrelated object-literal properties elsewhere in the file (registerPath's
+    // responses/content/security nesting) must survive untouched.
+    expect(as).toContain('description: "Not signed in"');
+    expect(as).toContain('security: [{ sessionCookie: [] }]');
+
+    const sc = project.getSourceFileOrThrow("src/lib/openapi/schemas.ts").getFullText();
+    expect(sc).toContain("google: KeyStatus");
+    expect(sc).not.toContain("openai: KeyStatus");
+    expect(sc).not.toContain("anthropic: KeyStatus");
+    // The unrelated `Locale.google` field is not a KeyStatus and must survive —
+    // proves the removal is scoped by initializer, not by property name alone.
+    expect(sc).toContain("google: z.string()");
+  });
+
+  it("does not throw for an ollama-only selection and leaves valid (empty) zod values", () => {
+    const project = new Project({ useInMemoryFileSystem: true });
+    project.createSourceFile("src/lib/openapi/paths/admin-settings.ts", read("admin-settings.ts"));
+    project.createSourceFile("src/lib/openapi/schemas.ts", read("schemas.ts"));
+    expect(() => pruneOpenApiProviderLists(project, ["ollama"])).not.toThrow();
+
+    const as = project.getSourceFileOrThrow("src/lib/openapi/paths/admin-settings.ts").getFullText();
+    expect(as).toContain('const CHAT_PROVIDERS = ["ollama"] as const;');
+    expect(as).not.toContain("googleKey");
+    expect(as).not.toContain("openaiKey");
+    expect(as).not.toContain("anthropicKey");
+
+    const sc = project.getSourceFileOrThrow("src/lib/openapi/schemas.ts").getFullText();
+    // `keys` collapses to an empty (but legal) object literal.
+    expect(sc).toMatch(/keys:\s*z\.object\(\{\s*\}\)/);
+    expect(sc).toContain("google: z.string()"); // unrelated Locale field untouched
   });
 });
 

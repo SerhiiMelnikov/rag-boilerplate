@@ -26,6 +26,7 @@ beforeEach(async () => {
   await mkdir(join(templateDir, "src/lib/db"), { recursive: true });
   await mkdir(join(templateDir, "src/components/admin"), { recursive: true });
   await mkdir(join(templateDir, "scripts"), { recursive: true });
+  await mkdir(join(templateDir, "src/lib/openapi/paths"), { recursive: true });
   // Copy the real fixture source files so the transforms have valid targets.
   await cp(join(process.cwd(), "test-fixtures", "providers-index.ts"), join(templateDir, "src/lib/providers/index.ts"));
   await cp(join(process.cwd(), "test-fixtures", "providers-types.ts"), join(templateDir, "src/lib/providers/types.ts"));
@@ -34,6 +35,8 @@ beforeEach(async () => {
   await cp(join(process.cwd(), "test-fixtures", "settings-form.tsx"), join(templateDir, "src/components/admin/settings-form.tsx"));
   await cp(join(process.cwd(), "test-fixtures", "provider-keys-form.tsx"), join(templateDir, "src/components/admin/provider-keys-form.tsx"));
   await cp(join(process.cwd(), "test-fixtures", "vectorstore-init.ts"), join(templateDir, "scripts/vectorstore-init.ts"));
+  await cp(join(process.cwd(), "test-fixtures", "admin-settings.ts"), join(templateDir, "src/lib/openapi/paths/admin-settings.ts"));
+  await cp(join(process.cwd(), "test-fixtures", "schemas.ts"), join(templateDir, "src/lib/openapi/schemas.ts"));
   await writeFile(join(templateDir, "src/lib/providers/anthropic.ts"), "export const x = 1;");
   await writeFile(join(templateDir, "src/lib/vectorstore/chroma/store.ts"), "export const x = 1;");
   await writeFile(join(templateDir, "src/lib/vectorstore/weaviate/store.ts"), "export const x = 1;");

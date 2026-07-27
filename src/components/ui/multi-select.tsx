@@ -44,7 +44,15 @@ export interface MultiSelectOption { value: string; label: string; hint?: string
 // onKeyDown below and the "no autofocus" note), since racing Headless UI's own
 // focus management is fragile. Keyboard users keep Listbox's native typeahead
 // (jump to an option by typing its first letters), exactly as before this change,
-// so nothing regresses for them; they just do not get the new filter.
+// so keyboard *operation* is unchanged; they just do not get the new filter.
+//
+// One thing this does cost, stated plainly rather than glossed: the input is a
+// direct child of the panel, which carries role="listbox", and a listbox is
+// specified to own only option/group children. So this is invalid ARIA, and a
+// screen reader may announce an unexpected textbox inside the list or skip it
+// entirely. The exits, if a later change wants them: role="none" on a wrapper
+// plus aria-owns, or Headless UI's Combobox once the two blockers documented
+// above are gone.
 export function MultiSelect({ value, onChange, options, ariaLabel, placeholder = "none", className = "" }: {
   value: string[];
   onChange: (value: string[]) => void;

@@ -64,12 +64,21 @@ export async function runEvaluation(runId: string, settings: RuntimeSettings, de
         forAgg.push({ recall: m.recall, precision: m.precision, mrr: m.mrr, judgeScore: judged.score });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        await repo.addResult({
-          runId, questionId: q.id, questionText: q.question, retrieved: [],
-          hit: false, recall: 0, precision: 0, mrr: 0,
-          judgeScore: null, judgeRationale: null, generatedAnswer: null, error: message,
-        });
-        forAgg.push({ recall: 0, precision: 0, mrr: 0, judgeScore: null });
+        // If the database is the thing that's failing, this write throws too. Left
+        // unguarded it sinks the whole run — including the questions that already
+        // succeeded, whose rows would be left with no aggregate to attribute them
+        // to. Log and move on instead, and skip the aggregate entry as well so the
+        // aggregate keeps describing exactly the rows that were actually stored.
+        try {
+          await repo.addResult({
+            runId, questionId: q.id, questionText: q.question, retrieved: [],
+            hit: false, recall: 0, precision: 0, mrr: 0,
+            judgeScore: null, judgeRationale: null, generatedAnswer: null, error: message,
+          });
+          forAgg.push({ recall: 0, precision: 0, mrr: 0, judgeScore: null });
+        } catch (writeErr) {
+          console.error(`eval: could not record the failure of question ${q.id}`, writeErr);
+        }
       }
     }
     await repo.finishRun(runId, aggregateResults(forAgg));

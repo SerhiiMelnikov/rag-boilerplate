@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from "@headlessui/react";
 import { Check, ChevronDown } from "lucide-react";
 
@@ -36,6 +36,15 @@ export interface MultiSelectOption { value: string; label: string; hint?: string
 //    in this repo's test suite -- not just this component's, since several other
 //    call sites follow the same pattern -- because `fireEvent.click` alone does
 //    not synthesize a preceding `mousedown`.
+//
+// Honest trade-off: the filter field is a pointer (mouse/touch) affordance only.
+// Headless UI focuses the options panel itself in a post-mount effect right after
+// it opens, and Tab is what closes the panel, so there is no keyboard path that
+// lands focus in the input -- deliberately not fought here (see the input's
+// onKeyDown below and the "no autofocus" note), since racing Headless UI's own
+// focus management is fragile. Keyboard users keep Listbox's native typeahead
+// (jump to an option by typing its first letters), exactly as before this change,
+// so nothing regresses for them; they just do not get the new filter.
 export function MultiSelect({ value, onChange, options, ariaLabel, placeholder = "none", className = "" }: {
   value: string[];
   onChange: (value: string[]) => void;
@@ -53,47 +62,85 @@ export function MultiSelect({ value, onChange, options, ariaLabel, placeholder =
       : value.length === 1 ? (options.find((o) => o.value === value[0])?.label ?? "1 selected")
       : `${value.length} selected`;
 
+  // Reset the filter once the panel is closed, driven off Listbox's actual open
+  // state rather than one specific interaction. A click on the button is not the
+  // only way to open: Space/ArrowUp/ArrowDown call Headless UI's openListbox()
+  // directly (with preventDefault) and never synthesize a click, so a click-only
+  // reset would miss them and leak a stale query into the next open. Resetting on
+  // a `true` -> `false` transition instead covers every path back to closed --
+  // Escape, Tab, an outside click, the button, or picking an option -- with no
+  // dependence on which one fired.
+  //
+  // `open` is only available inside Listbox's render prop (below), and calling it
+  // is *Listbox* re-rendering, not this component: Listbox owns that state
+  // internally and re-invokes the same `children` function it was already handed,
+  // without this component's own function body running again. Two consequences:
+  // a `useEffect` here would not fire on every one of those transitions (this
+  // component is not the one re-rendering), and calling `setQuery` synchronously
+  // from inside the render prop updates a different component while it is
+  // mid-render (React logs exactly that warning). `queueMicrotask` sidesteps both:
+  // it runs once the current (Listbox) render/commit has finished, so the update
+  // lands as a normal, independent one against this component.
+  const wasOpenRef = useRef(false);
+
   return (
     <Listbox value={value} onChange={onChange} multiple as="div" className={`relative ${className}`}>
-      <ListboxButton
-        aria-label={ariaLabel}
-        // Reopening with the previous query still applied looks like missing options.
-        onClick={() => setQuery("")}
-        className="flex w-full items-center justify-between gap-2 rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-left dark:border-zinc-700"
-      >
-        <span className="truncate">{summary}</span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden="true" />
-      </ListboxButton>
-      <ListboxOptions
-        transition
-        className="absolute left-0 z-50 mt-1 min-w-full origin-top rounded-md border border-zinc-200 bg-white p-1 shadow-lg transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0 dark:border-zinc-800 dark:bg-zinc-900"
-      >
-        <input
-          aria-label={`Filter ${ariaLabel.toLowerCase()}`}
-          placeholder="Search..."
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          // Isolate the filter field from Listbox's own keyboard handling (arrow-key
-          // navigation, typeahead, Home/End): that handling listens on this panel and
-          // would otherwise fight a plain <input> for every keystroke.
-          onKeyDown={(event) => event.stopPropagation()}
-          className="mb-1 w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1.5 text-sm dark:border-zinc-700"
-        />
-        {filtered.length === 0 && <div className="px-2 py-1.5 text-sm text-zinc-500">No matches</div>}
-        {filtered.map((option) => (
-          <ListboxOption
-            key={option.value}
-            value={option.value}
-            className="group flex w-full cursor-pointer items-center justify-between gap-3 whitespace-nowrap rounded-md px-2 py-1.5 text-sm data-[focus]:bg-zinc-100 dark:data-[focus]:bg-zinc-800"
-          >
-            <span className="flex items-baseline gap-2">
-              <span>{option.label}</span>
-              {option.hint && <span className="text-xs text-zinc-500">{option.hint}</span>}
-            </span>
-            <Check className="h-4 w-4 opacity-0 group-data-[selected]:opacity-100" aria-hidden="true" />
-          </ListboxOption>
-        ))}
-      </ListboxOptions>
+      {({ open }) => {
+        if (wasOpenRef.current && !open) queueMicrotask(() => setQuery(""));
+        wasOpenRef.current = open;
+        return (
+          <>
+            <ListboxButton
+              aria-label={ariaLabel}
+              className="flex w-full items-center justify-between gap-2 rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-left dark:border-zinc-700"
+            >
+              <span className="truncate">{summary}</span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden="true" />
+            </ListboxButton>
+            <ListboxOptions
+              transition
+              className="absolute left-0 z-50 mt-1 min-w-full origin-top rounded-md border border-zinc-200 bg-white p-1 shadow-lg transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0 dark:border-zinc-800 dark:bg-zinc-900"
+            >
+              <input
+                aria-label={`Filter ${ariaLabel.toLowerCase()}`}
+                placeholder="Search..."
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                // Steal only the keys Listbox's own keydown handler would otherwise
+                // swallow as typeahead/navigation: printable single characters
+                // (event.key.length === 1, which correctly includes Space -- typing
+                // a space must insert a space, not activate the focused option) plus
+                // Home/End (which would otherwise jump to the first/last option
+                // instead of moving the caret). Everything else -- Escape, Tab, the
+                // arrow keys, Enter -- must reach Listbox unmodified: Escape still
+                // closes the panel, Tab still leaves it, and letting the arrow
+                // keys/Enter through lets a user filter with the keyboard and then
+                // arrow/Enter to pick, which is strictly better than blocking them.
+                onKeyDown={(event) => {
+                  if (event.key.length === 1 || event.key === "Home" || event.key === "End") {
+                    event.stopPropagation();
+                  }
+                }}
+                className="mb-1 w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1.5 text-sm dark:border-zinc-700"
+              />
+              {filtered.length === 0 && <div className="px-2 py-1.5 text-sm text-zinc-500">No matches</div>}
+              {filtered.map((option) => (
+                <ListboxOption
+                  key={option.value}
+                  value={option.value}
+                  className="group flex w-full cursor-pointer items-center justify-between gap-3 whitespace-nowrap rounded-md px-2 py-1.5 text-sm data-[focus]:bg-zinc-100 dark:data-[focus]:bg-zinc-800"
+                >
+                  <span className="flex items-baseline gap-2">
+                    <span>{option.label}</span>
+                    {option.hint && <span className="text-xs text-zinc-500">{option.hint}</span>}
+                  </span>
+                  <Check className="h-4 w-4 opacity-0 group-data-[selected]:opacity-100" aria-hidden="true" />
+                </ListboxOption>
+              ))}
+            </ListboxOptions>
+          </>
+        );
+      }}
     </Listbox>
   );
 }

@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, timestamp, integer, jsonb, vector, real, pgEnum, boolean, primaryKey,
+  pgTable, uuid, text, timestamp, integer, jsonb, vector, real, pgEnum, boolean, primaryKey, index,
 } from "drizzle-orm/pg-core";
 import type { EvalSettingsSnapshot, EvalAggregate, RetrievedDoc } from "@/lib/eval/types";
 
@@ -222,4 +222,9 @@ export const evalResults = pgTable("eval_results", {
   judgeRationale: text("judge_rationale"),
   generatedAnswer: text("generated_answer"),
   error: text("error"),
-});
+}, (t) => [
+  // getResults(runId) is the only query against this table, and it runs every
+  // time an admin opens a run's detail. Without this, each open is a sequential
+  // scan over every result row ever written.
+  index("eval_results_run_id_idx").on(t.runId),
+]);

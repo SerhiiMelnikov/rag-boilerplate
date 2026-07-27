@@ -16,6 +16,33 @@ function hostMigrationSteps(o: InstallOptions, store: VectorStoreModule): string
   return steps;
 }
 
+// The evaluation harness, documented for both builds. It matters more in the
+// api-only one: there is no admin panel there, so `npm run eval` is the only way
+// to run an evaluation at all.
+function evalSection(o: InstallOptions): string[] {
+  const lines = ["## Evaluating retrieval quality", ""];
+  lines.push(
+    o.appKind === "api"
+      ? "Golden questions are managed over the API (`/api/admin/evaluation/questions`). Once you have some, score the current settings against them:"
+      : "Add golden questions in the admin panel (Admin → Evaluation), then score the current settings against them from the terminal:",
+  );
+  lines.push("");
+  lines.push("```bash");
+  lines.push("npm run eval                                    # report to stdout");
+  lines.push("npm run eval -- --json                          # machine-readable");
+  lines.push("npm run eval -- --min-judge 4 --min-recall 0.8  # exit 1 if below");
+  lines.push("```");
+  lines.push("");
+  lines.push(
+    "Each run is stored, so results stay comparable across settings changes" +
+      (o.appKind === "api" ? " and are readable via `/api/admin/evaluation/runs`." : " and show up in the admin panel alongside UI-triggered runs."),
+  );
+  lines.push("");
+  lines.push("The thresholds make this usable as a CI gate. A run with no golden questions exits 1 rather than passing green.");
+  lines.push("");
+  return lines;
+}
+
 // Pure function: renders the generated app's own README, tailored to the
 // caller's provider/vector-store/appKind selection. No filesystem access here —
 // scaffold() is the one that writes the result to disk, so this stays easy
@@ -153,6 +180,8 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("4. Those users can now pick it from the switcher in the chat header. Users with");
   lines.push("   access to only General see no switcher — there is nothing to switch between.");
   lines.push("");
+
+  lines.push(...evalSection(o));
 
   lines.push("## Deploying", "");
   lines.push("The app ships as a Docker image. To run the whole stack — Postgres, MinIO");
@@ -336,6 +365,8 @@ function generateApiOnlyReadme(o: InstallOptions): string {
   lines.push("openssl rand -base64 32");
   lines.push("```");
   lines.push("");
+
+  lines.push(...evalSection(o));
 
   lines.push("## Deploying", "");
   lines.push(

@@ -79,4 +79,39 @@ describe("runEvaluation", () => {
     expect(result.generatedAnswer).toBe("");
     expect(result.hit).toBe(false);
   });
+
+  it("keeps going when the failure row itself cannot be written", async () => {
+    // Silence the deliberate console.error this path emits.
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const repo = fakeRepo({
+      listQuestions: vi.fn(async () => [
+        { id: "q1", question: "first?", expectedDocumentIds: ["d1"], referenceAnswer: null, createdAt: new Date(0) },
+        { id: "q2", question: "second?", expectedDocumentIds: ["d2"], referenceAnswer: null, createdAt: new Date(0) },
+      ]),
+      // The database is down for error rows specifically — the shape of a real
+      // outage that hits mid-run, after some questions already succeeded.
+      addResult: vi.fn(async (input: ResultInput) => { if (input.error) throw new Error("db is down"); }),
+    });
+    let firstQuestion = true;
+    await runEvaluation("run-1", settings, {
+      repo: asRepo(repo),
+      prepareContextFn: vi.fn(async () => {
+        if (firstQuestion) {
+          firstQuestion = false;
+          return { hasContext: true, context: "c", sources: [{ documentId: "d1", filename: "a.md", chunkId: "c1", score: 0.9 }] };
+        }
+        throw new Error("embed failed");
+      }),
+      generateAnswer: vi.fn(async () => "an answer"),
+      judge: vi.fn(async () => ({ score: 5, rationale: "ok" })),
+    });
+
+    expect(repo.failRun).not.toHaveBeenCalled();
+    expect(repo.finishRun).toHaveBeenCalled();
+    // The aggregate describes exactly the rows that were stored — the question
+    // whose row could not be written is not counted.
+    expect(repo.finishRun.mock.calls[0][1].questionCount).toBe(1);
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
+  });
 });

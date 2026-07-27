@@ -253,4 +253,24 @@ describe("generateReadme secrets", () => {
     expect(readme).toMatch(/Do not change `SETTINGS_ENCRYPTION_KEY`/);
     expect(readme).toMatch(/openssl rand -base64 32/);
   });
+
+  // The repo's own README.md is in build-template.ts's EXCLUDE list, so it never
+  // reaches a generated project — this generator is the only documentation those
+  // users get. Without these, the eval runner ships invisible.
+  it("documents the eval runner and its CI-gate flags in the full app", () => {
+    const readme = generateReadme(opts({ appKind: "full" }));
+    expect(readme).toContain("npm run eval");
+    expect(readme).toContain("--min-judge");
+    expect(readme).toContain("Admin → Evaluation");
+  });
+
+  it("documents the eval runner in api-only, where it is the only way to run one", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("npm run eval");
+    expect(readme).toContain("--min-judge");
+    // No admin panel exists in this build, so the questions must be described
+    // as an API surface rather than a page.
+    expect(readme).toContain("/api/admin/evaluation/questions");
+    expect(readme).not.toContain("Admin → Evaluation");
+  });
 });

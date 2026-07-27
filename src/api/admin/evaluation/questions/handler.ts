@@ -17,7 +17,11 @@ export interface QuestionsDeps {
 function parseBody(body: unknown): QuestionInput | null {
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) return null;
-  const referenceAnswer = parsed.data.referenceAnswer?.trim() ? parsed.data.referenceAnswer : null;
+  // Trim for real, not just to test emptiness: `question` is trimmed by the zod
+  // schema, and a reference answer that keeps its padding is compared against a
+  // model's answer by the judge.
+  const trimmed = parsed.data.referenceAnswer?.trim();
+  const referenceAnswer = trimmed ? trimmed : null;
   return {
     question: parsed.data.question,
     expectedDocumentIds: parsed.data.expectedDocumentIds,

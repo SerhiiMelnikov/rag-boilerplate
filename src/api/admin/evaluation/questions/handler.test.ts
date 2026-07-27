@@ -6,6 +6,7 @@ import {
   deleteQuestionResponse,
 } from "./handler";
 import { ForbiddenError, UnauthorizedError } from "@/lib/auth/guards";
+import type { QuestionInput } from "@/lib/eval/repo";
 
 const admin = vi.fn(async () => ({ id: "a1", role: "admin", isSuperAdmin: false }));
 
@@ -92,6 +93,19 @@ describe("createQuestionResponse", () => {
     expect(createQuestion).toHaveBeenCalledWith({ question: "Q?", expectedDocumentIds: [], referenceAnswer: null });
   });
 
+  it("stores the reference answer trimmed, like the question", async () => {
+    // Param explicitly typed (not just `() => {}`) so vitest infers a real
+    // `mock.calls` tuple type — needed since the assertion below indexes into it.
+    const repo = { createQuestion: vi.fn(async (_input: QuestionInput) => ({ id: "q1" })) };
+    const request = new Request("http://x/api/admin/evaluation/questions", {
+      method: "POST",
+      body: JSON.stringify({ question: "  what is a cat?  ", expectedDocumentIds: [], referenceAnswer: "  a small animal  " }),
+    });
+    const res = await createQuestionResponse(request, { getAdmin: async () => ({ id: "a1", role: "admin", isSuperAdmin: false }), repo: repo as never });
+    expect(res.status).toBe(201);
+    expect(repo.createQuestion.mock.calls[0][0]).toMatchObject({ question: "what is a cat?", referenceAnswer: "a small animal" });
+  });
+
   it("400s on an empty question", async () => {
     const res = await createQuestionResponse(json({ question: "   ", expectedDocumentIds: [] }), { getAdmin: admin as never });
     expect(res.status).toBe(400);
@@ -146,6 +160,19 @@ describe("updateQuestionResponse", () => {
       repo: { updateQuestion } as never,
     });
     expect(res.status).toBe(404);
+  });
+
+  it("stores the reference answer trimmed on update too", async () => {
+    // Param explicitly typed (not just `() => {}`) so vitest infers a real
+    // `mock.calls` tuple type — needed since the assertion below indexes into it.
+    const repo = { updateQuestion: vi.fn(async (_id: string, _input: QuestionInput) => true) };
+    const request = new Request("http://x/api/admin/evaluation/questions/q1", {
+      method: "PATCH",
+      body: JSON.stringify({ question: "q", expectedDocumentIds: [], referenceAnswer: "  ref  " }),
+    });
+    const res = await updateQuestionResponse("q1", request, { getAdmin: async () => ({ id: "a1", role: "admin", isSuperAdmin: false }), repo: repo as never });
+    expect(res.status).toBe(200);
+    expect(repo.updateQuestion.mock.calls[0][1]).toMatchObject({ referenceAnswer: "ref" });
   });
 
   it("400s on bad input", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Play, ChevronDown, ChevronRight } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import type { EvalAggregate, EvalSettingsSnapshot, RetrievedDoc } from "@/lib/eval/types";
@@ -95,6 +95,20 @@ export function RunsPanel() {
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [openResultId, setOpenResultId] = useState<string | null>(null);
 
+  // The selection as of *now*, readable from inside the poll interval and from a
+  // response handler — `selectedId` alone would be a stale closure in both.
+  const selectedIdRef = useRef<string | null>(null);
+
+  const loadDetail = useCallback(async (id: string) => {
+    const res = await fetch(`/api/admin/evaluation/runs/${id}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    // A slow response for a run the admin has already navigated away from must not
+    // overwrite the detail now on screen.
+    if (selectedIdRef.current !== id) return;
+    setDetail(data);
+  }, []);
+
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/evaluation/runs");
     if (res.ok) setRuns((await res.json()).runs);
@@ -104,11 +118,22 @@ export function RunsPanel() {
   // Poll while any run is still pending/running; stop (and clear the timer) once
   // none are in-flight — mirrors FilesManager's hasProcessing poll.
   const hasInFlight = (runs ?? []).some((r) => r.status === "pending" || r.status === "running");
+  const selectedInFlight = (runs ?? []).some(
+    (r) => r.id === selectedId && (r.status === "pending" || r.status === "running"),
+  );
   useEffect(() => {
     if (!hasInFlight) return;
-    const t = setInterval(() => void load(), POLL_INTERVAL_MS);
+    const t = setInterval(() => {
+      void load();
+      // Refresh the open detail on the same tick, so a run watched while it executes
+      // fills in live. `loadDetail` leaves `detail` and `openResultId` alone, so this
+      // neither flickers nor collapses the row being read. The tick that observes the
+      // terminal status still fires this, which is how the finished state lands
+      // before the interval clears.
+      if (selectedInFlight && selectedIdRef.current) void loadDetail(selectedIdRef.current);
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(t);
-  }, [hasInFlight, load]);
+  }, [hasInFlight, selectedInFlight, load, loadDetail]);
 
   async function triggerRun() {
     setBusy(true);
@@ -123,11 +148,11 @@ export function RunsPanel() {
   }
 
   async function selectRun(id: string) {
+    selectedIdRef.current = id;
     setSelectedId(id);
     setDetail(null);
     setOpenResultId(null);
-    const res = await fetch(`/api/admin/evaluation/runs/${id}`);
-    if (res.ok) setDetail(await res.json());
+    await loadDetail(id);
   }
 
   if (!runs) return <div className="p-6 text-zinc-500">Loading...</div>;

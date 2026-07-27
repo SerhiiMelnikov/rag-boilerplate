@@ -175,4 +175,63 @@ describe("RunsPanel", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
     expect(countGets()).toBe(settledGets);
   });
+
+  it("refreshes the open detail while its run is still executing", async () => {
+    vi.useFakeTimers();
+    const RUNNING_RUN = { ...PENDING_RUN, status: "running" as const, settingsSnapshot: SETTINGS_SNAPSHOT };
+    let resultsSoFar: typeof RESULTS = [];
+    stubFetch((url, init) => {
+      if (url === "/api/admin/evaluation/runs" && !init?.method) {
+        return { ok: true, status: 200, json: async () => ({ runs: [RUNNING_RUN] }) };
+      }
+      if (typeof url === "string" && url.startsWith("/api/admin/evaluation/runs/")) {
+        return { ok: true, status: 200, json: async () => ({ run: RUNNING_RUN, results: resultsSoFar }) };
+      }
+      return undefined;
+    });
+
+    render(<RunsPanel />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+    fireEvent.click(screen.getByText("running").closest("button")!);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByText("No results yet.")).toBeInTheDocument();
+
+    // The background job writes its first result; the next poll tick must surface
+    // it without the admin re-selecting the run.
+    resultsSoFar = RESULTS;
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    await vi.waitFor(() => expect(screen.getByText("What is the refund policy?")).toBeInTheDocument());
+  });
+
+  it("a background refresh does not collapse the row being read", async () => {
+    vi.useFakeTimers();
+    const RUNNING_RUN = { ...PENDING_RUN, status: "running" as const, settingsSnapshot: SETTINGS_SNAPSHOT };
+    stubFetch((url, init) => {
+      if (url === "/api/admin/evaluation/runs" && !init?.method) {
+        return { ok: true, status: 200, json: async () => ({ runs: [RUNNING_RUN] }) };
+      }
+      if (typeof url === "string" && url.startsWith("/api/admin/evaluation/runs/")) {
+        return { ok: true, status: 200, json: async () => ({ run: RUNNING_RUN, results: RESULTS }) };
+      }
+      return undefined;
+    });
+
+    render(<RunsPanel />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    fireEvent.click(screen.getByText("running").closest("button")!);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+    // getByText, not findByText: the row is already flushed onto the DOM by the
+    // act()/advanceTimersByTimeAsync(0) above. With fake timers active, dom-testing-library's
+    // findBy*/waitFor hang here (their internal microtask drain uses a raw setTimeout(0) which
+    // this repo's fake-timer setup never fires, since it has no `jest` global to trigger the
+    // fake-timer-aware branch) — sticking to synchronous queries sidesteps that entirely.
+    fireEvent.click(screen.getByText("What is the refund policy?"));
+    expect(screen.getByText(/Refunds are available within 30 days/)).toBeInTheDocument();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    // Still expanded: a refresh that closed it would be worse than no refresh.
+    expect(screen.getByText(/Refunds are available within 30 days/)).toBeInTheDocument();
+  });
 });

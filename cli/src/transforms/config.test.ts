@@ -82,6 +82,14 @@ describe("rewriteScriptsForApiOnly", () => {
     expect(out.scripts["server:start"]).toBeUndefined();
     expect(out.scripts.lint).toBe("eslint ."); // untouched
   });
+
+  it("keeps the eval runner in api-only mode, where there is no admin panel to run one from", () => {
+    const out = JSON.parse(rewriteScriptsForApiOnly(JSON.stringify({
+      scripts: { dev: "next dev", build: "next build", start: "next start", eval: "tsx scripts/eval.ts", "server:dev": "tsx watch src/server/index.ts" },
+    })));
+    expect(out.scripts.eval).toBe("tsx scripts/eval.ts");
+    expect(out.scripts.dev).toBe("tsx watch src/server/index.ts");
+  });
 });
 
 describe("removeServerScripts", () => {

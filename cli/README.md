@@ -92,6 +92,7 @@ npm run db:migrate
 npm run seed:admin              # admin user, the default "General" workspace, and the registration allowlist
 npm run vectorstore:init        # qdrant, chroma, weaviate and pinecone only — pgvector needs no init
 npm run dev                     # → http://localhost:3000
+npm run eval                    # run the golden questions; --json, --min-judge, --min-recall
 ```
 
 A `.env` is generated for you with fresh secrets. Sign in with its `ADMIN_EMAIL` /

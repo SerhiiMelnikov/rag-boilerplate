@@ -171,6 +171,7 @@ npm install
 npm run db:migrate
 npm run seed:admin              # admin user + the default "General" workspace
 npm run dev                     # → http://localhost:3000
+npm run eval                    # run the golden questions; --json, --min-judge, --min-recall
 ```
 
 Leaving `SETTINGS_ENCRYPTION_KEY` unset (or not 32 bytes once base64-decoded)

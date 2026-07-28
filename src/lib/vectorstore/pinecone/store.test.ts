@@ -157,29 +157,63 @@ describe("pinecone store", () => {
     expect(sparse.deleteMany.mock.calls.map((c) => c[0].length)).toEqual([1000, 1000, 500]);
   });
 
-  it("listChunks lists ids by prefix (total = every id, not the page length), fetches metadata for only the page's ids, then sorts that page by chunkIndex nulls last", async () => {
+  it("listChunks fetches every id's metadata (not just the requested page's), sorts the whole document by chunkIndex nulls last, THEN slices the window", async () => {
     // Pinecone's list order is arbitrary (lexicographic by id), unrelated to
-    // chunkIndex — b/c intentionally aren't in chunkIndex order here.
+    // chunkIndex — ids intentionally aren't in chunkIndex order here. Slicing
+    // the id list BEFORE fetching metadata (the bug this guards against) would
+    // fetch and sort only whichever ids happen to land in [offset, offset+limit)
+    // of that arbitrary id order, not the chunks that actually belong there.
     const ids = ["d1#a", "d1#b", "d1#c", "d1#d", "d1#e"];
+    const metaById: Record<string, { content: string; contentHash: string; chunkIndex?: number }> = {
+      "d1#a": { content: "ca", contentHash: "ha", chunkIndex: 4 },
+      "d1#b": { content: "cb", contentHash: "hb", chunkIndex: 1 },
+      "d1#c": { content: "cc", contentHash: "hc" }, // legacy: no chunkIndex
+      "d1#d": { content: "cd", contentHash: "hd", chunkIndex: 3 },
+      "d1#e": { content: "ce", contentHash: "he", chunkIndex: 2 },
+    };
     const dense = fakeDense({
       listPaginated: vi.fn(async () => ({ vectors: ids.map((id) => ({ id })), pagination: undefined })),
-      fetch: vi.fn(async (_batch: string[]) => ({
-        records: {
-          "d1#b": { id: "d1#b", metadata: { content: "cb", contentHash: "hb", chunkIndex: 5 } },
-          "d1#c": { id: "d1#c", metadata: { content: "cc", contentHash: "hc" } }, // legacy: no chunkIndex
-        },
+      fetch: vi.fn(async (batch: string[]) => ({
+        records: Object.fromEntries(batch.map((id) => [id, { id, metadata: metaById[id] }])),
       })),
     });
     const out = await createPineconeStore(() => dense, () => fakeSparse()).listChunks("d1", { limit: 2, offset: 1 });
     expect(out.total).toBe(5); // full document count, not the 2-row page
-    // Only the windowed ids (offset..offset+limit of the id listing) are fetched —
-    // fetching every chunk's metadata would defeat the point of paging.
+    // Every id was fetched, not just the ones landing in the requested window.
     expect(dense.fetch).toHaveBeenCalledTimes(1);
-    expect(dense.fetch.mock.calls[0][0]).toEqual(["d1#b", "d1#c"]);
+    expect(dense.fetch.mock.calls[0][0]).toEqual(ids);
+    // Sorted ascending nulls-last: b(1), e(2), d(3), a(4), c(null). offset 1,
+    // limit 2 -> [e, d] — the true chunkIndex 2-3 window, not an id-order slice.
     expect(out.rows).toEqual([
-      { chunkIndex: 5, content: "cb", contentHash: "hb" },
-      { chunkIndex: null, content: "cc", contentHash: "hc" },
+      { chunkIndex: 2, content: "ce", contentHash: "he" },
+      { chunkIndex: 3, content: "cd", contentHash: "hd" },
     ]);
+  });
+
+  it("listChunks reconstructs true chunkIndex order across a document larger than one fetch batch, in an id order unrelated to chunkIndex", async () => {
+    // 1300 ids (more than one PINECONE_BATCH of 1000) returned by listPaginated
+    // in an order unrelated to chunkIndex: id "d1#0000" holds the HIGHEST
+    // chunkIndex, "d1#1299" the lowest — reproducing Pinecone's real
+    // lexicographic-by-id list order. The pre-fix code sliced this id list to
+    // [0, 10) BEFORE fetching metadata, so {limit:10, offset:0} returned
+    // whichever 10 ids happened to sort first lexicographically (chunkIndex
+    // 1290-1299, an arbitrary window), not chunkIndex 0-9.
+    const total = 1300;
+    const ids = Array.from({ length: total }, (_, i) => `d1#${String(i).padStart(4, "0")}`);
+    const chunkIndexForId = (id: string) => total - 1 - Number(id.slice(3));
+    const dense = fakeDense({
+      listPaginated: vi.fn(async () => ({ vectors: ids.map((id) => ({ id })), pagination: undefined })),
+      fetch: vi.fn(async (batch: string[]) => ({
+        records: Object.fromEntries(
+          batch.map((id) => [id, { id, metadata: { content: `c-${id}`, contentHash: `h-${id}`, chunkIndex: chunkIndexForId(id) } }]),
+        ),
+      })),
+    });
+    const out = await createPineconeStore(() => dense, () => fakeSparse()).listChunks("d1", { limit: 10, offset: 0 });
+    expect(out.total).toBe(total);
+    expect(out.rows.map((r) => r.chunkIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    // Every id across both batches was fetched (fetchAllRecords batches at 1000).
+    expect(dense.fetch).toHaveBeenCalledTimes(2);
   });
 
   it("listChunks returns an empty page without fetching when the document has no chunks", async () => {

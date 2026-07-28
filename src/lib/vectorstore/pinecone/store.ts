@@ -171,23 +171,30 @@ export function createPineconeStore(
     },
 
     async listChunks(documentId: string, opts: { limit: number; offset: number }): Promise<ChunkPage> {
-      // Enumerating ids (idsForDocument, reused from existingHashes) is cheap —
-      // just listPaginated round trips, no per-chunk metadata. total comes from
-      // that alone. Pinecone's list order is arbitrary (lexicographic by id),
-      // unrelated to chunkIndex, so — like Chroma — the interface only promises
-      // ordering within the returned page: fetching every chunk's metadata just
-      // to answer one page would defeat the point of paging, so only the ids
-      // landing in the requested window are fetched, then sorted locally.
+      // Pinecone's list order is arbitrary (lexicographic by id), unrelated to
+      // chunkIndex. An earlier version of this method sliced the id list to the
+      // requested window BEFORE fetching metadata, then sorted only that
+      // window — which returns an arbitrary id-order slice, not the actual
+      // chunkIndex range: a 300-chunk document listed in reverse-chunkIndex id
+      // order returned chunkIndex 250-299 for {limit:50, offset:0} instead of
+      // 0-49 (reproduced and covered by the test below). Same defect already
+      // fixed for Qdrant in 7a42de1, fixed here the same way: enumerate every
+      // id (idsForDocument, reused from existingHashes — cheap, just
+      // listPaginated round trips, no per-chunk metadata), fetch ALL of their
+      // metadata (fetchAllRecords already batches at PINECONE_BATCH), sort the
+      // whole document by chunkIndex (nulls last), THEN slice the requested
+      // window. Costs a full-document metadata fetch per page — same trade-off
+      // Qdrant and Chroma already make for this admin-only preview endpoint.
       const dense = denseFn();
       const ids = await idsForDocument(dense, documentId);
       if (ids.length === 0) return { rows: [], total: 0 };
-      const pageIds = ids.slice(opts.offset, opts.offset + opts.limit);
-      const records = pageIds.length > 0 ? await fetchAllRecords(dense, pageIds) : {};
-      const rows = pageIds
+      const records = await fetchAllRecords(dense, ids);
+      const rows = ids
         .map((id) => records[id])
         .filter((rec): rec is NonNullable<typeof rec> => Boolean(rec))
         .map((rec) => metaToChunkRow(rec.metadata ?? {}))
-        .sort(byChunkIndex);
+        .sort(byChunkIndex)
+        .slice(opts.offset, opts.offset + opts.limit);
       return { rows, total: ids.length };
     },
   };

@@ -122,12 +122,17 @@ export function createQdrantStore(client: QdrantClient = qdrantClient(), collect
       // order returned chunkIndex [44..53] for {limit:10, offset:0} instead of
       // [0..9] (reproduced and covered by the test below).
       //
-      // So, like Chroma and Pinecone: enumerate every chunk in the document,
-      // sort by chunkIndex (nulls last), then slice the requested window.
-      // This does pull a whole document's points into memory for one page —
-      // bounded by a single document, and this is an admin preview, so
-      // correctness (the actual lowest-indexed chunks, not an arbitrary
-      // scroll-order window) wins over avoiding that cost.
+      // So, like Chroma: enumerate every chunk in the document, sort by
+      // chunkIndex (nulls last), then slice the requested window. (Pinecone
+      // had the very same bug — this comment used to claim it already
+      // enumerated everything, which was false and part of why that bug went
+      // unnoticed for as long as it did; Pinecone's listChunks now does the
+      // same enumerate-sort-slice as this one and Chroma's, see
+      // src/lib/vectorstore/pinecone/store.ts.) This does pull a whole
+      // document's points into memory for one page — bounded by a single
+      // document, and this is an admin preview, so correctness (the actual
+      // lowest-indexed chunks, not an arbitrary scroll-order window) wins over
+      // avoiding that cost.
       const collected: Point[] = [];
       let cursor: unknown = undefined;
       do {

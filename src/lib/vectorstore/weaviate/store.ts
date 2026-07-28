@@ -60,7 +60,9 @@ function byChunkIndex(a: ChunkRow, b: ChunkRow): number {
 
 // Weaviate rejects offset beyond QUERY_MAXIMUM_RESULTS (10000 by default) — a
 // preview past chunk 10000 will fail; noted again at the paged fetchObjects
-// call in listChunks below that can hit this ceiling.
+// call in listChunks below that can hit this ceiling, and enforced in the
+// existingHashes paging loop so it never issues the rejected offset itself.
+const QUERY_MAXIMUM_RESULTS = 10_000;
 
 // The real weaviate-client v3 `Collection<T>` type ties `data.insertMany`'s
 // parameter shape to the (unused, since we never specify TProperties) generic
@@ -92,12 +94,21 @@ function uuidv5(name: string, namespace: string): string {
 // re-ingesting a document that hasn't changed inserts every one of its chunks
 // again instead of updating the originals — the corpus duplicates on every
 // re-ingest and grows without bound. Deriving the id from (documentId,
-// contentHash) means the same chunk content, re-ingested, targets the exact
-// same object id, and Weaviate overwrites it in place instead of adding a
-// second copy — live-verified: insertMany with an id that already exists
-// replaces properties and leaves the object count unchanged.
-function chunkObjectId(documentId: string, contentHash: string): string {
-  return uuidv5(`${documentId}:${contentHash}`, CHUNK_ID_NAMESPACE);
+// chunkIndex, contentHash) keeps that idempotent: unchanged content at an
+// unchanged position, re-ingested, targets the exact same object id, and
+// Weaviate overwrites it in place instead of adding a second copy —
+// live-verified: insertMany with an id that already exists replaces
+// properties and leaves the object count unchanged. chunkIndex has to be part
+// of the id (not just documentId + contentHash): ingest.ts doesn't dedupe
+// within a batch, so a document containing the same text twice at two
+// different positions would otherwise send two rows with identical
+// (documentId, contentHash) — identical ids — and the second silently
+// overwrites the first with no error, losing the earlier position and
+// leaving `total`/existingHashes permanently short by one. Including
+// chunkIndex keeps distinct positions as distinct objects while unchanged
+// content at an unchanged position still collapses onto the same id.
+function chunkObjectId(documentId: string, chunkIndex: number, contentHash: string): string {
+  return uuidv5(`${documentId}:${chunkIndex}:${contentHash}`, CHUNK_ID_NAMESPACE);
 }
 
 // Weaviate-backed store. Chunks are objects in the RagChunk class (app-supplied
@@ -113,7 +124,7 @@ export function createWeaviateStore(
       const col = await getCollection();
       await col.data.insertMany(
         rows.map((r) => ({
-          id: chunkObjectId(r.documentId, r.contentHash),
+          id: chunkObjectId(r.documentId, r.chunkIndex, r.contentHash),
           properties: { documentId: r.documentId, filename: r.filename, content: r.content, contentHash: r.contentHash, chunkIndex: r.chunkIndex },
           vectors: r.embedding,
         })),
@@ -127,14 +138,21 @@ export function createWeaviateStore(
       const PAGE_SIZE = 500;
       // Page with `offset` (not the `after` cursor — live-probed: the cursor is
       // rejected outright when a filter is present) until a short page comes
-      // back. Weaviate refuses any offset >= QUERY_MAXIMUM_RESULTS (10000 by
-      // default), so this listing is only ever complete for documents under
-      // that ceiling — no amount of paging can lift it. That's acceptable now:
-      // upsertChunks' correctness no longer depends on this set being complete,
-      // because chunk ids are deterministic (see chunkObjectId above), so a
-      // chunk this call fails to see still overwrites in place on re-ingest
-      // instead of duplicating.
-      for (let offset = 0; ; offset += PAGE_SIZE) {
+      // back. Weaviate refuses any offset >= QUERY_MAXIMUM_RESULTS outright
+      // (an "invalid pagination" error, not a graceful truncation), so the
+      // loop condition below stops one page short of ever issuing that offset,
+      // rather than looping unconditionally and letting the request past the
+      // ceiling fail the whole call — that used to turn a >=10000-chunk
+      // document into ingestExistingDocument catching the error and marking
+      // the entire document `status: "error"` with nothing stored, strictly
+      // worse than returning a merely truncated set. A document at or beyond
+      // the ceiling still only gets a truncated hash set — no amount of paging
+      // can lift that ceiling — but that's acceptable: the chunks past it just
+      // look "new" on the next ingest and get redundantly re-embedded and
+      // re-upserted, which costs extra embedding work, not correctness, because
+      // chunk ids are deterministic (see chunkObjectId above), so the re-upsert
+      // overwrites in place instead of duplicating.
+      for (let offset = 0; offset < QUERY_MAXIMUM_RESULTS; offset += PAGE_SIZE) {
         const res = await col.query.fetchObjects({
           filters: documentFilter,
           returnProperties: ["contentHash"],

@@ -79,6 +79,24 @@ describe("weaviate store", () => {
     expect(firstId).not.toBe(secondId);
   });
 
+  // The bug this guards: ingest.ts doesn't dedupe within a batch, so a document
+  // containing the same text twice sends two rows with identical (documentId,
+  // contentHash). With the id derived from those two fields alone, both rows
+  // land on the same id and the second insertMany call silently overwrites the
+  // first (no error) — the earlier position vanishes, the survivor carries the
+  // wrong chunkIndex, and existingHashes/`total` under-report forever.
+  // Including chunkIndex in the id keeps distinct positions as distinct objects.
+  it("upsertChunks derives different ids for two rows with identical content at different chunk positions within the same document", async () => {
+    const col = fakeCollection();
+    const store = createWeaviateStore(provide(col));
+    await store.upsertChunks([
+      { documentId: "d1", filename: "f.md", content: "same text", embedding: [0.1], contentHash: "h-same", chunkIndex: 0 },
+      { documentId: "d1", filename: "f.md", content: "same text", embedding: [0.2], contentHash: "h-same", chunkIndex: 1 },
+    ]);
+    const [id0, id1] = col.data.insertMany.mock.calls[0][0].map((o) => o.id);
+    expect(id0).not.toBe(id1);
+  });
+
   it("existingHashes collects contentHash filtered by documentId", async () => {
     const col = fakeCollection({
       fetchObjects: vi.fn(async () => ({ objects: [{ uuid: "p1", properties: { contentHash: "h1" } }, { uuid: "p2", properties: { contentHash: "h2" } }] })),
@@ -99,6 +117,29 @@ describe("weaviate store", () => {
     expect(fetchObjects).toHaveBeenCalledTimes(2);
     expect(fetchObjects.mock.calls[0][0]).toMatchObject({ limit: PAGE_SIZE, offset: 0 });
     expect(fetchObjects.mock.calls[1][0]).toMatchObject({ limit: PAGE_SIZE, offset: PAGE_SIZE });
+  });
+
+  // The bug this guards: the paging loop used to have no upper bound at all —
+  // for a document with >=10000 chunks (every page comes back full, so the
+  // "stop on a short page" condition never fires), it would eventually issue
+  // offset: 10000, which the real Weaviate server rejects outright ("invalid
+  // pagination"). ingestExistingDocument catches that and marks the WHOLE
+  // document status: "error" with nothing stored — worse than a merely
+  // truncated hash set. The fix stops paging one page shy of the ceiling.
+  it("existingHashes stops before the offset would reach the QUERY_MAXIMUM_RESULTS ceiling, never issuing offset: 10000", async () => {
+    const PAGE_SIZE = 500;
+    const CEILING = 10_000;
+    // Every page comes back full (as if the document has far more than 10000
+    // chunks) so the loop would never stop on its own via a short page.
+    const fetchObjects = vi.fn(async (args: { offset?: number }) => ({
+      objects: Array.from({ length: PAGE_SIZE }, (_, i) => ({ uuid: `p${args.offset}-${i}`, properties: { contentHash: `h${args.offset}-${i}` } })),
+    }));
+    const col = fakeCollection({ fetchObjects });
+    const out = await createWeaviateStore(provide(col)).existingHashes("d1");
+    expect(out.size).toBe(CEILING); // 20 full pages of 500, then stops
+    expect(fetchObjects).toHaveBeenCalledTimes(CEILING / PAGE_SIZE);
+    const offsetsRequested = fetchObjects.mock.calls.map((c) => c[0].offset ?? 0);
+    expect(Math.max(...offsetsRequested)).toBe(CEILING - PAGE_SIZE); // 9500 — 10000 is never requested
   });
 
   it("deleteByDocument calls deleteMany with a documentId filter", async () => {

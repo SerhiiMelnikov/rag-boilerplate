@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Trash2, ArrowUpDown } from "lucide-react";
+import { Upload, Trash2, ArrowUpDown, Layers } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { ImageModal } from "./image-modal";
 import { FileWorkspacesModal } from "./file-workspaces-modal";
+import { ChunksModal } from "./chunks-modal";
 
 interface FileRow {
   id: string;
@@ -39,6 +40,7 @@ export function FilesManager() {
   const [deleting, setDeleting] = useState(false);
   const [modalImage, setModalImage] = useState<FileRow | null>(null);
   const [wsFor, setWsFor] = useState<FileRow | null>(null);
+  const [chunksFor, setChunksFor] = useState<FileRow | null>(null);
   const [allWorkspaces, setAllWorkspaces] = useState<{ id: string; name: string; isDefault: boolean }[]>([]);
   const [uploadWorkspaceIds, setUploadWorkspaceIds] = useState<string[]>([]);
   const [workspaceFilter, setWorkspaceFilter] = useState("all");
@@ -200,7 +202,12 @@ export function FilesManager() {
                 </button>
               </td>
               <td className="text-right">
-                <button type="button" aria-label={`Delete ${f.filename}`} onClick={() => setPendingDelete(f)} className="text-zinc-400 transition-colors hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                <div className="flex items-center justify-end gap-3">
+                  {f.kind === "document" && (
+                    <button type="button" aria-label={`View chunks of ${f.filename}`} onClick={() => setChunksFor(f)} className="text-zinc-400 transition-colors hover:text-zinc-900 dark:hover:text-zinc-100"><Layers className="h-4 w-4" /></button>
+                  )}
+                  <button type="button" aria-label={`Delete ${f.filename}`} onClick={() => setPendingDelete(f)} className="text-zinc-400 transition-colors hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                </div>
               </td>
             </tr>
           ))}
@@ -227,6 +234,12 @@ export function FilesManager() {
           file={{ id: wsFor.id, kind: wsFor.kind, filename: wsFor.filename, workspaces: wsFor.workspaces }}
           onClose={() => setWsFor(null)}
           onSaved={() => { setWsFor(null); void load(); }}
+        />
+      )}
+      {chunksFor && (
+        <ChunksModal
+          doc={{ id: chunksFor.id, filename: chunksFor.filename }}
+          onClose={() => setChunksFor(null)}
         />
       )}
     </div>

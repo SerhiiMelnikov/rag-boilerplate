@@ -54,6 +54,19 @@ describe("FilesManager", () => {
     await waitFor(() => expect(screen.getByRole("dialog", { name: /Workspaces for report\.pdf/ })).toBeInTheDocument());
   });
 
+  it("opens the chunks modal from the per-document action", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.click(screen.getByLabelText("View chunks of report.pdf"));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /Chunks for report\.pdf/ })).toBeInTheDocument());
+  });
+
+  it("does not offer a chunks action for images", async () => {
+    render(<FilesManager />);
+    await screen.findByText("bike.png");
+    expect(screen.queryByLabelText("View chunks of bike.png")).not.toBeInTheDocument();
+  });
+
   it("posts the selected workspaceIds with the upload", async () => {
     render(<FilesManager />);
     await screen.findByText("report.pdf");

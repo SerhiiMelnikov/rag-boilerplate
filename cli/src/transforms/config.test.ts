@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret, setDbImage, setAppEnvOverrides, rewriteScriptsForApiOnly, removeServerScripts } from "./config.js";
+
+// cli/src/transforms -> cli/src -> cli -> repo root.
+const REPO_ROOT_PACKAGE_JSON = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "package.json");
 
 const PKG = JSON.stringify({ dependencies: { "@ai-sdk/google": "1", "@ai-sdk/openai": "1", "chromadb": "1", "next": "15" } }, null, 2);
 
@@ -58,12 +64,12 @@ describe("removeTestTooling", () => {
     expect(out.dependencies["next"]).toBe("15");
   });
 
-  // jsdom moved from devDependencies to dependencies once URL ingestion (Readability
-  // over jsdom) started needing it at runtime, not just under test. removeTestTooling
-  // must only ever strip test-only *devDependencies* — if it (or a future edit to
-  // TEST_DEV_DEPS) ever reached into dependencies too, every generated project would
-  // silently lose jsdom and URL ingestion would break with no local symptom.
-  it("leaves a runtime jsdom dependency alone (it only strips devDependencies)", () => {
+  // Mechanism check only: proves removeTestTooling's deletion loop is scoped to
+  // devDependencies and would leave a `dependencies.jsdom` entry alone even if
+  // TEST_DEV_DEPS (which lists "jsdom" — see config.ts) somehow matched it there
+  // too. This does NOT prove jsdom actually lives in the real package.json's
+  // dependencies — that's the next test, which reads the real file.
+  it("removeTestTooling's devDependencies-only deletion would leave a same-named `dependencies` entry alone", () => {
     const pkg = JSON.stringify(
       {
         scripts: { test: "vitest run" },
@@ -75,6 +81,21 @@ describe("removeTestTooling", () => {
     );
     const out = JSON.parse(removeTestTooling(pkg));
     expect(out.dependencies["jsdom"]).toBe("^29.1.1");
+  });
+
+  // The actual guard against jsdom being moved back to devDependencies in the
+  // REAL root package.json (a synthetic fixture, like the test above, can't
+  // catch that — it can only prove removeTestTooling's own logic is scoped
+  // correctly). URL extraction (Readability over jsdom, src/lib/rag/extract-url.ts)
+  // needs jsdom at runtime in every generated project, not just under this
+  // repo's own tests, so it must ship as a real `dependencies` entry — if it
+  // were ever moved to `devDependencies`, this repo's own tests would stay
+  // green (removeTestTooling only runs against generated projects, not this
+  // repo) while every generated project's URL ingestion silently broke.
+  it("keeps jsdom as a real dependency in the repo's own root package.json, not a devDependency", () => {
+    const pkg = JSON.parse(readFileSync(REPO_ROOT_PACKAGE_JSON, "utf8"));
+    expect(pkg.dependencies.jsdom).toBeDefined();
+    expect(pkg.devDependencies?.jsdom).toBeUndefined();
   });
 });
 

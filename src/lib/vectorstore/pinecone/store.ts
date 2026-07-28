@@ -91,7 +91,7 @@ export function createPineconeStore(
         withIds.map(({ id, row }) => ({
           id,
           values: row.embedding,
-          metadata: { documentId: row.documentId, filename: row.filename, content: row.content, contentHash: row.contentHash },
+          metadata: { documentId: row.documentId, filename: row.filename, content: row.content, contentHash: row.contentHash, chunkIndex: row.chunkIndex },
         })),
       );
       await sparse.upsertRecords(withIds.map(({ id, row }) => ({ _id: id, text: row.content })));

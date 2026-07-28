@@ -12,7 +12,7 @@ export function createPgVectorStore(db = defaultDb): VectorStore {
     async upsertChunks(rows: ChunkInput[]) {
       if (rows.length === 0) return;
       await db.insert(chunks).values(
-        rows.map((r) => ({ documentId: r.documentId, content: r.content, embedding: r.embedding, contentHash: r.contentHash })),
+        rows.map((r) => ({ documentId: r.documentId, content: r.content, embedding: r.embedding, contentHash: r.contentHash, chunkIndex: r.chunkIndex })),
       );
     },
 

@@ -25,12 +25,12 @@ describe("qdrant store", () => {
   it("upsertChunks sends points with vector + payload (documentId, content, contentHash, filename)", async () => {
     const client = fakeClient();
     await createQdrantStore(client as never, "c").upsertChunks([
-      { documentId: "d1", filename: "f.md", content: "hi", embedding: [0.1, 0.2], contentHash: "h1" },
+      { documentId: "d1", filename: "f.md", content: "hi", embedding: [0.1, 0.2], contentHash: "h1", chunkIndex: 1 },
     ]);
     expect(client.upsert).toHaveBeenCalledTimes(1);
     const arg = client.upsert.mock.calls[0][1];
     expect(arg.points[0].vector).toEqual([0.1, 0.2]);
-    expect(arg.points[0].payload).toMatchObject({ documentId: "d1", content: "hi", contentHash: "h1", filename: "f.md" });
+    expect(arg.points[0].payload).toMatchObject({ documentId: "d1", content: "hi", contentHash: "h1", filename: "f.md", chunkIndex: 1 });
   });
 
   it("upsertChunks with an empty array does not call the client", async () => {

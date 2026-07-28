@@ -54,7 +54,7 @@ export function createWeaviateStore(
       const col = await getCollection();
       await col.data.insertMany(
         rows.map((r) => ({
-          properties: { documentId: r.documentId, filename: r.filename, content: r.content, contentHash: r.contentHash },
+          properties: { documentId: r.documentId, filename: r.filename, content: r.content, contentHash: r.contentHash, chunkIndex: r.chunkIndex },
           vectors: r.embedding,
         })),
       );

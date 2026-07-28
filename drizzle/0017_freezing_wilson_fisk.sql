@@ -1,0 +1,1 @@
+ALTER TABLE "chunks" ADD COLUMN "chunk_index" integer;

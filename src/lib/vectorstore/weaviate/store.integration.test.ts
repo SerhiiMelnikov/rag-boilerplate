@@ -39,8 +39,8 @@ describe.runIf(RUN)("Weaviate adapter (live)", () => {
 
   it("upsert -> existingHashes -> searchVector -> searchKeyword -> deleteByDocument", async () => {
     const rows: ChunkInput[] = [
-      { documentId: docId, filename: "alpha.md", content: "the quick brown fox jumps", embedding: oneHot(0), contentHash: "h-alpha" },
-      { documentId: docId, filename: "alpha.md", content: "a lazy dog sleeps peacefully", embedding: oneHot(1), contentHash: "h-beta" },
+      { documentId: docId, filename: "alpha.md", content: "the quick brown fox jumps", embedding: oneHot(0), contentHash: "h-alpha", chunkIndex: 0 },
+      { documentId: docId, filename: "alpha.md", content: "a lazy dog sleeps peacefully", embedding: oneHot(1), contentHash: "h-beta", chunkIndex: 1 },
     ];
     await store.upsertChunks(rows);
 

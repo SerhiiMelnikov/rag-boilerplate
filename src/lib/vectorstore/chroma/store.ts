@@ -64,6 +64,10 @@ export function createChromaStore(
           filename: r.filename,
           content: r.content,
           contentHash: r.contentHash,
+          // ChromaCollectionLike constrains metadata values to strings (see the
+          // interface note above); chunkIndex is stringified on write and must
+          // be parsed back to a number by any future reader.
+          chunkIndex: String(r.chunkIndex),
         })),
       });
     },

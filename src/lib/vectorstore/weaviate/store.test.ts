@@ -35,10 +35,10 @@ describe("weaviate store", () => {
   it("upsertChunks inserts objects with properties + vectors", async () => {
     const col = fakeCollection();
     await createWeaviateStore(provide(col)).upsertChunks([
-      { documentId: "d1", filename: "f.md", content: "hi", embedding: [0.1, 0.2], contentHash: "h1" },
+      { documentId: "d1", filename: "f.md", content: "hi", embedding: [0.1, 0.2], contentHash: "h1", chunkIndex: 1 },
     ]);
     const arg = col.data.insertMany.mock.calls[0][0];
-    expect(arg[0].properties).toMatchObject({ documentId: "d1", filename: "f.md", content: "hi", contentHash: "h1" });
+    expect(arg[0].properties).toMatchObject({ documentId: "d1", filename: "f.md", content: "hi", contentHash: "h1", chunkIndex: 1 });
     expect(arg[0].vectors).toEqual([0.1, 0.2]);
   });
 

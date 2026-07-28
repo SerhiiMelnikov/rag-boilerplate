@@ -30,12 +30,12 @@ describe("pinecone store", () => {
     const dense = fakeDense();
     const sparse = fakeSparse();
     await createPineconeStore(() => dense, () => sparse).upsertChunks([
-      { documentId: "d1", filename: "f.md", content: "hi", embedding: [0.1, 0.2], contentHash: "h1" },
+      { documentId: "d1", filename: "f.md", content: "hi", embedding: [0.1, 0.2], contentHash: "h1", chunkIndex: 1 },
     ]);
     const denseArg = dense.upsert.mock.calls[0][0];
     expect(denseArg[0].id.startsWith("d1#")).toBe(true);
     expect(denseArg[0].values).toEqual([0.1, 0.2]);
-    expect(denseArg[0].metadata).toMatchObject({ documentId: "d1", filename: "f.md", content: "hi", contentHash: "h1" });
+    expect(denseArg[0].metadata).toMatchObject({ documentId: "d1", filename: "f.md", content: "hi", contentHash: "h1", chunkIndex: 1 });
     const sparseArg = sparse.upsertRecords.mock.calls[0][0];
     expect(sparseArg[0]._id).toBe(denseArg[0].id);
     expect(sparseArg[0].text).toBe("hi");

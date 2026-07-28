@@ -57,7 +57,10 @@ export async function ingestExistingDocument(
 
     const existing = await vectorStore.existingHashes(documentId);
     const fresh = pieces
-      .map((content) => ({ content, contentHash: hashContent(content) }))
+      // The index must come from `pieces`, not from the filtered array: on a
+      // re-ingest that skips already-stored chunks, `fresh`'s own indices are
+      // not document positions.
+      .map((content, chunkIndex) => ({ content, chunkIndex, contentHash: hashContent(content) }))
       .filter((p) => !existing.has(p.contentHash));
     const skipped = pieces.length - fresh.length;
 
@@ -69,6 +72,7 @@ export async function ingestExistingDocument(
         content: f.content,
         embedding: embeddings[i],
         contentHash: f.contentHash,
+        chunkIndex: f.chunkIndex,
       }));
       await vectorStore.upsertChunks(rows);
     }

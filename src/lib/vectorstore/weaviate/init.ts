@@ -22,6 +22,7 @@ export async function ensureWeaviateCollection(
       { name: "filename", dataType: weaviate.configure.dataType.TEXT },
       { name: "content", dataType: weaviate.configure.dataType.TEXT },
       { name: "contentHash", dataType: weaviate.configure.dataType.TEXT },
+      { name: "chunkIndex", dataType: weaviate.configure.dataType.INT },
     ],
   });
 }

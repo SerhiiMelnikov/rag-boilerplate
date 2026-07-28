@@ -16,6 +16,10 @@ export interface ChunkInput {
   content: string;
   embedding: number[];
   contentHash: string;
+  // Position in the source document, 0-based. Recorded so the admin chunk
+  // preview can show a document in its real order — the only thing that makes
+  // "was this sentence cut in half?" answerable.
+  chunkIndex: number;
 }
 
 // Chunk storage + retrieval. The ONLY thing that varies by backend.

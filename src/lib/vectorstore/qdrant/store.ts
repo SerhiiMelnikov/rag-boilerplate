@@ -29,7 +29,7 @@ export function createQdrantStore(client: QdrantClient = qdrantClient(), collect
         points: rows.map((r) => ({
           id: randomUUID(),
           vector: r.embedding,
-          payload: { documentId: r.documentId, content: r.content, contentHash: r.contentHash, filename: r.filename },
+          payload: { documentId: r.documentId, content: r.content, contentHash: r.contentHash, filename: r.filename, chunkIndex: r.chunkIndex },
         })),
       });
     },

@@ -28,13 +28,15 @@ describe("chroma store", () => {
   it("upsertChunks adds ids + embeddings + documents + metadatas", async () => {
     const col = fakeCollection();
     await createChromaStore(provide(col)).upsertChunks([
-      { documentId: "d1", filename: "f.md", content: "hi", embedding: [0.1, 0.2], contentHash: "h1" },
+      { documentId: "d1", filename: "f.md", content: "hi", embedding: [0.1, 0.2], contentHash: "h1", chunkIndex: 1 },
     ]);
     expect(col.add).toHaveBeenCalledTimes(1);
     const arg = col.add.mock.calls[0][0];
     expect(arg.embeddings).toEqual([[0.1, 0.2]]);
     expect(arg.documents).toEqual(["hi"]);
-    expect(arg.metadatas[0]).toMatchObject({ documentId: "d1", filename: "f.md", content: "hi", contentHash: "h1" });
+    // chunkIndex is stringified because ChromaCollectionLike constrains metadata
+    // values to strings.
+    expect(arg.metadatas[0]).toMatchObject({ documentId: "d1", filename: "f.md", content: "hi", contentHash: "h1", chunkIndex: "1" });
     expect(arg.ids).toHaveLength(1);
   });
 

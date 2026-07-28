@@ -76,6 +76,17 @@ describe("buildOpenApiDocument", () => {
     expect(chunksGet?.responses?.[403]).toBeTruthy();
   });
 
+  // The anti-drift check below only proves the path exists. This fetches an admin-
+  // supplied URL and ingests whatever it returns, so it must also be documented as
+  // requiring a session, able to refuse a non-admin, and able to reject a bad URL.
+  it("documents the ingest-from-url endpoint as guarded, with 401 + 403 + 400 responses", () => {
+    const urlPost = doc.paths?.["/api/admin/documents/url"]?.post;
+    expect(urlPost?.security).toEqual([{ sessionCookie: [] }]);
+    expect(urlPost?.responses?.[400]).toBeTruthy();
+    expect(urlPost?.responses?.[401]).toBeTruthy();
+    expect(urlPost?.responses?.[403]).toBeTruthy();
+  });
+
   it("documents the evaluation endpoints as guarded, with 401 + 403 responses", () => {
     for (const [path, method] of [
       ["/api/admin/evaluation/questions", "get"],

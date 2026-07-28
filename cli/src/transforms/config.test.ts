@@ -57,6 +57,25 @@ describe("removeTestTooling", () => {
     expect(out.devDependencies["typescript"]).toBe("5");
     expect(out.dependencies["next"]).toBe("15");
   });
+
+  // jsdom moved from devDependencies to dependencies once URL ingestion (Readability
+  // over jsdom) started needing it at runtime, not just under test. removeTestTooling
+  // must only ever strip test-only *devDependencies* — if it (or a future edit to
+  // TEST_DEV_DEPS) ever reached into dependencies too, every generated project would
+  // silently lose jsdom and URL ingestion would break with no local symptom.
+  it("leaves a runtime jsdom dependency alone (it only strips devDependencies)", () => {
+    const pkg = JSON.stringify(
+      {
+        scripts: { test: "vitest run" },
+        dependencies: { next: "15", jsdom: "^29.1.1" },
+        devDependencies: { typescript: "5" },
+      },
+      null,
+      2,
+    );
+    const out = JSON.parse(removeTestTooling(pkg));
+    expect(out.dependencies["jsdom"]).toBe("^29.1.1");
+  });
 });
 
 const PKG_WITH_SERVER_SCRIPTS = JSON.stringify(

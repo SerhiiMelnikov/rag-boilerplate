@@ -158,6 +158,21 @@ describe("ingestDocument", () => {
     expect(setStatus).toHaveBeenLastCalledWith("doc-existing", "ready");
   });
 
+  it("never calls parse when text is supplied (the URL ingestion path — a URL has no file extension, so parseDocument would throw UnsupportedFileTypeError)", async () => {
+    const documentRepo = makeDocumentRepo("doc-url");
+    const vectorStore = makeVectorStore();
+    const parse = vi.fn(async () => "should never run");
+    const embed = vi.fn(async (texts: string[]) => texts.map(() => [0.1]));
+    const result = await ingestExistingDocument(
+      "doc-url",
+      { filename: "https://example.com/article", text: "already-extracted article text" },
+      { parse, chunk: () => ["c1"], embed, documentRepo, vectorStore, settings },
+    );
+    expect(parse).not.toHaveBeenCalled();
+    expect(embed).toHaveBeenCalledWith(["c1"]);
+    expect(result.status).toBe("ready");
+  });
+
   it("stores each chunk's position in the document, not its position among the fresh ones", async () => {
     const upserted: ChunkInput[] = [];
     const vectorStore = {

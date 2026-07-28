@@ -35,24 +35,35 @@ export interface IngestResult {
   error?: string;
 }
 
+// Input to ingestExistingDocument: either raw file bytes to be parsed (routed by
+// filename extension — the CLI/upload path), or text already extracted elsewhere
+// (the URL ingestion path — src/lib/rag/extract-url.ts's Readability output). A
+// union, not two optional fields: a URL has no file extension, so if both fields
+// were merely optional, a future refactor could reintroduce a call to `parse` on
+// this path and it would compile fine, then throw UnsupportedFileTypeError the
+// first time it actually ran. Making the two shapes mutually exclusive means the
+// compiler — not a caller's discipline — keeps that from happening.
+export type IngestExistingInput = { filename: string; data: Buffer } | { filename: string; text: string };
+
 // Processes an already-created document row: parse -> chunk -> hash/dedupe ->
 // embed -> store, tracking status. Split out from createDocument so callers can
 // create the row synchronously (and show it immediately) while running this in
 // the background. Never throws: failures are recorded on the row as "error".
 export async function ingestExistingDocument(
   documentId: string,
-  input: { filename: string; data: Buffer },
+  input: IngestExistingInput,
   deps: IngestDeps,
 ): Promise<IngestResult> {
   const parseFn = deps.parse ?? parseDocument;
-  const parse = (filename: string, data: Buffer) => parseFn(filename, data, deps.settings);
   const chunk = deps.chunk ?? chunkText;
   const embed = deps.embed ?? ((texts: string[]) => embedDocuments(texts, deps.settings));
   const { documentRepo, vectorStore } = deps;
 
   try {
     await documentRepo.setStatus(documentId, "processing");
-    const text = await parse(input.filename, input.data);
+    // When `text` is already extracted, skip `parse` entirely rather than calling
+    // it with an absent buffer — see IngestExistingInput's comment for why.
+    const text = "text" in input ? input.text : await parseFn(input.filename, input.data, deps.settings);
     const pieces = chunk(text);
 
     const existing = await vectorStore.existingHashes(documentId);

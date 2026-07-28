@@ -38,6 +38,12 @@ ships as a Docker image when you're ready.
   plus workspaces, users, provider API keys, SMTP, retrieval settings, rate limits,
   answer-rating analytics, and a token-usage dashboard (per user, per workspace and
   a 30-day trend, also exposed as `GET /api/admin/usage`).
+- **Ingest from a URL** — paste a page's URL in **Files** and it is fetched,
+  its readable article text extracted, and ingested exactly like an upload
+  (`POST /api/admin/documents/url`) — no file, no extension needed.
+- **Chunk preview** — open a document's chunk preview in **Files** to see each
+  chunk's position and character count (`GET /api/admin/documents/{id}/chunks`);
+  chunks ingested before position tracking was added show as order-unknown.
 - **Evaluation harness** — curate a golden set of questions (each tagged with the
   documents that should answer it), run them through the real retrieval + answer
   pipeline, and score both retrieval (recall/precision/MRR) and the answer (an LLM
@@ -132,6 +138,10 @@ npx rag-boilerplate my-api --app-kind api --providers google --default-provider 
 - **Docs** — `/docs` (Scalar) and `/api/openapi.json` are still served, exactly
   like the full app; with no admin UI in this build, `/docs` is the fastest way
   to see the full contract.
+- **Ingesting & inspecting documents** — `POST /api/admin/documents/url` ingests
+  a web page directly (fetches it, extracts the readable article text, and
+  ingests it like an upload); `GET /api/admin/documents/{id}/chunks` previews how
+  a document was chunked (position + character count per chunk).
 - **Run it** — `npm run dev` (watches) or `npm run start`, same script names as
   the full app, but both now run `src/server/index.ts` directly via `tsx`.
   `npm run build` is a type-check only (`tsc --noEmit`) — there is nothing to
@@ -162,8 +172,11 @@ you set it.
 
 ## Using it
 
-- **Upload** documents and images under **Files**. They land in the **General**
-  workspace, which every user can see.
+- **Upload** documents and images under **Files**, or paste a URL there to ingest
+  a web page directly (no file needed). They land in the **General** workspace,
+  which every user can see.
+- **Inspect chunking** by opening a document's chunk preview in **Files** — each
+  row shows its position in the document and its character count.
 - **Scope them** by creating a workspace under **Workspaces**, moving files into it
   from the Files list, and granting users access. A file can live in several
   workspaces at once.

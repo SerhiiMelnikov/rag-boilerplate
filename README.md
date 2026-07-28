@@ -60,8 +60,9 @@ The generated app includes:
 - Image RAG: a vision model captions each uploaded image (describing people and
   animals in depth), and the model decides which images actually answer a request
 - An admin panel: a unified Files list (documents + images, with workspace
-  membership), workspaces and user access, provider API keys (encrypted at rest),
-  retrieval settings, user management, rating analytics
+  membership) that can also ingest a document directly from a URL and preview a
+  document's chunks (position + length), workspaces and user access, provider API
+  keys (encrypted at rest), retrieval settings, user management, rating analytics
 - **Rate limits** — under **Settings**, cap chat requests per minute and per day
   (per user). Set either of them to `0` to disable that limit. **They are on
   by default — see [Rate limits](#rate-limits) below.**

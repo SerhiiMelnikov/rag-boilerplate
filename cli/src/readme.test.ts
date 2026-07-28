@@ -284,3 +284,37 @@ describe("generateReadme secrets", () => {
     expect(readme).not.toContain("Admin → Evaluation");
   });
 });
+
+describe("generateReadme URL ingest and chunk preview", () => {
+  // Both features shipped in the same branch as this generator's Admin section
+  // was last touched (usage dashboard) and the eval runner before it — this repo
+  // has now lost documentation to build-template.ts's README.md EXCLUDE twice.
+  // This generator is the only README a scaffolded project gets, so these two
+  // capabilities must be pinned here, not just in the repo's own README.md.
+  it("documents ingesting a document from a URL in the full-app admin Files bullet", () => {
+    const readme = generateReadme(opts({ appKind: "full" }));
+    expect(readme).toContain("## Admin");
+    expect(readme).toContain("ingest a");
+    expect(readme).toContain("page directly from a URL");
+    expect(readme).toContain("Ingest URL");
+  });
+
+  it("documents the chunk preview in the full-app admin section", () => {
+    const readme = generateReadme(opts({ appKind: "full" }));
+    expect(readme).toContain("**Chunk preview**");
+    expect(readme).toContain("chunk's position and length");
+    expect(readme).toMatch(/order-unknown/);
+  });
+
+  it("api-only: documents POST /api/admin/documents/url for ingesting a page", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("POST /api/admin/documents/url");
+    expect(readme).toMatch(/readable article text/);
+  });
+
+  it("api-only: documents GET /api/admin/documents/{id}/chunks for chunk inspection", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("GET /api/admin/documents/{id}/chunks");
+    expect(readme).toMatch(/position/);
+  });
+});

@@ -18,6 +18,21 @@ function fakeFetch(body: string, contentType = "text/html; charset=utf-8", statu
     new Response(body, { status, headers: { "content-type": contentType } })) as unknown as typeof fetch;
 }
 
+// Like fakeFetch, but for a raw byte body -- passing a JS string to the
+// Response constructor has it re-encoded as UTF-8, which would defeat a test
+// of non-UTF-8 charset sniffing. Also lets a test simulate a redirected
+// response's `.url` differing from the originally requested URL.
+function fakeFetchBytes(body: Buffer, contentType: string, responseUrl = ""): typeof fetch {
+  return (async () => {
+    // Buffer's generic ArrayBufferLike parameter (it may back onto a
+    // SharedArrayBuffer) is narrower than lib.dom's BodyInit expects here;
+    // Buffer is a Uint8Array at runtime, so this is a type-only bridge.
+    const res = new Response(body as unknown as BodyInit, { status: 200, headers: { "content-type": contentType } });
+    if (responseUrl) Object.defineProperty(res, "url", { value: responseUrl, configurable: true });
+    return res;
+  }) as unknown as typeof fetch;
+}
+
 describe("extractFromUrl", () => {
   it("extracts the article's title and text, stripping nav/footer/cookie-banner furniture", async () => {
     const html = await fixture("article.html");
@@ -79,6 +94,24 @@ describe("extractFromUrl", () => {
     await expect(extractFromUrl("https://example.com/slow", { fetchFn })).rejects.toThrow(
       /timed out/i,
     );
+  });
+
+  it("sniffs a non-UTF-8 charset from the content-type header instead of assuming UTF-8 (avoids mojibake)", async () => {
+    const html =
+      `<!DOCTYPE html><html><head><meta charset="iso-8859-1"><title>Café article</title></head>` +
+      `<body><article><p>${"filler word ".repeat(40)}A café serves café, résumé writers browse naïve prose. ${"filler word ".repeat(40)}</p></article></body></html>`;
+    // "latin1" is Node's name for ISO-8859-1: it encodes each code point <= 0xFF
+    // as a single byte (e.g. é, U+00E9, -> byte 0xE9). Decoding those bytes as
+    // UTF-8 -- the pre-fix behavior -- treats 0xE9 as an incomplete multi-byte
+    // sequence and replaces it with the U+FFFD mojibake marker.
+    const bytes = Buffer.from(html, "latin1");
+    const result = await extractFromUrl("https://example.com/latin1", {
+      fetchFn: fakeFetchBytes(bytes, "text/html; charset=iso-8859-1"),
+    });
+    expect(result.text).toContain("café");
+    expect(result.text).toContain("résumé");
+    expect(result.text).toContain("naïve");
+    expect(result.text).not.toContain("�");
   });
 
   it("rejects a non-ok HTTP response", async () => {

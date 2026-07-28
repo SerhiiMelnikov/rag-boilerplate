@@ -47,8 +47,10 @@ export interface ExtractedArticle {
 // Read a fetch Response body in bounded chunks, rejecting once the total
 // exceeds maxBytes rather than trusting a (possibly absent or dishonest)
 // Content-Length header and buffering an arbitrarily large body into memory.
-async function readBodyCapped(response: Response, maxBytes: number): Promise<string> {
-  if (!response.body) return "";
+// Returns the raw bytes (not decoded to a string) so the caller can hand them
+// to jsdom's own charset sniffing instead of assuming UTF-8 — see extractFromUrl.
+async function readBodyCapped(response: Response, maxBytes: number): Promise<Buffer> {
+  if (!response.body) return Buffer.alloc(0);
 
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -65,7 +67,7 @@ async function readBodyCapped(response: Response, maxBytes: number): Promise<str
     }
     chunks.push(value);
   }
-  return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString("utf-8");
+  return Buffer.concat(chunks.map((c) => Buffer.from(c)));
 }
 
 // Fetch a URL and extract clean, readable article text from it — the raw
@@ -113,9 +115,21 @@ export async function extractFromUrl(
     );
   }
 
-  const html = await readBodyCapped(response, MAX_RESPONSE_BYTES);
+  const body = await readBodyCapped(response, MAX_RESPONSE_BYTES);
 
-  const dom = new JSDOM(html, { url });
+  // The final URL after any redirects, not the originally requested one — a
+  // redirected fetch (e.g. http -> https, or to a CDN host) means Readability
+  // and jsdom would otherwise resolve the page's relative links/assets against
+  // the wrong origin. Falls back to `url` for fetchFn stand-ins in tests whose
+  // canned Response has no `url` of its own.
+  const baseUrl = response.url || url;
+
+  // Pass the raw bytes + the response's own content-type (not a string we've
+  // already decoded as UTF-8) so jsdom sniffs the real charset the way a
+  // browser would (HTTP charset param, then <meta charset>/BOM, per the
+  // WHATWG encoding-sniffing algorithm). Decoding as UTF-8 unconditionally, as
+  // before, turned any windows-1251/Shift_JIS/etc. page into mojibake.
+  const dom = new JSDOM(body, { url: baseUrl, contentType });
   const article = new Readability(dom.window.document).parse();
 
   if (article && article.textContent && article.textContent.trim().length > 0) {
@@ -127,7 +141,7 @@ export async function extractFromUrl(
   // document's text content rather than throwing: a mediocre extraction is
   // more useful than a failed ingest. Re-parse into a fresh document because
   // Readability.parse() mutates the document it was given.
-  const fallbackDom = new JSDOM(html, { url });
+  const fallbackDom = new JSDOM(body, { url: baseUrl, contentType });
   return {
     title: (fallbackDom.window.document.title ?? "").trim(),
     text: (fallbackDom.window.document.body?.textContent ?? "").trim(),

@@ -21,6 +21,13 @@ jobs:
       - run: npx vitest run
 
   integration:
+    # This name is stale — the job also runs the usage-analytics integration
+    # suite now (see the comment above that vitest invocation below) — but it
+    # is left as-is on purpose: this exact string is a required status check
+    # in this repo's branch protection settings. Renaming it would mean the
+    # required check never reports, blocking every PR until someone edits the
+    # GitHub branch protection rule by hand to match. If this job picks up a
+    # third unrelated suite, update this comment rather than the name.
     name: integration (ratelimit)
     runs-on: ubuntu-latest
     services:

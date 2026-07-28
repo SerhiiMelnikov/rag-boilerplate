@@ -38,9 +38,10 @@ const num = (v: unknown): number => (typeof v === "number" ? v : Number(v ?? 0))
 // Shared so the four queries cannot drift apart. `m` is the messages alias every
 // query below uses, including the ones with no join, precisely so these compose.
 //
-// `usage is not null` excludes the image path, which streams a canned reply with
-// no model call at all (src/api/chat/handler.ts) — those rows have no tokens to
-// attribute, so excluding them is correct rather than a gap.
+// `usage is not null` excludes every reply that short-circuits before a model
+// call — `replyWithMessage` in src/api/chat/handler.ts serves the image path,
+// the no-context fallback, and every provider-error fallback this way — those
+// rows have no tokens to attribute, so excluding them is correct rather than a gap.
 const SCOPE = sql`m.role = 'assistant' and m.usage is not null and m.created_at >= now() - make_interval(days => ${USAGE_WINDOW_DAYS})`;
 const PROMPT_SUM = sql`coalesce(sum(coalesce((m.usage->>'promptTokens')::int, 0)), 0)::int`;
 const COMPLETION_SUM = sql`coalesce(sum(coalesce((m.usage->>'completionTokens')::int, 0)), 0)::int`;

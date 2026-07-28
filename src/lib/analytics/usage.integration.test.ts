@@ -33,6 +33,13 @@ describe.runIf(RUN)("usage analytics (integration)", () => {
   const workspaceXId = randomUUID();
   const workspaceYId = randomUUID();
   const convAId = randomUUID();
+  // User A gets a SECOND conversation, on purpose: with only one conversation
+  // per user, "group by conversation" and "group by user" produce identical
+  // rows, so a regression that widens getUsageByUser's GROUP BY to include the
+  // conversation id would still pass. With two conversations for the same
+  // user, that regression emits two rows where this fixture expects one, and
+  // the per-user assertion below catches it.
+  const convA2Id = randomUUID();
   const convBId = randomUUID();
   let todayLabel = "";
   let baselineSummary = { promptTokens: 0, completionTokens: 0, totalTokens: 0, answers: 0 };
@@ -60,6 +67,7 @@ describe.runIf(RUN)("usage analytics (integration)", () => {
     ]);
     await db.insert(conversations).values([
       { id: convAId, userId: userAId },
+      { id: convA2Id, userId: userAId },
       { id: convBId, userId: userBId },
     ]);
 
@@ -82,6 +90,10 @@ describe.runIf(RUN)("usage analytics (integration)", () => {
       { conversationId: convAId, role: "assistant", content: "a4-stale", workspaceId: workspaceXId, usage: { promptTokens: 999, completionTokens: 999 }, createdAt: sql`now() - interval '31 days'` },
       // In window, workspace Y, second user.
       { conversationId: convBId, role: "assistant", content: "b1", workspaceId: workspaceYId, usage: { promptTokens: 20, completionTokens: 5 } },
+      // In window, user A's SECOND conversation, workspace X. Must merge into
+      // user A's single row (not add a second one) and must add into workspace
+      // X's total alongside a1.
+      { conversationId: convA2Id, role: "assistant", content: "a5", workspaceId: workspaceXId, usage: { promptTokens: 15, completionTokens: 7 } },
     ]);
   });
 
@@ -101,18 +113,24 @@ describe.runIf(RUN)("usage analytics (integration)", () => {
 
   it("getUsageSummary aggregates only the in-window assistant rows with usage", async () => {
     const summary = await getUsageSummary();
+    // Fixture total across all 4 in-window rows: a1(100/50) + a2(40/10) +
+    // a5(15/7) + b1(20/5) = 175 prompt / 72 completion / 247 total / 4 answers.
     expect(summary).toEqual({
-      promptTokens: baselineSummary.promptTokens + 160,
-      completionTokens: baselineSummary.completionTokens + 65,
-      totalTokens: baselineSummary.totalTokens + 225,
-      answers: baselineSummary.answers + 3,
+      promptTokens: baselineSummary.promptTokens + 175,
+      completionTokens: baselineSummary.completionTokens + 72,
+      totalTokens: baselineSummary.totalTokens + 247,
+      answers: baselineSummary.answers + 4,
     });
   });
 
-  it("getUsageByUser orders heaviest first with correct per-user sums", async () => {
+  it("getUsageByUser merges both of user A's conversations into a single row, ordered heaviest first", async () => {
     const rows = (await getUsageByUser()).filter((r) => r.id === userAId || r.id === userBId);
+    // User A's row must merge convA (a1: 100/50, a2: 40/10) and convA2 (a5: 15/7)
+    // into exactly ONE row (155/67/222/3 answers), not two. A regression that
+    // groups by conversation as well as user would emit a second userAId row
+    // here instead, and this exact toEqual would fail on array shape alone.
     expect(rows).toEqual([
-      { id: userAId, label: expect.stringContaining("usage-test-a-"), promptTokens: 140, completionTokens: 60, totalTokens: 200, answers: 2 },
+      { id: userAId, label: expect.stringContaining("usage-test-a-"), promptTokens: 155, completionTokens: 67, totalTokens: 222, answers: 3 },
       { id: userBId, label: expect.stringContaining("usage-test-b-"), promptTokens: 20, completionTokens: 5, totalTokens: 25, answers: 1 },
     ]);
   });
@@ -130,32 +148,34 @@ describe.runIf(RUN)("usage analytics (integration)", () => {
       answers: baselineUnassigned.answers + 1,
     });
 
+    // Workspace X aggregates a1 (100/50, convA) AND a5 (15/7, convA2) — two
+    // messages from two different conversations of the same user, both tagged
+    // with this workspace.
     const x = all.find((r) => r.id === workspaceXId);
-    expect(x).toEqual({ id: workspaceXId, label: expect.stringContaining("Usage Test Workspace X"), promptTokens: 100, completionTokens: 50, totalTokens: 150, answers: 1 });
+    expect(x).toEqual({ id: workspaceXId, label: expect.stringContaining("Usage Test Workspace X"), promptTokens: 115, completionTokens: 57, totalTokens: 172, answers: 2 });
 
     const y = all.find((r) => r.id === workspaceYId);
     expect(y).toEqual({ id: workspaceYId, label: expect.stringContaining("Usage Test Workspace Y"), promptTokens: 20, completionTokens: 5, totalTokens: 25, answers: 1 });
 
-    // Ordering: heaviest total first, among this fixture's own rows (x=150 > unassigned's
-    // fixture contribution=50 > y=25 — true regardless of any baseline in the shared bucket
-    // since baseline is non-negative).
+    // Ordering: heaviest total first. x (172) and y (25) are exact, baseline-free
+    // totals (their ids are fresh random UUIDs nothing else can contribute to),
+    // so x must sort ahead of y regardless of whatever the shared Unassigned
+    // bucket's baseline happens to be.
     const ix = all.indexOf(x!);
-    const iu = all.indexOf(unassigned!);
     const iy = all.indexOf(y!);
     expect(ix).toBeLessThan(iy);
-    // Unassigned's position depends on its baseline; only assert x (this fixture's
-    // heaviest row) sorts ahead of y (its lightest), which order-by total guarantees.
-    expect(iu).toBeGreaterThanOrEqual(0);
   });
 
   it("getUsageTrend contains the seeded day and excludes the out-of-window day", async () => {
     const trend = await getUsageTrend();
     const todayPoint = trend.find((p) => p.day === todayLabel);
+    // Same 175/72/247 fixture total as getUsageSummary — all 4 in-window rows
+    // (a1, a2, a5, b1) share "today" as their created_at day.
     expect(todayPoint).toEqual({
       day: todayLabel,
-      promptTokens: baselineTodayTrend.promptTokens + 160,
-      completionTokens: baselineTodayTrend.completionTokens + 65,
-      totalTokens: baselineTodayTrend.promptTokens + baselineTodayTrend.completionTokens + 225,
+      promptTokens: baselineTodayTrend.promptTokens + 175,
+      completionTokens: baselineTodayTrend.completionTokens + 72,
+      totalTokens: baselineTodayTrend.promptTokens + baselineTodayTrend.completionTokens + 247,
     });
 
     // The stale row is 31 days before "today" — a different calendar day — and

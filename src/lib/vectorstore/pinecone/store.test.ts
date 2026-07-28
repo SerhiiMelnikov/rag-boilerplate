@@ -156,4 +156,36 @@ describe("pinecone store", () => {
     expect(dense.deleteMany.mock.calls.map((c) => c[0].length)).toEqual([1000, 1000, 500]);
     expect(sparse.deleteMany.mock.calls.map((c) => c[0].length)).toEqual([1000, 1000, 500]);
   });
+
+  it("listChunks lists ids by prefix (total = every id, not the page length), fetches metadata for only the page's ids, then sorts that page by chunkIndex nulls last", async () => {
+    // Pinecone's list order is arbitrary (lexicographic by id), unrelated to
+    // chunkIndex — b/c intentionally aren't in chunkIndex order here.
+    const ids = ["d1#a", "d1#b", "d1#c", "d1#d", "d1#e"];
+    const dense = fakeDense({
+      listPaginated: vi.fn(async () => ({ vectors: ids.map((id) => ({ id })), pagination: undefined })),
+      fetch: vi.fn(async (batch: string[]) => ({
+        records: {
+          "d1#b": { id: "d1#b", metadata: { content: "cb", contentHash: "hb", chunkIndex: 5 } },
+          "d1#c": { id: "d1#c", metadata: { content: "cc", contentHash: "hc" } }, // legacy: no chunkIndex
+        },
+      })),
+    });
+    const out = await createPineconeStore(() => dense, () => fakeSparse()).listChunks("d1", { limit: 2, offset: 1 });
+    expect(out.total).toBe(5); // full document count, not the 2-row page
+    // Only the windowed ids (offset..offset+limit of the id listing) are fetched —
+    // fetching every chunk's metadata would defeat the point of paging.
+    expect(dense.fetch).toHaveBeenCalledTimes(1);
+    expect(dense.fetch.mock.calls[0][0]).toEqual(["d1#b", "d1#c"]);
+    expect(out.rows).toEqual([
+      { chunkIndex: 5, content: "cb", contentHash: "hb" },
+      { chunkIndex: null, content: "cc", contentHash: "hc" },
+    ]);
+  });
+
+  it("listChunks returns an empty page without fetching when the document has no chunks", async () => {
+    const dense = fakeDense({ listPaginated: vi.fn(async () => ({ vectors: [], pagination: undefined })) });
+    const out = await createPineconeStore(() => dense, () => fakeSparse()).listChunks("d1", { limit: 10, offset: 0 });
+    expect(out).toEqual({ rows: [], total: 0 });
+    expect(dense.fetch).not.toHaveBeenCalled();
+  });
 });

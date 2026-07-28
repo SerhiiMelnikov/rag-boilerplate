@@ -33,6 +33,7 @@ function makeVectorStore(existing: string[] = []) {
     deleteByDocument: vi.fn(async () => {}),
     searchVector: vi.fn(async () => []),
     searchKeyword: vi.fn(async () => []),
+    listChunks: vi.fn(async () => ({ rows: [], total: 0 })),
   };
 }
 

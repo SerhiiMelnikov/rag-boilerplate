@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { VectorStore, ChunkInput, RetrievedChunk } from "../types";
+import type { VectorStore, ChunkInput, RetrievedChunk, ChunkRow, ChunkPage } from "../types";
 import { cosineSimilarity } from "../cosine";
 import { denseIndex, sparseIndex } from "./client";
 
@@ -53,6 +53,25 @@ function metaToChunk(id: string, meta: Record<string, unknown>, score: number): 
     content: String(meta.content ?? ""),
     score,
   };
+}
+
+// Pinecone metadata stores chunkIndex as a native number (unlike Chroma, whose
+// narrower metadata type forces a string). Pre-Task-1 chunks have no
+// chunkIndex key at all — that surfaces as `undefined` here, parsed to null.
+function metaToChunkRow(meta: Record<string, unknown>): ChunkRow {
+  return {
+    chunkIndex: typeof meta.chunkIndex === "number" ? meta.chunkIndex : null,
+    content: String(meta.content ?? ""),
+    contentHash: String(meta.contentHash ?? ""),
+  };
+}
+
+// Ascending, nulls last — never `?? 0`, which would sort unknown-position
+// chunks as if they were first and misrepresent the document.
+function byChunkIndex(a: ChunkRow, b: ChunkRow): number {
+  if (a.chunkIndex === null) return b.chunkIndex === null ? 0 : 1;
+  if (b.chunkIndex === null) return -1;
+  return a.chunkIndex - b.chunkIndex;
 }
 
 // List every chunk id under a document (serverless has no metadata scroll, so
@@ -149,6 +168,27 @@ export function createPineconeStore(
         .filter((rec): rec is NonNullable<typeof rec> => Boolean(rec))
         .filter((rec) => !allow || allow.has(String((rec.metadata ?? {}).documentId ?? "")))
         .map((rec) => metaToChunk(rec.id, rec.metadata ?? {}, cosineSimilarity(embedding, rec.values ?? [])));
+    },
+
+    async listChunks(documentId: string, opts: { limit: number; offset: number }): Promise<ChunkPage> {
+      // Enumerating ids (idsForDocument, reused from existingHashes) is cheap —
+      // just listPaginated round trips, no per-chunk metadata. total comes from
+      // that alone. Pinecone's list order is arbitrary (lexicographic by id),
+      // unrelated to chunkIndex, so — like Chroma — the interface only promises
+      // ordering within the returned page: fetching every chunk's metadata just
+      // to answer one page would defeat the point of paging, so only the ids
+      // landing in the requested window are fetched, then sorted locally.
+      const dense = denseFn();
+      const ids = await idsForDocument(dense, documentId);
+      if (ids.length === 0) return { rows: [], total: 0 };
+      const pageIds = ids.slice(opts.offset, opts.offset + opts.limit);
+      const records = pageIds.length > 0 ? await fetchAllRecords(dense, pageIds) : {};
+      const rows = pageIds
+        .map((id) => records[id])
+        .filter((rec): rec is NonNullable<typeof rec> => Boolean(rec))
+        .map((rec) => metaToChunkRow(rec.metadata ?? {}))
+        .sort(byChunkIndex);
+      return { rows, total: ids.length };
     },
   };
 }

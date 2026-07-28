@@ -116,4 +116,35 @@ describe("weaviate store", () => {
     expect(out).toEqual([]);
     expect(bm25).not.toHaveBeenCalled();
   });
+
+  it("listChunks fetches the filtered page via fetchObjects(limit, offset), sorts by chunkIndex nulls last, and counts every matching object (up to the ceiling) as total", async () => {
+    // fetchObjects is called twice: once bounded-but-unpaged to count the
+    // document's chunks (mirrors the ceiling existingHashes already relies on),
+    // once with limit/offset for the actual page. Tell them apart by whether
+    // `offset` was passed, so the fake doesn't depend on call order.
+    const fetchObjects = vi.fn(async (opts: { filters?: unknown; limit?: number; offset?: number }) => {
+      if (opts.offset !== undefined) {
+        return {
+          objects: [
+            { uuid: "u1", properties: { content: "c1", contentHash: "h1", chunkIndex: 1 } },
+            { uuid: "u-legacy", properties: { content: "c-legacy", contentHash: "h-legacy" } }, // no chunkIndex
+            { uuid: "u0", properties: { content: "c0", contentHash: "h0", chunkIndex: 0 } },
+          ],
+        };
+      }
+      return { objects: [{ uuid: "u0", properties: {} }, { uuid: "u1", properties: {} }, { uuid: "u2", properties: {} }, { uuid: "u-legacy", properties: {} }] };
+    });
+    const col = fakeCollection({ fetchObjects });
+    const out = await createWeaviateStore(provide(col)).listChunks("d1", { limit: 3, offset: 0 });
+    expect(out.total).toBe(4); // full document count, not the 3-row page
+    expect(out.rows).toEqual([
+      { chunkIndex: 0, content: "c0", contentHash: "h0" },
+      { chunkIndex: 1, content: "c1", contentHash: "h1" },
+      { chunkIndex: null, content: "c-legacy", contentHash: "h-legacy" },
+    ]);
+    const pageCall = fetchObjects.mock.calls.find((c) => c[0].offset !== undefined)?.[0];
+    expect(pageCall).toMatchObject({ limit: 3, offset: 0, filters: { p: "documentId", v: "d1" } });
+    const totalCall = fetchObjects.mock.calls.find((c) => c[0].offset === undefined)?.[0];
+    expect(totalCall).toMatchObject({ filters: { p: "documentId", v: "d1" } });
+  });
 });

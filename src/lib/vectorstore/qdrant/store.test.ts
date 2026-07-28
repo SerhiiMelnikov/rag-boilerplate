@@ -9,6 +9,7 @@ interface FakeQdrantClient {
   delete: Mock;
   query: Mock;
   scroll: Mock;
+  count: Mock;
 }
 
 function fakeClient(over: Partial<FakeQdrantClient> = {}): FakeQdrantClient {
@@ -17,6 +18,7 @@ function fakeClient(over: Partial<FakeQdrantClient> = {}): FakeQdrantClient {
     delete: vi.fn(async () => ({})),
     query: vi.fn(async () => ({ points: [] })),
     scroll: vi.fn(async () => ({ points: [], next_page_offset: null })),
+    count: vi.fn(async () => ({ count: 0 })),
     ...over,
   };
 }
@@ -96,5 +98,50 @@ describe("qdrant store", () => {
     const out = await createQdrantStore(client as never, "c").searchKeyword("hello", [0.1], 5, []);
     expect(out).toEqual([]);
     expect(client.query).not.toHaveBeenCalled();
+  });
+
+  it("listChunks pages forward across scroll cursors, sorts by chunkIndex nulls last, honours limit/offset, and uses the scrolled count as total once the whole document is scrolled", async () => {
+    // Scroll's cursor order is arbitrary (point id order), not chunkIndex order —
+    // point 3 (no chunkIndex — pre-Task-1 legacy chunk) surfaces before point 1.
+    const scroll = vi.fn()
+      .mockResolvedValueOnce({ points: [{ payload: { content: "c3", contentHash: "h3" } }], next_page_offset: "cursor-1" })
+      .mockResolvedValueOnce({ points: [
+        { payload: { content: "c1", contentHash: "h1", chunkIndex: 1 } },
+        { payload: { content: "c0", contentHash: "h0", chunkIndex: 0 } },
+      ], next_page_offset: null });
+    const client = fakeClient({ scroll });
+    const out = await createQdrantStore(client as never, "c").listChunks("d1", { limit: 2, offset: 0 });
+    // Full document (3 chunks) fits within the window walked (offset+limit=2
+    // needed, but scrolling doesn't stop mid-batch) — so total is the true
+    // document size, not the page length, and no client.count call is needed.
+    expect(out).toEqual({ rows: [
+      { chunkIndex: 0, content: "c0", contentHash: "h0" },
+      { chunkIndex: 1, content: "c1", contentHash: "h1" },
+    ], total: 3 });
+    expect(scroll).toHaveBeenCalledTimes(2);
+    expect(scroll.mock.calls[1][1].offset).toBe("cursor-1");
+    expect(client.count).not.toHaveBeenCalled();
+  });
+
+  it("listChunks falls back to client.count for total when it stops scrolling before the document is exhausted", async () => {
+    const scroll = vi.fn(async () => ({
+      points: [
+        { payload: { content: "c0", contentHash: "h0", chunkIndex: 0 } },
+        { payload: { content: "c1", contentHash: "h1", chunkIndex: 1 } },
+      ],
+      next_page_offset: "cursor-more", // more points exist beyond this page
+    }));
+    const count = vi.fn(async (_collection: string, _args: { filter?: unknown }) => ({ count: 500 }));
+    const client = fakeClient({ scroll, count });
+    const out = await createQdrantStore(client as never, "c").listChunks("d1", { limit: 2, offset: 0 });
+    expect(out.rows).toEqual([
+      { chunkIndex: 0, content: "c0", contentHash: "h0" },
+      { chunkIndex: 1, content: "c1", contentHash: "h1" },
+    ]);
+    expect(out.total).toBe(500);
+    // Already has offset+limit points and knows more exist — must not keep scrolling.
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(count).toHaveBeenCalledTimes(1);
+    expect(count.mock.calls[0][1].filter).toEqual({ must: [{ key: "documentId", match: { value: "d1" } }] });
   });
 });

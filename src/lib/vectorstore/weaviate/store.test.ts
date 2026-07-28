@@ -1,15 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
+import { Filters } from "weaviate-client";
 import { createWeaviateStore, type WeaviateCollectionLike } from "./store";
 
 // Fake collection mirroring the weaviate-client v3 handle surface the store
 // uses. WeaviateCollectionLike is the store's own narrow seam (see store.ts),
 // kept local precisely so fakes like this one don't need the full client types.
-// `query` is the only sub-object tests ever override, so it alone is generic
-// (inferred per call) rather than the whole return type: a return-type
-// annotation, or a non-generic `Partial<...>` parameter, would each
-// contextually widen the vi.fn()s back down to plain functions, erasing the
-// Mock type the assertions below rely on for `.mock.calls`.
-function fakeCollection<Q extends Partial<WeaviateCollectionLike["query"]> = Record<string, never>>(overQuery: Q = {} as never) {
+// `query` and `aggregate` are the only sub-objects tests override, so those
+// alone are generic (inferred per call) rather than the whole return type: a
+// return-type annotation, or a non-generic `Partial<...>` parameter, would
+// each contextually widen the vi.fn()s back down to plain functions, erasing
+// the Mock type the assertions below rely on for `.mock.calls`.
+function fakeCollection<
+  Q extends Partial<WeaviateCollectionLike["query"]> = Record<string, never>,
+  A extends Partial<WeaviateCollectionLike["aggregate"]> = Record<string, never>,
+>(overQuery: Q = {} as never, overAggregate: A = {} as never) {
   return {
     data: {
       insertMany: vi.fn(async (_objs: Parameters<WeaviateCollectionLike["data"]["insertMany"]>[0]) => ({})),
@@ -25,7 +29,15 @@ function fakeCollection<Q extends Partial<WeaviateCollectionLike["query"]> = Rec
       byProperty: (p: string) => ({
         equal: (v: unknown) => ({ p, v }),
         containsAny: (v: unknown[]) => ({ p, op: "containsAny", v }),
+        greaterOrEqual: (v: number) => ({ p, op: "greaterOrEqual", v }),
       }),
+    },
+    sort: {
+      byProperty: (p: string, ascending?: boolean) => ({ p, op: "sort", ascending }),
+    },
+    aggregate: {
+      overAll: vi.fn(async () => ({ totalCount: 0 })),
+      ...overAggregate,
     },
   };
 }
@@ -117,34 +129,76 @@ describe("weaviate store", () => {
     expect(bm25).not.toHaveBeenCalled();
   });
 
-  it("listChunks fetches the filtered page via fetchObjects(limit, offset), sorts by chunkIndex nulls last, and counts every matching object (up to the ceiling) as total", async () => {
-    // fetchObjects is called twice: once bounded-but-unpaged to count the
-    // document's chunks (mirrors the ceiling existingHashes already relies on),
-    // once with limit/offset for the actual page. Tell them apart by whether
-    // `offset` was passed, so the fake doesn't depend on call order.
-    const fetchObjects = vi.fn(async (opts: { filters?: unknown; limit?: number; offset?: number }) => {
-      if (opts.offset !== undefined) {
-        return {
-          objects: [
-            { uuid: "u1", properties: { content: "c1", contentHash: "h1", chunkIndex: 1 } },
-            { uuid: "u-legacy", properties: { content: "c-legacy", contentHash: "h-legacy" } }, // no chunkIndex
-            { uuid: "u0", properties: { content: "c0", contentHash: "h0", chunkIndex: 0 } },
-          ],
-        };
-      }
-      return { objects: [{ uuid: "u0", properties: {} }, { uuid: "u1", properties: {} }, { uuid: "u2", properties: {} }, { uuid: "u-legacy", properties: {} }] };
-    });
-    const col = fakeCollection({ fetchObjects });
+  // --- listChunks --------------------------------------------------------
+  // Weaviate's `sort` composes with a filter and returns genuinely
+  // globally-ordered pages (live-probed against :8081). But an object missing
+  // the sorted property entirely (a pre-Task-1 chunk with no recorded
+  // chunkIndex) is silently DROPPED by that sort rather than placed last —
+  // also live-probed, and confirmed a schema migration (`indexNullState`)
+  // would be needed to isolate them with `isNull`, which is out of scope. So
+  // listChunks only takes the sort fast path when a cheap range-filtered
+  // aggregate count (chunkIndex >= 0, which naturally excludes objects
+  // missing the property — no schema change needed) matches the document's
+  // full total; otherwise it falls back to the unsorted fetch + in-memory
+  // sort so no legacy chunk is ever silently dropped from the page.
+
+  function docFilterArg(documentId: string) {
+    return { p: "documentId", v: documentId };
+  }
+  function hasIndexFilterArg(documentId: string) {
+    return Filters.and(docFilterArg(documentId) as never, { p: "chunkIndex", op: "greaterOrEqual", v: 0 } as never);
+  }
+  // aggregate.overAll is called twice (total, then the range-filtered "has
+  // chunkIndex" count); tell them apart by the filter's shape rather than
+  // call order, since Filters.and wraps its args in { operator: "And", ... }.
+  function fakeAggregate(totalCount: number, hasChunkIndexCount: number) {
+    return vi.fn(async (args: { filters?: { operator?: string } }) => ({
+      totalCount: args.filters?.operator === "And" ? hasChunkIndexCount : totalCount,
+    }));
+  }
+
+  it("listChunks sorts server-side (fast path) when every chunk in the document has chunkIndex, and total comes from aggregate.overAll", async () => {
+    const fetchObjects = vi.fn(async (_args: { filters?: unknown; limit?: number; offset?: number; sort?: unknown }) => ({
+      objects: [
+        { uuid: "u1", properties: { content: "c1", contentHash: "h1", chunkIndex: 1 } },
+        { uuid: "u0", properties: { content: "c0", contentHash: "h0", chunkIndex: 0 } },
+      ],
+    }));
+    const overAll = fakeAggregate(3, 3); // hasChunkIndexTotal === total -> fast path
+    const col = fakeCollection({ fetchObjects }, { overAll });
+    const out = await createWeaviateStore(provide(col)).listChunks("d1", { limit: 2, offset: 0 });
+    expect(out.total).toBe(3);
+    expect(out.rows).toEqual([
+      { chunkIndex: 0, content: "c0", contentHash: "h0" },
+      { chunkIndex: 1, content: "c1", contentHash: "h1" },
+    ]);
+    expect(overAll).toHaveBeenCalledTimes(2);
+    expect(fetchObjects).toHaveBeenCalledTimes(1);
+    const pageCall = fetchObjects.mock.calls[0][0];
+    expect(pageCall).toMatchObject({ limit: 2, offset: 0, filters: docFilterArg("d1") });
+    // The load-bearing assertion: the server-side sort argument was passed.
+    expect(pageCall.sort).toEqual({ p: "chunkIndex", op: "sort", ascending: true });
+  });
+
+  it("listChunks falls back to the unsorted fetch (no sort argument) when the document has a legacy chunk with no chunkIndex, and still returns it (nulls last) without dropping anything", async () => {
+    const fetchObjects = vi.fn(async (_args: { filters?: unknown; limit?: number; offset?: number; sort?: unknown }) => ({
+      objects: [
+        { uuid: "u1", properties: { content: "c1", contentHash: "h1", chunkIndex: 1 } },
+        { uuid: "u-legacy", properties: { content: "c-legacy", contentHash: "h-legacy" } }, // no chunkIndex at all
+        { uuid: "u0", properties: { content: "c0", contentHash: "h0", chunkIndex: 0 } },
+      ],
+    }));
+    const overAll = fakeAggregate(4, 3); // hasChunkIndexTotal(3) !== total(4) -> fallback
+    const col = fakeCollection({ fetchObjects }, { overAll });
     const out = await createWeaviateStore(provide(col)).listChunks("d1", { limit: 3, offset: 0 });
-    expect(out.total).toBe(4); // full document count, not the 3-row page
+    expect(out.total).toBe(4); // full document count, including the legacy chunk
     expect(out.rows).toEqual([
       { chunkIndex: 0, content: "c0", contentHash: "h0" },
       { chunkIndex: 1, content: "c1", contentHash: "h1" },
       { chunkIndex: null, content: "c-legacy", contentHash: "h-legacy" },
     ]);
-    const pageCall = fetchObjects.mock.calls.find((c) => c[0].offset !== undefined)?.[0];
-    expect(pageCall).toMatchObject({ limit: 3, offset: 0, filters: { p: "documentId", v: "d1" } });
-    const totalCall = fetchObjects.mock.calls.find((c) => c[0].offset === undefined)?.[0];
-    expect(totalCall).toMatchObject({ filters: { p: "documentId", v: "d1" } });
+    const pageCall = fetchObjects.mock.calls[0][0];
+    expect(pageCall).toMatchObject({ limit: 3, offset: 0, filters: docFilterArg("d1") });
+    expect(pageCall.sort).toBeUndefined();
   });
 });

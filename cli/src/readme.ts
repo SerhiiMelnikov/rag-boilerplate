@@ -111,8 +111,13 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("## Admin", "");
   lines.push("Sign in with the `ADMIN_EMAIL` / `ADMIN_PASSWORD` from your `.env`. Under the");
   lines.push("profile menu you can:", "");
-  lines.push("- **Files** — upload documents (PDF/DOCX/Markdown/text) and images, see their");
-  lines.push("  status, and set which workspaces each one belongs to.");
+  lines.push("- **Files** — upload documents (PDF/DOCX/Markdown/text) and images, or ingest a");
+  lines.push("  page directly from a URL (paste it and click **Ingest URL** — no file, no");
+  lines.push("  extension, just the page's readable article text); see status, and set which");
+  lines.push("  workspaces each one belongs to.");
+  lines.push("- **Chunk preview** — open a document's chunk preview (from **Files**) to see");
+  lines.push("  each chunk's position and length. Chunks ingested before position tracking");
+  lines.push("  was added show as order-unknown rather than being renumbered to hide the gap.");
   lines.push("- **Workspaces** — create workspaces and grant users access to them.");
   lines.push("- **Provider keys** — set your API keys (encrypted at rest). Do this first:");
   lines.push("  nothing can be ingested or answered without them.");
@@ -343,6 +348,23 @@ function generateApiOnlyReadme(o: InstallOptions): string {
       "captioned by a vision model and retrieved the same way documents are. Both are managed entirely " +
       "through `/api/admin/workspaces` and `/api/admin/images`/`/api/admin/documents` — there is no admin " +
       "screen here, so `/docs` (see below) is the fastest way to see the full contract for each.",
+  );
+  lines.push("");
+
+  lines.push("## Ingesting & inspecting documents", "");
+  lines.push(
+    "Upload a file with `POST /api/admin/documents` (multipart, same as the full app), or ingest a web page " +
+      "directly with `POST /api/admin/documents/url` — send `{ \"url\": \"https://example.com/article\" }` and " +
+      "it fetches the page, extracts the readable article text (no file, no extension), and ingests it exactly " +
+      "like an upload. Both return the new `documentId` with `status: \"processing\"` immediately; chunking and " +
+      "embedding continue in the background.",
+  );
+  lines.push("");
+  lines.push(
+    "Preview how a document was chunked with `GET /api/admin/documents/{id}/chunks?limit=&offset=` — each row " +
+      "carries its position in the document and its character count. With no admin UI in this build, this " +
+      "endpoint is the only way to inspect chunking; chunks ingested before position tracking was added come " +
+      "back with a null position rather than being renumbered to hide the gap.",
   );
   lines.push("");
 

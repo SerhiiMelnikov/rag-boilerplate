@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Trash2, ArrowUpDown } from "lucide-react";
+import { Upload, Trash2, ArrowUpDown, Layers, Link2 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { ImageModal } from "./image-modal";
 import { FileWorkspacesModal } from "./file-workspaces-modal";
+import { ChunksModal } from "./chunks-modal";
 
 interface FileRow {
   id: string;
@@ -39,9 +40,13 @@ export function FilesManager() {
   const [deleting, setDeleting] = useState(false);
   const [modalImage, setModalImage] = useState<FileRow | null>(null);
   const [wsFor, setWsFor] = useState<FileRow | null>(null);
+  const [chunksFor, setChunksFor] = useState<FileRow | null>(null);
   const [allWorkspaces, setAllWorkspaces] = useState<{ id: string; name: string; isDefault: boolean }[]>([]);
   const [uploadWorkspaceIds, setUploadWorkspaceIds] = useState<string[]>([]);
   const [workspaceFilter, setWorkspaceFilter] = useState("all");
+  const [urlValue, setUrlValue] = useState("");
+  const [urlBusy, setUrlBusy] = useState(false);
+  const [urlError, setUrlError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -104,6 +109,37 @@ export function FilesManager() {
     }
   }
 
+  // POST /api/admin/documents/url creates the document row synchronously (status
+  // "processing"), so — exactly like upload() above — a single load() after the
+  // request resolves is enough to show it; there is nothing to poll for here beyond
+  // the existing hasProcessing interval.
+  async function ingestUrl(e: React.FormEvent) {
+    e.preventDefault();
+    const url = urlValue.trim();
+    if (!url) return;
+    setUrlBusy(true);
+    setUrlError(null);
+    try {
+      const res = await fetch("/api/admin/documents/url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        const message = data && typeof data === "object" && typeof (data as { error?: unknown }).error === "string"
+          ? (data as { error: string }).error
+          : "Could not ingest that URL.";
+        setUrlError(message);
+        return;
+      }
+      setUrlValue("");
+      await load();
+    } finally {
+      setUrlBusy(false);
+    }
+  }
+
   async function confirmDelete() {
     if (!pendingDelete) return;
     setDeleting(true);
@@ -134,6 +170,28 @@ export function FilesManager() {
           {busy ? "Uploading..." : "Upload file"}
           <input ref={fileInputRef} type="file" accept={ACCEPT} aria-label="Upload file" onChange={upload} className="hidden" disabled={busy} />
         </label>
+        {/* noValidate: bad input is reported by our own error state (from the
+            server's validation), not the browser's native url-constraint popup —
+            keeps the failure path consistent with every other error in this form. */}
+        <form onSubmit={ingestUrl} noValidate className="flex items-center gap-2">
+          <input
+            type="url"
+            aria-label="Ingest from URL"
+            placeholder="Paste a URL to ingest"
+            value={urlValue}
+            onChange={(e) => setUrlValue(e.target.value)}
+            disabled={urlBusy}
+            className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-transparent"
+          />
+          <button
+            type="submit"
+            disabled={urlBusy || urlValue.trim() === ""}
+            className="inline-flex items-center gap-2 rounded-md border border-zinc-300 px-3 py-2 text-sm transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            {urlBusy ? <Spinner label="Ingesting" /> : <Link2 className="h-4 w-4" />}
+            {urlBusy ? "Ingesting..." : "Ingest URL"}
+          </button>
+        </form>
         <div className="flex items-center gap-2 text-sm">
           <span>Type</span>
           <Select ariaLabel="Filter by type" value={extFilter} onChange={setExtFilter} options={["all", ...exts]} className="min-w-28" />
@@ -159,6 +217,7 @@ export function FilesManager() {
           />
         </div>
       </div>
+      {urlError && <p role="alert" className="mb-4 text-sm text-red-600">{urlError}</p>}
       <table className="w-full text-left text-sm">
         <thead>
           <tr className="border-b border-zinc-200 dark:border-zinc-800">
@@ -200,7 +259,12 @@ export function FilesManager() {
                 </button>
               </td>
               <td className="text-right">
-                <button type="button" aria-label={`Delete ${f.filename}`} onClick={() => setPendingDelete(f)} className="text-zinc-400 transition-colors hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                <div className="flex items-center justify-end gap-3">
+                  {f.kind === "document" && (
+                    <button type="button" aria-label={`View chunks of ${f.filename}`} onClick={() => setChunksFor(f)} className="text-zinc-400 transition-colors hover:text-zinc-900 dark:hover:text-zinc-100"><Layers className="h-4 w-4" /></button>
+                  )}
+                  <button type="button" aria-label={`Delete ${f.filename}`} onClick={() => setPendingDelete(f)} className="text-zinc-400 transition-colors hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                </div>
               </td>
             </tr>
           ))}
@@ -227,6 +291,12 @@ export function FilesManager() {
           file={{ id: wsFor.id, kind: wsFor.kind, filename: wsFor.filename, workspaces: wsFor.workspaces }}
           onClose={() => setWsFor(null)}
           onSaved={() => { setWsFor(null); void load(); }}
+        />
+      )}
+      {chunksFor && (
+        <ChunksModal
+          doc={{ id: chunksFor.id, filename: chunksFor.filename }}
+          onClose={() => setChunksFor(null)}
         />
       )}
     </div>

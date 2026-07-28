@@ -54,6 +54,19 @@ describe("FilesManager", () => {
     await waitFor(() => expect(screen.getByRole("dialog", { name: /Workspaces for report\.pdf/ })).toBeInTheDocument());
   });
 
+  it("opens the chunks modal from the per-document action", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.click(screen.getByLabelText("View chunks of report.pdf"));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /Chunks for report\.pdf/ })).toBeInTheDocument());
+  });
+
+  it("does not offer a chunks action for images", async () => {
+    render(<FilesManager />);
+    await screen.findByText("bike.png");
+    expect(screen.queryByLabelText("View chunks of bike.png")).not.toBeInTheDocument();
+  });
+
   it("posts the selected workspaceIds with the upload", async () => {
     render(<FilesManager />);
     await screen.findByText("report.pdf");
@@ -74,5 +87,50 @@ describe("FilesManager", () => {
     fireEvent.click(await screen.findByRole("option", { name: "unassigned" }));
     expect(screen.queryByText("report.pdf")).not.toBeInTheDocument(); // in General
     expect(screen.getByText("bike.png")).toBeInTheDocument();          // unassigned
+  });
+
+  it("ingests a URL and refreshes the list", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    const input = screen.getByLabelText("Ingest from URL");
+    fireEvent.change(input, { target: { value: "https://example.com/article" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ingest URL" }));
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const post = calls.find((c) => c[0] === "/api/admin/documents/url");
+      expect(post).toBeDefined();
+      const init = post![1] as { method?: string; body?: string };
+      expect(init.method).toBe("POST");
+      expect(JSON.parse(init.body!)).toEqual({ url: "https://example.com/article" });
+    });
+    // Cleared on success, and the list is reloaded (same endpoint the initial mount used).
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe(""));
+    const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(calls.filter((c) => c[0] === "/api/admin/files").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("shows an error when the URL cannot be ingested", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/admin/documents/url") {
+          return { ok: false, status: 400, json: async () => ({ error: "url is required" }) };
+        }
+        return { ok: true, status: 200, json: async () => ({ files: FILES, workspaces: WORKSPACES }) };
+      }) as never,
+    );
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.change(screen.getByLabelText("Ingest from URL"), { target: { value: "not a url" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ingest URL" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("url is required");
+  });
+
+  it("disables the Ingest URL button until a URL is entered", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    expect(screen.getByRole("button", { name: "Ingest URL" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Ingest from URL"), { target: { value: "https://example.com" } });
+    expect(screen.getByRole("button", { name: "Ingest URL" })).toBeEnabled();
   });
 });

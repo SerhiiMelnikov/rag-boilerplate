@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { ingestDocument, ingestExistingDocument } from "@/lib/rag/ingest";
+import { hashContent } from "@/lib/rag/hash";
 import type { RuntimeSettings } from "@/lib/config/settings-service";
+import type { ChunkInput } from "@/lib/vectorstore/types";
 
 const settings = {
   chatProvider: "google", chatModel: "gemma-4-31b-it",
@@ -31,6 +33,7 @@ function makeVectorStore(existing: string[] = []) {
     deleteByDocument: vi.fn(async () => {}),
     searchVector: vi.fn(async () => []),
     searchKeyword: vi.fn(async () => []),
+    listChunks: vi.fn(async () => ({ rows: [], total: 0 })),
   };
 }
 
@@ -153,5 +156,42 @@ describe("ingestDocument", () => {
     expect(result.status).toBe("ready");
     expect(upsertChunks).toHaveBeenCalledOnce();
     expect(setStatus).toHaveBeenLastCalledWith("doc-existing", "ready");
+  });
+
+  it("never calls parse when text is supplied (the URL ingestion path — a URL has no file extension, so parseDocument would throw UnsupportedFileTypeError)", async () => {
+    const documentRepo = makeDocumentRepo("doc-url");
+    const vectorStore = makeVectorStore();
+    const parse = vi.fn(async () => "should never run");
+    const embed = vi.fn(async (texts: string[]) => texts.map(() => [0.1]));
+    const result = await ingestExistingDocument(
+      "doc-url",
+      { filename: "https://example.com/article", text: "already-extracted article text" },
+      { parse, chunk: () => ["c1"], embed, documentRepo, vectorStore, settings },
+    );
+    expect(parse).not.toHaveBeenCalled();
+    expect(embed).toHaveBeenCalledWith(["c1"]);
+    expect(result.status).toBe("ready");
+  });
+
+  it("stores each chunk's position in the document, not its position among the fresh ones", async () => {
+    const upserted: ChunkInput[] = [];
+    const vectorStore = {
+      // The first and third chunks are already stored, so `fresh` is [b, d] —
+      // whose array indices (0,1) are NOT the document positions (1,3).
+      existingHashes: vi.fn(async () => new Set([hashContent("a"), hashContent("c")])),
+      upsertChunks: vi.fn(async (rows: ChunkInput[]) => { upserted.push(...rows); }),
+    };
+    await ingestExistingDocument("doc-1", { filename: "f.txt", data: Buffer.from("") }, {
+      documentRepo: { createDocument: vi.fn(), setStatus: vi.fn(async () => {}) } as never,
+      vectorStore: vectorStore as never,
+      settings: {} as never,
+      parse: async () => "ignored",
+      chunk: () => ["a", "b", "c", "d"],
+      embed: async (texts: string[]) => texts.map(() => [0.1]),
+    });
+    expect(upserted.map((r) => ({ content: r.content, chunkIndex: r.chunkIndex }))).toEqual([
+      { content: "b", chunkIndex: 1 },
+      { content: "d", chunkIndex: 3 },
+    ]);
   });
 });

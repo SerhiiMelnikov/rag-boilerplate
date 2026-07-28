@@ -16,7 +16,19 @@ export interface ChunkInput {
   content: string;
   embedding: number[];
   contentHash: string;
+  // Position in the source document, 0-based. Recorded so the admin chunk
+  // preview can show a document in its real order — the only thing that makes
+  // "was this sentence cut in half?" answerable.
+  chunkIndex: number;
 }
+
+// A single chunk row as shown by the admin chunk preview. chunkIndex is null
+// for chunks ingested before Task 1 recorded position — a real, expected value,
+// not an error.
+export interface ChunkRow { chunkIndex: number | null; content: string; contentHash: string }
+// total is the document's full chunk count, independent of the page size —
+// callers need it to render "page X of Y" / know when they've reached the end.
+export interface ChunkPage { rows: ChunkRow[]; total: number }
 
 // Chunk storage + retrieval. The ONLY thing that varies by backend.
 export interface VectorStore {
@@ -26,6 +38,8 @@ export interface VectorStore {
   // allowedDocumentIds: undefined = no filter; [] = no results (empty scope).
   searchVector(embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]>;
   searchKeyword(query: string, embedding: number[], limit: number, allowedDocumentIds?: string[]): Promise<RetrievedChunk[]>;
+  // Ordered by chunkIndex ascending with nulls last, within the returned page.
+  listChunks(documentId: string, opts: { limit: number; offset: number }): Promise<ChunkPage>;
 }
 
 // Document metadata. Always Postgres, independent of the vector store.

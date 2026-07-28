@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { VectorStore, ChunkInput, RetrievedChunk } from "../types";
+import type { VectorStore, ChunkInput, RetrievedChunk, ChunkRow, ChunkPage } from "../types";
 import { cosineSimilarity } from "../cosine";
 import { denseIndex, sparseIndex } from "./client";
 
@@ -55,6 +55,25 @@ function metaToChunk(id: string, meta: Record<string, unknown>, score: number): 
   };
 }
 
+// Pinecone metadata stores chunkIndex as a native number (unlike Chroma, whose
+// narrower metadata type forces a string). Pre-Task-1 chunks have no
+// chunkIndex key at all — that surfaces as `undefined` here, parsed to null.
+function metaToChunkRow(meta: Record<string, unknown>): ChunkRow {
+  return {
+    chunkIndex: typeof meta.chunkIndex === "number" ? meta.chunkIndex : null,
+    content: String(meta.content ?? ""),
+    contentHash: String(meta.contentHash ?? ""),
+  };
+}
+
+// Ascending, nulls last — never `?? 0`, which would sort unknown-position
+// chunks as if they were first and misrepresent the document.
+function byChunkIndex(a: ChunkRow, b: ChunkRow): number {
+  if (a.chunkIndex === null) return b.chunkIndex === null ? 0 : 1;
+  if (b.chunkIndex === null) return -1;
+  return a.chunkIndex - b.chunkIndex;
+}
+
 // List every chunk id under a document (serverless has no metadata scroll, so
 // ids are prefixed `${documentId}#` and enumerated by prefix).
 async function idsForDocument(dense: PineconeDenseLike, documentId: string): Promise<string[]> {
@@ -91,7 +110,7 @@ export function createPineconeStore(
         withIds.map(({ id, row }) => ({
           id,
           values: row.embedding,
-          metadata: { documentId: row.documentId, filename: row.filename, content: row.content, contentHash: row.contentHash },
+          metadata: { documentId: row.documentId, filename: row.filename, content: row.content, contentHash: row.contentHash, chunkIndex: row.chunkIndex },
         })),
       );
       await sparse.upsertRecords(withIds.map(({ id, row }) => ({ _id: id, text: row.content })));
@@ -149,6 +168,34 @@ export function createPineconeStore(
         .filter((rec): rec is NonNullable<typeof rec> => Boolean(rec))
         .filter((rec) => !allow || allow.has(String((rec.metadata ?? {}).documentId ?? "")))
         .map((rec) => metaToChunk(rec.id, rec.metadata ?? {}, cosineSimilarity(embedding, rec.values ?? [])));
+    },
+
+    async listChunks(documentId: string, opts: { limit: number; offset: number }): Promise<ChunkPage> {
+      // Pinecone's list order is arbitrary (lexicographic by id), unrelated to
+      // chunkIndex. An earlier version of this method sliced the id list to the
+      // requested window BEFORE fetching metadata, then sorted only that
+      // window — which returns an arbitrary id-order slice, not the actual
+      // chunkIndex range: a 300-chunk document listed in reverse-chunkIndex id
+      // order returned chunkIndex 250-299 for {limit:50, offset:0} instead of
+      // 0-49 (reproduced and covered by the test below). Same defect already
+      // fixed for Qdrant in 7a42de1, fixed here the same way: enumerate every
+      // id (idsForDocument, reused from existingHashes — cheap, just
+      // listPaginated round trips, no per-chunk metadata), fetch ALL of their
+      // metadata (fetchAllRecords already batches at PINECONE_BATCH), sort the
+      // whole document by chunkIndex (nulls last), THEN slice the requested
+      // window. Costs a full-document metadata fetch per page — same trade-off
+      // Qdrant and Chroma already make for this admin-only preview endpoint.
+      const dense = denseFn();
+      const ids = await idsForDocument(dense, documentId);
+      if (ids.length === 0) return { rows: [], total: 0 };
+      const records = await fetchAllRecords(dense, ids);
+      const rows = ids
+        .map((id) => records[id])
+        .filter((rec): rec is NonNullable<typeof rec> => Boolean(rec))
+        .map((rec) => metaToChunkRow(rec.metadata ?? {}))
+        .sort(byChunkIndex)
+        .slice(opts.offset, opts.offset + opts.limit);
+      return { rows, total: ids.length };
     },
   };
 }

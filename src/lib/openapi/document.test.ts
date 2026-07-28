@@ -66,6 +66,27 @@ describe("buildOpenApiDocument", () => {
     expect(usageGet?.responses?.[401]).toBeTruthy();
     expect(usageGet?.responses?.[403]).toBeTruthy();
   });
+  // The anti-drift check below only proves the path exists. This returns full chunk
+  // content for a document, so it must also be documented as requiring a session and
+  // able to refuse a non-admin (the usage endpoint's review found this exact gap).
+  it("documents the document-chunks endpoint as guarded, with 401 + 403 responses", () => {
+    const chunksGet = doc.paths?.["/api/admin/documents/{id}/chunks"]?.get;
+    expect(chunksGet?.security).toEqual([{ sessionCookie: [] }]);
+    expect(chunksGet?.responses?.[401]).toBeTruthy();
+    expect(chunksGet?.responses?.[403]).toBeTruthy();
+  });
+
+  // The anti-drift check below only proves the path exists. This fetches an admin-
+  // supplied URL and ingests whatever it returns, so it must also be documented as
+  // requiring a session, able to refuse a non-admin, and able to reject a bad URL.
+  it("documents the ingest-from-url endpoint as guarded, with 401 + 403 + 400 responses", () => {
+    const urlPost = doc.paths?.["/api/admin/documents/url"]?.post;
+    expect(urlPost?.security).toEqual([{ sessionCookie: [] }]);
+    expect(urlPost?.responses?.[400]).toBeTruthy();
+    expect(urlPost?.responses?.[401]).toBeTruthy();
+    expect(urlPost?.responses?.[403]).toBeTruthy();
+  });
+
   it("documents the evaluation endpoints as guarded, with 401 + 403 responses", () => {
     for (const [path, method] of [
       ["/api/admin/evaluation/questions", "get"],

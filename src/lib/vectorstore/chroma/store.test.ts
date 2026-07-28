@@ -28,13 +28,15 @@ describe("chroma store", () => {
   it("upsertChunks adds ids + embeddings + documents + metadatas", async () => {
     const col = fakeCollection();
     await createChromaStore(provide(col)).upsertChunks([
-      { documentId: "d1", filename: "f.md", content: "hi", embedding: [0.1, 0.2], contentHash: "h1" },
+      { documentId: "d1", filename: "f.md", content: "hi", embedding: [0.1, 0.2], contentHash: "h1", chunkIndex: 1 },
     ]);
     expect(col.add).toHaveBeenCalledTimes(1);
     const arg = col.add.mock.calls[0][0];
     expect(arg.embeddings).toEqual([[0.1, 0.2]]);
     expect(arg.documents).toEqual(["hi"]);
-    expect(arg.metadatas[0]).toMatchObject({ documentId: "d1", filename: "f.md", content: "hi", contentHash: "h1" });
+    // chunkIndex is stringified because ChromaCollectionLike constrains metadata
+    // values to strings.
+    expect(arg.metadatas[0]).toMatchObject({ documentId: "d1", filename: "f.md", content: "hi", contentHash: "h1", chunkIndex: "1" });
     expect(arg.ids).toHaveLength(1);
   });
 
@@ -112,5 +114,40 @@ describe("chroma store", () => {
     const out = await createChromaStore(provide(col)).searchKeyword("dog", [0.1], 5, []);
     expect(out).toEqual([]);
     expect(col.query).not.toHaveBeenCalled();
+  });
+
+  it("listChunks parses the stringified chunkIndex back to a number, sorts by chunkIndex nulls last, slices the page, and returns the document's full count as total (not the page length)", async () => {
+    const col = fakeCollection({
+      get: vi.fn(async () => ({
+        metadatas: [
+          { content: "c2", contentHash: "h2", chunkIndex: "2" },
+          { content: "c-legacy", contentHash: "h-legacy" }, // pre-Task-1 chunk: no chunkIndex key at all
+          { content: "c0", contentHash: "h0", chunkIndex: "0" },
+          { content: "c1", contentHash: "h1", chunkIndex: "1" },
+        ],
+      })),
+    });
+    const out = await createChromaStore(provide(col)).listChunks("d1", { limit: 2, offset: 1 });
+    expect(col.get.mock.calls[0][0].where).toEqual({ documentId: "d1" });
+    expect(out.total).toBe(4); // full document count, not the 2-row page
+    expect(out.rows).toEqual([
+      { chunkIndex: 1, content: "c1", contentHash: "h1" },
+      { chunkIndex: 2, content: "c2", contentHash: "h2" },
+    ]);
+    // Must come back as a real number, not the "2" string Chroma metadata stores.
+    expect(typeof out.rows[0].chunkIndex).toBe("number");
+  });
+
+  it("listChunks puts the legacy (no chunkIndex) chunk last", async () => {
+    const col = fakeCollection({
+      get: vi.fn(async () => ({
+        metadatas: [
+          { content: "c-legacy", contentHash: "h-legacy" },
+          { content: "c0", contentHash: "h0", chunkIndex: "0" },
+        ],
+      })),
+    });
+    const out = await createChromaStore(provide(col)).listChunks("d1", { limit: 10, offset: 0 });
+    expect(out.rows.map((r) => r.chunkIndex)).toEqual([0, null]);
   });
 });

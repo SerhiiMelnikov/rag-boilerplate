@@ -1,7 +1,7 @@
 import { sql, cosineDistance, gt, desc, eq, and, inArray } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { chunks, documents } from "@/lib/db/schema";
-import type { VectorStore, ChunkInput, RetrievedChunk } from "../types";
+import type { VectorStore, ChunkInput, RetrievedChunk, ChunkPage } from "../types";
 
 // pgvector-backed store. Chunks live in Postgres; filename comes from the
 // documents join (ChunkInput.filename is unused on write here).
@@ -12,7 +12,7 @@ export function createPgVectorStore(db = defaultDb): VectorStore {
     async upsertChunks(rows: ChunkInput[]) {
       if (rows.length === 0) return;
       await db.insert(chunks).values(
-        rows.map((r) => ({ documentId: r.documentId, content: r.content, embedding: r.embedding, contentHash: r.contentHash })),
+        rows.map((r) => ({ documentId: r.documentId, content: r.content, embedding: r.embedding, contentHash: r.contentHash, chunkIndex: r.chunkIndex })),
       );
     },
 
@@ -61,6 +61,24 @@ export function createPgVectorStore(db = defaultDb): VectorStore {
         .where(where)
         .orderBy(sql`ts_rank(${tsv}, ${tsquery}) desc`)
         .limit(limit);
+    },
+
+    async listChunks(documentId: string, opts: { limit: number; offset: number }): Promise<ChunkPage> {
+      const rows = await db
+        .select({ chunkIndex: chunks.chunkIndex, content: chunks.content, contentHash: chunks.contentHash })
+        .from(chunks)
+        .where(eq(chunks.documentId, documentId))
+        // Postgres does the sort (and the nulls-last placement) — this is the
+        // only adapter where "ordered by chunkIndex, nulls last" is a true
+        // global guarantee rather than a per-page approximation.
+        .orderBy(sql`${chunks.chunkIndex} asc nulls last`)
+        .limit(opts.limit)
+        .offset(opts.offset);
+      const totalRows = await db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(chunks)
+        .where(eq(chunks.documentId, documentId));
+      return { rows, total: totalRows[0]?.total ?? 0 };
     },
   };
 }

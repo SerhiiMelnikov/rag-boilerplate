@@ -42,6 +42,10 @@ export const chunks = pgTable("chunks", {
   embedding: vector("embedding", { dimensions: EMBEDDING_DIMENSIONS }).notNull(),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   contentHash: text("content_hash").notNull(),
+  // Position in the source document, 0-based. Nullable with no default: rows
+  // written before this release have no known position, and defaulting to 0
+  // would make the chunk preview render a fabrication as fact.
+  chunkIndex: integer("chunk_index"),
 });
 
 export const images = pgTable("images", {

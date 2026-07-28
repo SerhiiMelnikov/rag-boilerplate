@@ -16,7 +16,9 @@ import { listVisibleWorkspacesResponse } from "@/api/workspaces/handler";
 import { serveImage } from "@/api/images/[id]/handler";
 
 import { listDocumentsResponse, uploadDocument } from "@/api/admin/documents/handler";
+import { ingestUrlResponse } from "@/api/admin/documents/url/handler";
 import { deleteDocumentResponse } from "@/api/admin/documents/[id]/handler";
+import { getDocumentChunksResponse } from "@/api/admin/documents/[id]/chunks/handler";
 import { listFilesResponse } from "@/api/admin/files/handler";
 import { setFileWorkspacesResponse } from "@/api/admin/files/[kind]/[id]/workspaces/handler";
 import { uploadImage, listImagesResponse } from "@/api/admin/images/handler";
@@ -91,7 +93,9 @@ export function createServer(): Hono {
   // --- Admin: Documents -----------------------------------------------------------
   app.get("/api/admin/documents", (c) => listDocumentsResponse(c.req.raw));
   app.post("/api/admin/documents", (c) => uploadDocument(c.req.raw, { schedule }));
+  app.post("/api/admin/documents/url", (c) => ingestUrlResponse(c.req.raw, { schedule }));
   app.delete("/api/admin/documents/:id", (c) => deleteDocumentResponse(c.req.param("id"), c.req.raw));
+  app.get("/api/admin/documents/:id/chunks", (c) => getDocumentChunksResponse(c.req.param("id"), c.req.raw));
 
   // --- Admin: Files -----------------------------------------------------------------
   app.get("/api/admin/files", (c) => listFilesResponse(c.req.raw));

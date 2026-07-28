@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { VectorStore, ChunkInput, RetrievedChunk } from "../types";
+import type { VectorStore, ChunkInput, RetrievedChunk, ChunkRow, ChunkPage } from "../types";
 import { chromaCollection } from "./client";
 
 // Minimal shape of a Chroma collection this adapter uses. Kept local so unit
@@ -44,6 +44,32 @@ function toChunks(res: {
   });
 }
 
+// ChromaCollectionLike metadata values are strings only, so chunkIndex was
+// written as String(n) (see upsertChunks below) and must be parsed back here.
+// Pre-Task-1 chunks have no chunkIndex key in metadata at all (undefined, not
+// a string) — parsed to null, a real "unknown position" value, not an error.
+function parseChunkIndex(v: unknown): number | null {
+  if (typeof v !== "string") return null;
+  const n = Number(v);
+  return Number.isInteger(n) ? n : null;
+}
+
+function toChunkRow(m: Record<string, unknown>): ChunkRow {
+  return {
+    chunkIndex: parseChunkIndex(m.chunkIndex),
+    content: String(m.content ?? ""),
+    contentHash: String(m.contentHash ?? ""),
+  };
+}
+
+// Ascending, nulls last — never `?? 0`, which would sort unknown-position
+// chunks as if they were first and misrepresent the document.
+function byChunkIndex(a: ChunkRow, b: ChunkRow): number {
+  if (a.chunkIndex === null) return b.chunkIndex === null ? 0 : 1;
+  if (b.chunkIndex === null) return -1;
+  return a.chunkIndex - b.chunkIndex;
+}
+
 // Chroma-backed store. A chunk is a record (embedding + document text + metadata
 // {documentId, filename, content, contentHash}). Keyword search uses whereDocument
 // $contains (substring), ranked by vector score over the filtered subset — the
@@ -64,12 +90,20 @@ export function createChromaStore(
           filename: r.filename,
           content: r.content,
           contentHash: r.contentHash,
+          // ChromaCollectionLike constrains metadata values to strings (see the
+          // interface note above); chunkIndex is stringified on write and must
+          // be parsed back to a number by any future reader.
+          chunkIndex: String(r.chunkIndex),
         })),
       });
     },
 
     async existingHashes(documentId: string) {
       const col = await getCollection();
+      // No limit here, unlike Weaviate's equivalent: live-verified against a
+      // 1200-row seeded collection that col.get({ where }) returns every match
+      // with no cap, so nothing is missed. If a cap is ever hit in practice,
+      // get() also accepts limit/offset, and the collection exposes count().
       const res = await col.get({ where: { documentId }, include: ["metadatas"] });
       const hashes = new Set<string>();
       for (const m of res.metadatas ?? []) {
@@ -107,6 +141,20 @@ export function createChromaStore(
         ...(allowedDocumentIds ? { where: { documentId: { $in: allowedDocumentIds } } } : {}),
       });
       return toChunks(res);
+    },
+
+    async listChunks(documentId: string, opts: { limit: number; offset: number }): Promise<ChunkPage> {
+      // ChromaCollectionLike's get() has no limit/offset of its own (see the
+      // interface above), so — like existingHashes — this fetches every chunk
+      // matching the filter, then sorts and slices client-side. The interface
+      // contract only promises "ordered within the returned page" (not global
+      // order) precisely to leave room for a future, cheaper Chroma
+      // implementation that doesn't fetch everything to answer one page.
+      const col = await getCollection();
+      const res = await col.get({ where: { documentId }, include: ["metadatas"] });
+      const all = (res.metadatas ?? []).map((m) => toChunkRow((m ?? {}) as Record<string, unknown>));
+      const sorted = all.sort(byChunkIndex);
+      return { rows: sorted.slice(opts.offset, opts.offset + opts.limit), total: all.length };
     },
   };
 }

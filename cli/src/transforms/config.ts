@@ -13,6 +13,17 @@ export function prunePackageJson(json: string, removeDeps: string[]): string {
   return JSON.stringify(pkg, null, 2) + "\n";
 }
 
+// NOTE: "jsdom" is listed here for historical reasons only — it moved from the
+// template's devDependencies to its dependencies once URL ingestion (Readability
+// over jsdom, src/lib/rag/extract-url.ts) started needing it at runtime, not just
+// under test. removeTestTooling below only deletes from devDependencies, so this
+// entry is currently a no-op; it must stay that way. If jsdom is ever moved back
+// to devDependencies, this list would silently strip it again and every generated
+// project's URL ingestion would break with no local symptom — config.test.ts's
+// "keeps jsdom as a real dependency in the repo's own root package.json" case
+// reads the actual root package.json from disk (not a synthetic fixture) and is
+// the real guard against that; a fixture-only test can prove removeTestTooling's
+// logic is scoped correctly but can't catch the real file drifting.
 const TEST_DEV_DEPS = ["@testing-library/dom", "@testing-library/jest-dom", "@testing-library/react", "@testing-library/user-event", "@vitejs/plugin-react", "jsdom", "vitest"];
 const TEST_SCRIPTS = ["test", "test:watch", "test:integration"];
 

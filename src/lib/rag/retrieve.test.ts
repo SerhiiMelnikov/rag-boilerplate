@@ -11,6 +11,7 @@ function fakeStore(vec: RetrievedChunk[], kw: RetrievedChunk[]): VectorStore {
     upsertChunks: vi.fn(), existingHashes: vi.fn(), deleteByDocument: vi.fn(),
     searchVector: vi.fn(async () => vec),
     searchKeyword: vi.fn(async () => kw),
+    listChunks: vi.fn(async () => ({ rows: [], total: 0 })),
   };
 }
 
@@ -27,7 +28,10 @@ describe("searchChunks", () => {
   it("forwards allowedDocumentIds to both store searches", async () => {
     const searchVector = vi.fn(async () => []);
     const searchKeyword = vi.fn(async () => []);
-    const store: VectorStore = { upsertChunks: vi.fn(), existingHashes: vi.fn(), deleteByDocument: vi.fn(), searchVector, searchKeyword };
+    const store: VectorStore = {
+      upsertChunks: vi.fn(), existingHashes: vi.fn(), deleteByDocument: vi.fn(), searchVector, searchKeyword,
+      listChunks: vi.fn(async () => ({ rows: [], total: 0 })),
+    };
     await searchChunks("hello world", [0.1, 0.2], { topK: 10, minSimilarity: 0.5, tokenBudget: 10000, allowedDocumentIds: ["d1", "d2"] }, { store });
     expect(searchVector).toHaveBeenCalledWith([0.1, 0.2], expect.any(Number), ["d1", "d2"]);
     expect(searchKeyword).toHaveBeenCalledWith("hello world", [0.1, 0.2], expect.any(Number), ["d1", "d2"]);

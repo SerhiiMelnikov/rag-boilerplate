@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Filters } from "weaviate-client";
 import type { VectorStore, ChunkInput, RetrievedChunk, ChunkRow, ChunkPage } from "../types";
 import { cosineSimilarity } from "../cosine";
@@ -12,7 +13,7 @@ export interface WeaviateObject {
 }
 export interface WeaviateCollectionLike {
   data: {
-    insertMany(objs: { properties: Record<string, unknown>; vectors: number[] }[]): Promise<unknown>;
+    insertMany(objs: { id?: string; properties: Record<string, unknown>; vectors: number[] }[]): Promise<unknown>;
     deleteMany(where: unknown): Promise<unknown>;
   };
   query: {
@@ -69,6 +70,36 @@ function byChunkIndex(a: ChunkRow, b: ChunkRow): number {
 // cast rather than widening the shared interface for every call site.
 const defaultGetCollection = weaviateCollection as unknown as () => Promise<WeaviateCollectionLike>;
 
+// A fixed, arbitrary namespace for the chunk-id derivation below (generated once,
+// then hardcoded — any valid UUID works as a v5 namespace, it only has to be
+// constant so the same input always maps to the same output).
+const CHUNK_ID_NAMESPACE = "6f6a1b2e-9c1a-4b8b-8e2b-2f7a2b9d6e11";
+
+// RFC 4122 UUIDv5 (namespace + name, SHA-1) built on node:crypto's hash
+// primitive rather than pulling in a "uuid" dependency for one function.
+// Verified against the RFC's own DNS-namespace test vector.
+function uuidv5(name: string, namespace: string): string {
+  const nsBytes = Buffer.from(namespace.replace(/-/g, ""), "hex");
+  const digest = createHash("sha1").update(nsBytes).update(name, "utf8").digest();
+  const bytes = Buffer.from(digest.subarray(0, 16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x50; // version 5
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // RFC 4122 variant
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+// Without a stable id, insertMany hands every object a fresh random UUID, so
+// re-ingesting a document that hasn't changed inserts every one of its chunks
+// again instead of updating the originals — the corpus duplicates on every
+// re-ingest and grows without bound. Deriving the id from (documentId,
+// contentHash) means the same chunk content, re-ingested, targets the exact
+// same object id, and Weaviate overwrites it in place instead of adding a
+// second copy — live-verified: insertMany with an id that already exists
+// replaces properties and leaves the object count unchanged.
+function chunkObjectId(documentId: string, contentHash: string): string {
+  return uuidv5(`${documentId}:${contentHash}`, CHUNK_ID_NAMESPACE);
+}
+
 // Weaviate-backed store. Chunks are objects in the RagChunk class (app-supplied
 // vector + properties). Keyword search uses native BM25; because BM25 returns a
 // relevance score (not cosine), the score field is recomputed as cosine from the
@@ -82,6 +113,7 @@ export function createWeaviateStore(
       const col = await getCollection();
       await col.data.insertMany(
         rows.map((r) => ({
+          id: chunkObjectId(r.documentId, r.contentHash),
           properties: { documentId: r.documentId, filename: r.filename, content: r.content, contentHash: r.contentHash, chunkIndex: r.chunkIndex },
           vectors: r.embedding,
         })),
@@ -91,14 +123,29 @@ export function createWeaviateStore(
     async existingHashes(documentId: string) {
       const col = await getCollection();
       const hashes = new Set<string>();
-      const res = await col.query.fetchObjects({
-        filters: col.filter.byProperty("documentId").equal(documentId),
-        returnProperties: ["contentHash"],
-        limit: 10000,
-      });
-      for (const o of res.objects) {
-        const h = (o.properties ?? {}).contentHash;
-        if (typeof h === "string") hashes.add(h);
+      const documentFilter = col.filter.byProperty("documentId").equal(documentId);
+      const PAGE_SIZE = 500;
+      // Page with `offset` (not the `after` cursor — live-probed: the cursor is
+      // rejected outright when a filter is present) until a short page comes
+      // back. Weaviate refuses any offset >= QUERY_MAXIMUM_RESULTS (10000 by
+      // default), so this listing is only ever complete for documents under
+      // that ceiling — no amount of paging can lift it. That's acceptable now:
+      // upsertChunks' correctness no longer depends on this set being complete,
+      // because chunk ids are deterministic (see chunkObjectId above), so a
+      // chunk this call fails to see still overwrites in place on re-ingest
+      // instead of duplicating.
+      for (let offset = 0; ; offset += PAGE_SIZE) {
+        const res = await col.query.fetchObjects({
+          filters: documentFilter,
+          returnProperties: ["contentHash"],
+          limit: PAGE_SIZE,
+          offset,
+        });
+        for (const o of res.objects) {
+          const h = (o.properties ?? {}).contentHash;
+          if (typeof h === "string") hashes.add(h);
+        }
+        if (res.objects.length < PAGE_SIZE) break;
       }
       return hashes;
     },

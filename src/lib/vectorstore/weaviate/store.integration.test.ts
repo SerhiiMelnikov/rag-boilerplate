@@ -58,4 +58,30 @@ describe.runIf(RUN)("Weaviate adapter (live)", () => {
     await waitFor(async () => (await store.existingHashes(docId)).size === 0);
     expect((await store.existingHashes(docId)).size).toBe(0);
   }, 30000);
+
+  // This is the assertion the whole task exists for: before deterministic ids,
+  // upsertChunks called insertMany with no id, so Weaviate assigned a fresh
+  // UUID per row and re-ingesting the SAME chunks doubled the object count
+  // instead of overwriting. With ids derived from (documentId, contentHash),
+  // a second ingest of unchanged content must land on the same objects.
+  it("re-ingesting the same document does not duplicate its chunks", async () => {
+    const reingestDocId = "doc-it-reingest";
+    const rows: ChunkInput[] = [
+      { documentId: reingestDocId, filename: "gamma.md", content: "first chunk of gamma", embedding: oneHot(2), contentHash: "h-gamma", chunkIndex: 0 },
+      { documentId: reingestDocId, filename: "gamma.md", content: "second chunk of gamma", embedding: oneHot(3), contentHash: "h-delta", chunkIndex: 1 },
+    ];
+
+    await store.upsertChunks(rows);
+    await waitFor(async () => (await store.listChunks(reingestDocId, { limit: 1, offset: 0 })).total === rows.length);
+    const countAfterFirstIngest = (await store.listChunks(reingestDocId, { limit: 1, offset: 0 })).total;
+    expect(countAfterFirstIngest).toBe(rows.length);
+
+    await store.upsertChunks(rows); // re-ingest: identical documentId + contentHash per row
+    await new Promise((r) => setTimeout(r, 300)); // let the second batch settle before counting
+    const countAfterReingest = (await store.listChunks(reingestDocId, { limit: 1, offset: 0 })).total;
+    expect(countAfterReingest).toBe(countAfterFirstIngest);
+
+    await store.deleteByDocument(reingestDocId);
+    await waitFor(async () => (await store.existingHashes(reingestDocId)).size === 0);
+  }, 30000);
 });

@@ -59,12 +59,46 @@ describe("weaviate store", () => {
     expect(col.data.insertMany).not.toHaveBeenCalled();
   });
 
+  it("upsertChunks derives the same id for the same (documentId, contentHash) on a re-ingest, so a real store overwrites instead of appending", async () => {
+    const col = fakeCollection();
+    const store = createWeaviateStore(provide(col));
+    const row = { documentId: "d1", filename: "f.md", content: "hi", embedding: [0.1, 0.2], contentHash: "h1", chunkIndex: 1 };
+    await store.upsertChunks([row]);
+    await store.upsertChunks([row]); // simulated re-ingest of the same chunk
+    const [firstId, secondId] = col.data.insertMany.mock.calls.map((c) => c[0][0].id);
+    expect(firstId).toEqual(expect.any(String));
+    expect(firstId).toBe(secondId);
+  });
+
+  it("upsertChunks derives a different id when contentHash changes", async () => {
+    const col = fakeCollection();
+    const store = createWeaviateStore(provide(col));
+    await store.upsertChunks([{ documentId: "d1", filename: "f.md", content: "hi", embedding: [0.1], contentHash: "h1", chunkIndex: 0 }]);
+    await store.upsertChunks([{ documentId: "d1", filename: "f.md", content: "hi v2", embedding: [0.1], contentHash: "h2", chunkIndex: 0 }]);
+    const [firstId, secondId] = col.data.insertMany.mock.calls.map((c) => c[0][0].id);
+    expect(firstId).not.toBe(secondId);
+  });
+
   it("existingHashes collects contentHash filtered by documentId", async () => {
     const col = fakeCollection({
       fetchObjects: vi.fn(async () => ({ objects: [{ uuid: "p1", properties: { contentHash: "h1" } }, { uuid: "p2", properties: { contentHash: "h2" } }] })),
     });
     const out = await createWeaviateStore(provide(col)).existingHashes("d1");
     expect([...out].sort()).toEqual(["h1", "h2"]);
+  });
+
+  it("existingHashes pages with offset (page size 500) until a short page comes back, collecting every page", async () => {
+    const PAGE_SIZE = 500;
+    const page0 = Array.from({ length: PAGE_SIZE }, (_, i) => ({ uuid: `p${i}`, properties: { contentHash: `h${i}` } }));
+    const page1 = [{ uuid: "p-last", properties: { contentHash: "h-last" } }]; // short page -> loop stops here
+    const fetchObjects = vi.fn(async (args: { offset?: number }) => ({ objects: (args.offset ?? 0) === 0 ? page0 : page1 }));
+    const col = fakeCollection({ fetchObjects });
+    const out = await createWeaviateStore(provide(col)).existingHashes("d1");
+    expect(out.size).toBe(PAGE_SIZE + 1);
+    expect(out.has("h-last")).toBe(true);
+    expect(fetchObjects).toHaveBeenCalledTimes(2);
+    expect(fetchObjects.mock.calls[0][0]).toMatchObject({ limit: PAGE_SIZE, offset: 0 });
+    expect(fetchObjects.mock.calls[1][0]).toMatchObject({ limit: PAGE_SIZE, offset: PAGE_SIZE });
   });
 
   it("deleteByDocument calls deleteMany with a documentId filter", async () => {

@@ -100,6 +100,10 @@ export function createChromaStore(
 
     async existingHashes(documentId: string) {
       const col = await getCollection();
+      // No limit here, unlike Weaviate's equivalent: live-verified against a
+      // 1200-row seeded collection that col.get({ where }) returns every match
+      // with no cap, so nothing is missed. If a cap is ever hit in practice,
+      // get() also accepts limit/offset, and the collection exposes count().
       const res = await col.get({ where: { documentId }, include: ["metadatas"] });
       const hashes = new Set<string>();
       for (const m of res.metadatas ?? []) {

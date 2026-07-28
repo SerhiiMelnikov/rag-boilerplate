@@ -257,6 +257,16 @@ describe("generateReadme secrets", () => {
   // The repo's own README.md is in build-template.ts's EXCLUDE list, so it never
   // reaches a generated project — this generator is the only documentation those
   // users get. Without these, the eval runner ships invisible.
+  // The Admin section enumerates the profile menu's entries, so a new admin page
+  // that never gets listed here is invisible to everyone who scaffolds a project —
+  // the repo's own README is in build-template.ts's EXCLUDE and never ships.
+  it("lists the usage dashboard among the admin pages", () => {
+    const readme = generateReadme(opts({ appKind: "full" }));
+    expect(readme).toContain("**Usage**");
+    expect(readme).toContain("per workspace");
+    expect(readme).toContain("GET /api/admin/usage");
+  });
+
   it("documents the eval runner and its CI-gate flags in the full app", () => {
     const readme = generateReadme(opts({ appKind: "full" }));
     expect(readme).toContain("npm run eval");

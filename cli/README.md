@@ -36,7 +36,8 @@ ships as a Docker image when you're ready.
 - **Admin panel** — one **Files** list for documents *and* images (filter by type
   or workspace, sort, preview, edit captions and workspace membership in a modal),
   plus workspaces, users, provider API keys, SMTP, retrieval settings, rate limits,
-  and answer-rating analytics.
+  answer-rating analytics, and a token-usage dashboard (per user, per workspace and
+  a 30-day trend, also exposed as `GET /api/admin/usage`).
 - **Evaluation harness** — curate a golden set of questions (each tagged with the
   documents that should answer it), run them through the real retrieval + answer
   pipeline, and score both retrieval (recall/precision/MRR) and the answer (an LLM

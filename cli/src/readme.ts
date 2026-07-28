@@ -122,6 +122,9 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("  registration — see **Registration** below.");
   lines.push("- **Users** — manage accounts and roles.");
   lines.push("- **Analytics** — see how answers were rated.");
+  lines.push("- **Usage** — model tokens spent over the last 30 days: totals, per user and");
+  lines.push("  per workspace, plus a daily trend. Also served as `GET /api/admin/usage`.");
+  lines.push("  Replies that never reach the model record no tokens and are not counted.");
   lines.push("");
 
   lines.push("## API docs", "");

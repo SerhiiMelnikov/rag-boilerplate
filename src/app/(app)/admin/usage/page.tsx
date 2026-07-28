@@ -15,8 +15,9 @@ export default async function UsagePage() {
     <div className="mx-auto max-w-4xl space-y-8 p-4">
       <h1 className="text-lg font-semibold">Token usage</h1>
       <p className="text-sm text-zinc-500">
-        Model tokens recorded on answers over the last {USAGE_WINDOW_DAYS} days. Answers that make no model call
-        (image results) record no tokens and are not counted.
+        Model tokens recorded on answers over the last {USAGE_WINDOW_DAYS} days. Replies that never reach the
+        model — image results, and the fallbacks for no retrieved context or a provider error — record no
+        tokens and are not counted here, so this answer count is lower than the one on Analytics.
       </p>
       <section><UsageTiles summary={summary} /></section>
       <section className="space-y-2">

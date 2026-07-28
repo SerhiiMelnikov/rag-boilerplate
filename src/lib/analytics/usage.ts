@@ -43,8 +43,12 @@ const num = (v: unknown): number => (typeof v === "number" ? v : Number(v ?? 0))
 // the no-context fallback, and every provider-error fallback this way — those
 // rows have no tokens to attribute, so excluding them is correct rather than a gap.
 const SCOPE = sql`m.role = 'assistant' and m.usage is not null and m.created_at >= now() - make_interval(days => ${USAGE_WINDOW_DAYS})`;
-const PROMPT_SUM = sql`coalesce(sum(coalesce((m.usage->>'promptTokens')::int, 0)), 0)::int`;
-const COMPLETION_SUM = sql`coalesce(sum(coalesce((m.usage->>'completionTokens')::int, 0)), 0)::int`;
+// Cast through numeric, not int: a provider that ever reports a fractional token
+// count would make `::int` throw, and because these fragments are shared, that one
+// bad row would 500 the whole dashboard and the endpoint together. No provider does
+// today — this is cheap immunity, not a fix for a live bug.
+const PROMPT_SUM = sql`round(coalesce(sum(coalesce((m.usage->>'promptTokens')::numeric, 0)), 0))::int`;
+const COMPLETION_SUM = sql`round(coalesce(sum(coalesce((m.usage->>'completionTokens')::numeric, 0)), 0))::int`;
 
 function toRow(r: Row): Omit<UsageRow, "id" | "label"> {
   const promptTokens = num(r.promptTokens);

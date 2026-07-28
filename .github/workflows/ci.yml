@@ -21,6 +21,13 @@ jobs:
       - run: npx vitest run
 
   integration:
+    # This name is stale — the job also runs the usage-analytics integration
+    # suite now (see the comment above that vitest invocation below) — but it
+    # is left as-is on purpose: this exact string is a required status check
+    # in this repo's branch protection settings. Renaming it would mean the
+    # required check never reports, blocking every PR until someone edits the
+    # GitHub branch protection rule by hand to match. If this job picks up a
+    # third unrelated suite, update this comment rather than the name.
     name: integration (ratelimit)
     runs-on: ubuntu-latest
     services:
@@ -50,13 +57,18 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run db:migrate
-      # Only the ratelimit integration suite: it is the one that actually
-      # exercises the atomic INSERT ... ON CONFLICT DO UPDATE against a real
-      # Postgres (the unit suite's fake models the counter in a JS Map and
-      # would stay green even if this regressed to a racy SELECT-then-UPDATE).
+      # The ratelimit and usage-analytics integration suites: both exercise SQL
+      # that the unit suites cannot, because the unit suites mock db.execute.
+      # ratelimit's fake models the counter in a JS Map and would stay green
+      # even if this regressed to a racy SELECT-then-UPDATE, so it needs the
+      # atomic INSERT ... ON CONFLICT DO UPDATE run against real Postgres.
+      # usage's unit suite only asserts the row -> UsageRow/UsageSummary
+      # mapping against canned rows — it would stay green if the SQL aggregated
+      # the wrong column, joined the wrong table, or dropped the null-workspace
+      # ("Unassigned") rows, so it needs real aggregates over real rows too.
       # The rest of the repo's integration tests need live Chroma/Weaviate/
       # Pinecone and are out of scope here.
-      - run: RUN_INTEGRATION=1 npx vitest run --config vitest.integration.config.ts src/lib/ratelimit/store.integration.test.ts
+      - run: RUN_INTEGRATION=1 npx vitest run --config vitest.integration.config.ts src/lib/ratelimit/store.integration.test.ts src/lib/analytics/usage.integration.test.ts
 
   cli:
     name: cli (tests, build)

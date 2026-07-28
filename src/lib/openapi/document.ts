@@ -19,6 +19,7 @@ import "./paths/admin-users";
 import "./paths/admin-workspaces";
 import "./paths/admin-settings";
 import "./paths/admin-evaluation";
+import "./paths/admin-usage";
 
 const API_VERSION = "0.5.1";
 
@@ -37,7 +38,7 @@ export function buildOpenApiDocument() {
       { name: "Conversations" }, { name: "Messages" }, { name: "Workspaces" }, { name: "Images" },
       { name: "Admin: Documents" }, { name: "Admin: Files" }, { name: "Admin: Images" },
       { name: "Admin: Users" }, { name: "Admin: Workspaces" }, { name: "Admin: Settings" },
-      { name: "Admin: Evaluation" },
+      { name: "Admin: Evaluation" }, { name: "Admin: Usage" },
     ],
   });
 }

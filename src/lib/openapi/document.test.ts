@@ -57,6 +57,15 @@ describe("buildOpenApiDocument", () => {
     expect(usersGet?.security).toEqual([{ sessionCookie: [] }]);
     expect(usersGet?.responses?.[403]).toBeTruthy();
   });
+  // The anti-drift check below only proves the path exists. This aggregates every
+  // user's activity and exposes their emails, so it must also be documented as
+  // requiring a session and able to refuse a non-admin.
+  it("documents the usage endpoint as guarded, with 401 + 403 responses", () => {
+    const usageGet = doc.paths?.["/api/admin/usage"]?.get;
+    expect(usageGet?.security).toEqual([{ sessionCookie: [] }]);
+    expect(usageGet?.responses?.[401]).toBeTruthy();
+    expect(usageGet?.responses?.[403]).toBeTruthy();
+  });
   it("documents the evaluation endpoints as guarded, with 401 + 403 responses", () => {
     for (const [path, method] of [
       ["/api/admin/evaluation/questions", "get"],

@@ -35,6 +35,7 @@ import {
   deleteQuestionResponse,
 } from "@/api/admin/evaluation/questions/handler";
 import { listRunsResponse, createRunResponse, getRunResponse } from "@/api/admin/evaluation/runs/handler";
+import { getUsageResponse } from "@/api/admin/usage/handler";
 
 // Builds the standalone (Next-free) API server: every src/api/** handler wired onto
 // a plain Hono routing table. `createServer()` never binds a port (see
@@ -131,6 +132,9 @@ export function createServer(): Hono {
   app.get("/api/admin/evaluation/runs", (c) => listRunsResponse(c.req.raw));
   app.post("/api/admin/evaluation/runs", (c) => createRunResponse(c.req.raw, { schedule }));
   app.get("/api/admin/evaluation/runs/:id", (c) => getRunResponse(c.req.param("id"), c.req.raw));
+
+  // --- Admin: Usage -----------------------------------------------------------------
+  app.get("/api/admin/usage", (c) => getUsageResponse(c.req.raw));
 
   // --- OpenAPI doc + interactive docs ------------------------------------------
   // Public, same as the Next.js build: the contract itself is not a secret, and

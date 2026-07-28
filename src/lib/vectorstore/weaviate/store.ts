@@ -166,6 +166,15 @@ export function createWeaviateStore(
       // `unknown` on purpose (see the `filter` interface above), but
       // Filters.and — a plain, stateless combinator, not a collection method —
       // needs the real weaviate-client FilterValue shape.
+      //
+      // TOCTOU note: `total`, `hasChunkIndexTotal`, and the fetchObjects call
+      // below are three separate round trips, so a legacy chunk written
+      // between the first aggregate and the final fetch could in principle
+      // still slip onto the sort fast path and get dropped. Not engineered
+      // around: chunks are written once per ingest batch (upsertChunks), not
+      // trickled in concurrently with a read, so this window is not a
+      // realistic write pattern for this data — noted so the next reader
+      // knows it was considered, not missed.
       const hasChunkIndexFilter = Filters.and(documentFilter as never, col.filter.byProperty("chunkIndex").greaterOrEqual(0) as never);
       const hasChunkIndexTotal = (await col.aggregate.overAll({ filters: hasChunkIndexFilter })).totalCount;
       const canSortServerSide = hasChunkIndexTotal === total;

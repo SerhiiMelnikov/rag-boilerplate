@@ -100,7 +100,7 @@ describe("qdrant store", () => {
     expect(client.query).not.toHaveBeenCalled();
   });
 
-  it("listChunks pages forward across scroll cursors, sorts by chunkIndex nulls last, honours limit/offset, and uses the scrolled count as total once the whole document is scrolled", async () => {
+  it("listChunks pages forward across scroll cursors, sorts by chunkIndex nulls last, honours limit/offset, and total is the full scrolled count", async () => {
     // Scroll's cursor order is arbitrary (point id order), not chunkIndex order —
     // point 3 (no chunkIndex — pre-Task-1 legacy chunk) surfaces before point 1.
     const scroll = vi.fn()
@@ -111,37 +111,34 @@ describe("qdrant store", () => {
       ], next_page_offset: null });
     const client = fakeClient({ scroll });
     const out = await createQdrantStore(client as never, "c").listChunks("d1", { limit: 2, offset: 0 });
-    // Full document (3 chunks) fits within the window walked (offset+limit=2
-    // needed, but scrolling doesn't stop mid-batch) — so total is the true
-    // document size, not the page length, and no client.count call is needed.
+    // total is the true document size (3), not the page length (2).
     expect(out).toEqual({ rows: [
       { chunkIndex: 0, content: "c0", contentHash: "h0" },
       { chunkIndex: 1, content: "c1", contentHash: "h1" },
     ], total: 3 });
     expect(scroll).toHaveBeenCalledTimes(2);
     expect(scroll.mock.calls[1][1].offset).toBe("cursor-1");
-    expect(client.count).not.toHaveBeenCalled();
   });
 
-  it("listChunks falls back to client.count for total when it stops scrolling before the document is exhausted", async () => {
-    const scroll = vi.fn(async () => ({
-      points: [
-        { payload: { content: "c0", contentHash: "h0", chunkIndex: 0 } },
-        { payload: { content: "c1", contentHash: "h1", chunkIndex: 1 } },
-      ],
-      next_page_offset: "cursor-more", // more points exist beyond this page
-    }));
-    const count = vi.fn(async (_collection: string, _args: { filter?: unknown }) => ({ count: 500 }));
-    const client = fakeClient({ scroll, count });
-    const out = await createQdrantStore(client as never, "c").listChunks("d1", { limit: 2, offset: 0 });
-    expect(out.rows).toEqual([
-      { chunkIndex: 0, content: "c0", contentHash: "h0" },
-      { chunkIndex: 1, content: "c1", contentHash: "h1" },
-    ]);
-    expect(out.total).toBe(500);
-    // Already has offset+limit points and knows more exist — must not keep scrolling.
-    expect(scroll).toHaveBeenCalledTimes(1);
-    expect(count).toHaveBeenCalledTimes(1);
-    expect(count.mock.calls[0][1].filter).toEqual({ must: [{ key: "documentId", match: { value: "d1" } }] });
+  it("listChunks enumerates every scroll batch before sorting/slicing — an early page must not leak an arbitrary scroll-order window", async () => {
+    // 300 chunks, returned across two scroll batches (the implementation's
+    // batch size is 256) in an order unrelated to chunkIndex — here, strictly
+    // descending (opposite of insertion order), reproducing a real point-id
+    // scroll order having nothing to do with chunkIndex. An early-stop
+    // implementation that quits as soon as it's collected offset+limit points
+    // would see only batch 1 (chunkIndex 299..44) and never reach the chunks
+    // that actually belong at the front of the document (0..9).
+    const toPoint = (idx: number) => ({ payload: { content: `c${idx}`, contentHash: `h${idx}`, chunkIndex: idx } });
+    const batch1 = Array.from({ length: 256 }, (_, i) => 299 - i); // 299..44, descending
+    const batch2 = Array.from({ length: 44 }, (_, i) => 43 - i); // 43..0, descending
+    const scroll = vi.fn()
+      .mockResolvedValueOnce({ points: batch1.map(toPoint), next_page_offset: "cursor-2" })
+      .mockResolvedValueOnce({ points: batch2.map(toPoint), next_page_offset: null });
+    const client = fakeClient({ scroll });
+    const out = await createQdrantStore(client as never, "c").listChunks("d1", { limit: 10, offset: 0 });
+    expect(out.total).toBe(300);
+    expect(out.rows.map((r) => r.chunkIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    // Both batches were walked — scrolling did not stop after the first.
+    expect(scroll).toHaveBeenCalledTimes(2);
   });
 });

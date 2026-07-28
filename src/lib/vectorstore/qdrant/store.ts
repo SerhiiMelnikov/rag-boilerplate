@@ -113,14 +113,23 @@ export function createQdrantStore(client: QdrantClient = qdrantClient(), collect
     async listChunks(documentId: string, opts: { limit: number; offset: number }): Promise<ChunkPage> {
       // Qdrant's scroll `offset` is an opaque cursor, not a numeric skip, and
       // scroll's natural order is by point id (random UUIDs at write time),
-      // unrelated to chunkIndex. So page forward from the start, collecting
-      // points, until we've walked at least `offset + limit` of them (or run
-      // out); sort what was collected by chunkIndex (nulls last) and slice the
-      // requested window from it.
-      const need = opts.offset + opts.limit;
+      // unrelated to chunkIndex. An earlier version of this method stopped
+      // scrolling as soon as it had collected `offset + limit` points and
+      // sorted/sliced only that partial window — which is wrong whenever the
+      // document is larger than one scroll batch (limit: 256 below), because
+      // the FIRST batch in point-id order has no relationship to the lowest
+      // chunkIndex values: a 300-chunk document scanned in reverse-chunkIndex
+      // order returned chunkIndex [44..53] for {limit:10, offset:0} instead of
+      // [0..9] (reproduced and covered by the test below).
+      //
+      // So, like Chroma and Pinecone: enumerate every chunk in the document,
+      // sort by chunkIndex (nulls last), then slice the requested window.
+      // This does pull a whole document's points into memory for one page —
+      // bounded by a single document, and this is an admin preview, so
+      // correctness (the actual lowest-indexed chunks, not an arbitrary
+      // scroll-order window) wins over avoiding that cost.
       const collected: Point[] = [];
       let cursor: unknown = undefined;
-      let exhausted = false;
       do {
         const res = await client.scroll(collection, {
           filter: documentFilter(documentId),
@@ -129,27 +138,11 @@ export function createQdrantStore(client: QdrantClient = qdrantClient(), collect
           offset: cursor as never,
         });
         collected.push(...(res.points as Point[]));
-        const next = (res as { next_page_offset?: unknown }).next_page_offset ?? null;
-        if (next === null || next === undefined) {
-          exhausted = true;
-          break;
-        }
-        cursor = next;
-      } while (collected.length < need);
+        cursor = (res as { next_page_offset?: unknown }).next_page_offset ?? null;
+      } while (cursor !== null && cursor !== undefined);
 
       const rows = collected.map(toChunkRow).sort(byChunkIndex).slice(opts.offset, opts.offset + opts.limit);
-
-      // If scrolling ran out on its own, we've genuinely seen every chunk and
-      // collected.length IS the total — no extra call needed. Otherwise we
-      // stopped early because we already had enough for this page, so we don't
-      // know the real total and must ask for it separately. Prefer client.count
-      // over an unbounded scroll: this is one round trip, always, versus
-      // scrolling a potentially huge document just to learn its size.
-      const total = exhausted
-        ? collected.length
-        : (await client.count(collection, { filter: documentFilter(documentId) })).count;
-
-      return { rows, total };
+      return { rows, total: collected.length };
     },
   };
 }

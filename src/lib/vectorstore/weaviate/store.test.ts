@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from "vitest";
-import { Filters } from "weaviate-client";
 import { createWeaviateStore, type WeaviateCollectionLike } from "./store";
 
 // Fake collection mirroring the weaviate-client v3 handle surface the store
@@ -144,9 +143,6 @@ describe("weaviate store", () => {
 
   function docFilterArg(documentId: string) {
     return { p: "documentId", v: documentId };
-  }
-  function hasIndexFilterArg(documentId: string) {
-    return Filters.and(docFilterArg(documentId) as never, { p: "chunkIndex", op: "greaterOrEqual", v: 0 } as never);
   }
   // aggregate.overAll is called twice (total, then the range-filtered "has
   // chunkIndex" count); tell them apart by the filter's shape rather than

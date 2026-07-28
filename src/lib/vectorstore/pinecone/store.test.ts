@@ -163,7 +163,7 @@ describe("pinecone store", () => {
     const ids = ["d1#a", "d1#b", "d1#c", "d1#d", "d1#e"];
     const dense = fakeDense({
       listPaginated: vi.fn(async () => ({ vectors: ids.map((id) => ({ id })), pagination: undefined })),
-      fetch: vi.fn(async (batch: string[]) => ({
+      fetch: vi.fn(async (_batch: string[]) => ({
         records: {
           "d1#b": { id: "d1#b", metadata: { content: "cb", contentHash: "hb", chunkIndex: 5 } },
           "d1#c": { id: "d1#c", metadata: { content: "cc", contentHash: "hc" } }, // legacy: no chunkIndex

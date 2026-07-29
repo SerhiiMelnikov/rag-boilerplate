@@ -40,19 +40,30 @@ export async function createHandoffCode(userId: string, deps: HandoffDeps = {}):
 }
 
 // Returns the user id, or null for unknown, expired and already-used alike —
-// the caller must not be able to tell them apart. Single use is enforced by
-// deleting inside the same transaction as the read.
+// the caller must not be able to tell them apart.
+//
+// The DELETE is the sole read, deliberately. A SELECT under READ COMMITTED
+// (this repo's default — src/lib/db/client.ts sets no isolation-level
+// override) takes no row lock, so two concurrent redemptions of one code
+// could both see the row via a SELECT-then-DELETE, both proceed, and both
+// return the same user id: one code, two sessions, which is precisely what
+// single-use exists to prevent. DELETE ... RETURNING is atomic per row: only
+// one caller can receive it. Same reasoning as the atomic upsert in
+// src/lib/ratelimit/store.ts ("Postgres serialises concurrent writers on the
+// row... Any read-then-write version of this would race").
+//
+// The row still goes whether or not it was live: a used code and an expired
+// code are both dead weight, and leaving an expired one behind invites a
+// replay if the expiry check is ever weakened.
 export async function consumeHandoffCode(code: string, deps: HandoffDeps = {}): Promise<string | null> {
   const database = deps.database ?? defaultDb;
   const now = deps.now ? deps.now() : Date.now();
 
   return database.transaction(async (tx) => {
-    const [row] = await tx.select().from(oauthHandoffCodes)
-      .where(eq(oauthHandoffCodes.code, code)).limit(1);
+    const [row] = await tx.delete(oauthHandoffCodes)
+      .where(eq(oauthHandoffCodes.code, code))
+      .returning();
     if (!row) return null;
-    // Delete whether or not it was still live: a used code and an expired code
-    // are both dead weight, and leaving either behind invites a replay.
-    await tx.delete(oauthHandoffCodes).where(eq(oauthHandoffCodes.code, code));
     if (row.expiresAt.getTime() <= now) return null;
     return row.userId;
   });

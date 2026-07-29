@@ -50,4 +50,17 @@ describe.runIf(RUN)("oauth handoff codes (integration)", () => {
   it("refuses a code that was never minted", async () => {
     expect(await consumeHandoffCode("never-existed")).toBeNull();
   });
+
+  // The sequential test above never contends for the row, so a SELECT-then-
+  // DELETE implementation (no row lock taken by a plain SELECT under READ
+  // COMMITTED) would pass it while still letting two concurrent redemptions
+  // both see the row and both return the same user id. Firing both calls via
+  // Promise.all forces genuine contention: exactly one must win.
+  it("lets exactly one of two concurrent redemptions win", async () => {
+    const id = await makeUser();
+    const code = await createHandoffCode(id);
+    const [a, b] = await Promise.all([consumeHandoffCode(code), consumeHandoffCode(code)]);
+    expect([a, b].filter((r) => r === id)).toHaveLength(1);
+    expect([a, b].filter((r) => r === null)).toHaveLength(1);
+  });
 });

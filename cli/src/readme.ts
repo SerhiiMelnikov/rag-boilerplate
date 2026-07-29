@@ -52,7 +52,7 @@ function passwordSection(o: InstallOptions): string[] {
   lines.push("| Endpoint | Purpose |");
   lines.push("| --- | --- |");
   lines.push(
-    "| `POST /api/auth/forgot-password` | Emails a reset link. Always answers `200`, whether or not the address has an account — anything else would make it a user-enumeration oracle. Rate limited per address and per email domain. |",
+    "| `POST /api/auth/forgot-password` | Emails a reset link. Answers `200` whether or not the address has an account — the response is deliberately identical either way, so it cannot be used to discover which addresses are registered. Rate limited per address and per email domain (`429`); a misconfigured or failing mailer answers `503`. |",
   );
   lines.push(
     "| `POST /api/auth/reset-password` | Consumes the emailed token and sets the new password. Single use; links expire after 1 hour. |",

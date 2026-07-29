@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { forgotPassword } from "./handler";
 import { EmailNotConfiguredError } from "@/lib/email/sender";
 
@@ -19,9 +19,18 @@ function deps(user: User) {
 
 const verified: User = { id: "u1", emailVerifiedAt: new Date(), blockedAt: null };
 
+// AUTH_URL / RESET_URL / NODE_ENV are read straight from process.env by the
+// handler. Stubbing them (and always unstubbing) keeps that global mutation from
+// leaking into every later file in the same worker — an earlier version deleted
+// AUTH_URL and restored only NODE_ENV, which left the variable missing for
+// everything that ran afterwards.
 beforeEach(() => {
-  process.env.AUTH_URL = "https://app.example";
-  delete process.env.RESET_URL;
+  vi.stubEnv("AUTH_URL", "https://app.example");
+  vi.stubEnv("RESET_URL", undefined);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("forgotPassword", () => {
@@ -57,7 +66,7 @@ describe("forgotPassword", () => {
   });
 
   it("points the link at RESET_URL when set, as a complete target", async () => {
-    process.env.RESET_URL = "https://consumer.app/choose-password";
+    vi.stubEnv("RESET_URL", "https://consumer.app/choose-password");
     const d = deps(verified);
     await forgotPassword(req({ email: "a@b.test" }), d);
     const msg = d.sendEmailFn.mock.calls[0][0] as { html: string };
@@ -117,17 +126,12 @@ describe("forgotPassword", () => {
   });
 
   it("refuses to mint a link from the request Host in production", async () => {
-    delete process.env.AUTH_URL;
-    const savedEnv = process.env.NODE_ENV;
-    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
-    try {
-      const d = deps(verified);
-      const res = await forgotPassword(req({ email: "a@b.test" }), d);
-      expect(res.status).toBe(503);
-      expect(d.findUserFn).not.toHaveBeenCalled();
-    } finally {
-      (process.env as Record<string, string | undefined>).NODE_ENV = savedEnv;
-    }
+    vi.stubEnv("AUTH_URL", undefined);
+    vi.stubEnv("NODE_ENV", "production");
+    const d = deps(verified);
+    const res = await forgotPassword(req({ email: "a@b.test" }), d);
+    expect(res.status).toBe(503);
+    expect(d.findUserFn).not.toHaveBeenCalled();
   });
 
   it("sweeps expired tokens without blocking the response", async () => {

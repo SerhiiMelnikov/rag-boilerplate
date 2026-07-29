@@ -34,9 +34,17 @@ export function resolveLinkBase(request: Request, externalUrl: string | undefine
 // consumer runs its own frontend and its env var is therefore the COMPLETE link
 // target already (e.g. "https://consumer.app/reset"), not an origin to append a
 // path to like AUTH_URL is. Only the token query param gets added.
+// Built with the URL parser rather than string concatenation: a base that already
+// carries a query string (RESET_URL="https://x/reset?ref=1") would otherwise
+// produce ".../reset?ref=1?token=..." — a second "?" makes the token part of the
+// `ref` value rather than a parameter of its own, so the link silently does not
+// work. searchParams.set also replaces a stale token already present in the base
+// instead of appending a duplicate.
 export function buildLink(base: LinkBase, appPath: string, token: string): string {
   const target = base.kind === "external"
     ? base.url.replace(/\/$/, "")
     : `${base.origin.replace(/\/$/, "")}${appPath}`;
-  return `${target}?token=${encodeURIComponent(token)}`;
+  const url = new URL(target);
+  url.searchParams.set("token", token);
+  return url.toString();
 }

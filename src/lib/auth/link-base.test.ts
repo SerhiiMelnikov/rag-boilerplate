@@ -46,6 +46,22 @@ describe("resolveLinkBase / buildLink", () => {
     expect(buildLink(base, "/reset", "tok")).toBe("https://our-app.example/reset?token=tok");
   });
 
+  // Blind "?token=" concatenation produced ".../reset?ref=1?token=...", where the
+  // second "?" is just a literal inside the `ref` value and `token` is not a
+  // parameter at all — a reset link that silently does not work.
+  it("adds the token as a real parameter when the base already has a query string", () => {
+    const base = resolveLinkBase(req(), "https://consumer.app/reset?ref=1");
+    const link = buildLink(base, "/reset", "tok");
+    expect(new URL(link).searchParams.get("token")).toBe("tok");
+    expect(new URL(link).searchParams.get("ref")).toBe("1");
+    expect(link).toBe("https://consumer.app/reset?ref=1&token=tok");
+  });
+
+  it("replaces a token already present in the base rather than appending a second", () => {
+    const base = resolveLinkBase(req(), "https://consumer.app/reset?token=stale");
+    expect(buildLink(base, "/reset", "fresh")).toBe("https://consumer.app/reset?token=fresh");
+  });
+
   it("normalises a trailing slash on either base", () => {
     process.env.AUTH_URL = "https://our-app.example/";
     expect(buildLink(resolveLinkBase(req(), undefined), "/verify", "t")).toBe("https://our-app.example/verify?token=t");

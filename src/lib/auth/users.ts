@@ -27,6 +27,23 @@ export async function deleteUser(userId: string, database = defaultDb): Promise<
   await database.delete(users).where(eq(users.id, userId));
 }
 
+// Minimal projection for the reset path: does this address exist, is it
+// confirmed, and is it blocked?
+//
+// The explicit return type is required, not stylistic — see
+// findUserForRegistration's comment: without it TS infers the destructured row
+// as non-nullable and silently drops the `| null` that ForgotPasswordDeps
+// depends on.
+export async function findUserForReset(
+  email: string,
+  database = defaultDb,
+): Promise<{ id: string; emailVerifiedAt: Date | null; blockedAt: Date | null } | null> {
+  const [row] = await database
+    .select({ id: users.id, emailVerifiedAt: users.emailVerifiedAt, blockedAt: users.blockedAt })
+    .from(users).where(eq(users.email, email)).limit(1);
+  return row ?? null;
+}
+
 export interface NewUser {
   email: string;
   password: string;
@@ -90,10 +107,26 @@ export async function getUserByEmail(email: string, database = defaultDb) {
   return rows[0] ?? null;
 }
 
+// Fetch a user's hash by id. getUserByEmail is keyed by email; the session
+// carries only an id, so the authenticated change-password path needs this.
+// Explicit return type for the same reason findUserForRegistration documents.
+export async function getUserWithHashById(
+  id: string,
+  database = defaultDb,
+): Promise<{ id: string; passwordHash: string } | null> {
+  const [row] = await database
+    .select({ id: users.id, passwordHash: users.passwordHash })
+    .from(users).where(eq(users.id, id)).limit(1);
+  return row ?? null;
+}
+
 // One indexed lookup used by the guards (exists + not blocked + role + super-admin).
 export async function getAuthUserById(id: string, database = defaultDb) {
   const rows = await database
-    .select({ id: users.id, role: users.role, isSuperAdmin: users.isSuperAdmin, blockedAt: users.blockedAt })
+    .select({
+      id: users.id, role: users.role, isSuperAdmin: users.isSuperAdmin,
+      blockedAt: users.blockedAt, sessionsValidFrom: users.sessionsValidFrom,
+    })
     .from(users)
     .where(eq(users.id, id))
     .limit(1);

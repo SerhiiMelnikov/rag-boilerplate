@@ -15,5 +15,8 @@ declare module "next-auth/jwt" {
     id: string;
     role: "admin" | "user";
     isSuperAdmin: boolean;
+    // Seconds. When the SESSION began — see the jwt callback in auth.config.ts
+    // for why this is not the registered `iat` claim.
+    sessionIssuedAt: number;
   }
 }

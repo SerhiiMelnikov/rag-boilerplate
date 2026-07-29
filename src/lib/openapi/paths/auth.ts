@@ -78,3 +78,103 @@ registry.registerPath({
     },
   },
 });
+
+// POST /api/auth/forgot-password (src/api/auth/forgot-password/handler.ts): public —
+// you cannot be signed in to have forgotten your password. Documented as always 200
+// on purpose: the uniform response IS the contract here. Any status that varied with
+// whether the address exists would make this a user-enumeration oracle, so consumers
+// must not expect one.
+registry.registerPath({
+  method: "post",
+  path: "/api/auth/forgot-password",
+  tags: ["Auth"],
+  summary: "Request a password reset link (always succeeds, whether or not the address has an account)",
+  request: {
+    body: { content: { "application/json": { schema: z.object({ email: z.string().email() }) } } },
+  },
+  responses: {
+    200: {
+      description: "Accepted. A link was sent only if the address belongs to a verified, unblocked account — the response is identical either way.",
+      content: { "application/json": { schema: z.object({ status: z.literal("reset_sent") }) } },
+    },
+    400: {
+      description: "Invalid JSON body, or the email failed validation",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+    429: {
+      description: "Rate limited, per address and per email domain. Carries Retry-After.",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+    503: {
+      description: "Email is not configured, sending failed, or AUTH_URL is unset in production",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+  },
+});
+
+// POST /api/auth/reset-password (src/api/auth/reset-password/handler.ts): the ONLY
+// place a reset token is consumed — the /reset page's GET is deliberately read-only,
+// so an automated link-scanner can never burn the user's link. Dual-transport like
+// /api/auth/verify: a browser form submission gets a 303, a headless JSON caller
+// gets JSON. Public: you cannot be signed in to reset a forgotten password.
+registry.registerPath({
+  method: "post",
+  path: "/api/auth/reset-password",
+  tags: ["Auth"],
+  summary: "Consume a password reset token and set a new password",
+  request: {
+    body: {
+      content: {
+        "application/json": { schema: SetPasswordRequest },
+        "application/x-www-form-urlencoded": { schema: SetPasswordRequest },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "JSON callers only: the password was reset",
+      content: { "application/json": { schema: z.object({ status: z.literal("reset") }) } },
+    },
+    303: {
+      description: "Form callers only: redirects to /login?reset=1 on success, or back to /reset?token=...&error=1 otherwise",
+    },
+    400: {
+      description: "JSON callers only. Invalid JSON, invalid input, or an invalid/expired token — the last is one indistinguishable outcome covering unknown, expired, already-used, unverified and blocked.",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+  },
+});
+
+// POST /api/auth/password (src/api/auth/password/handler.ts): the only guarded route
+// in this file. Succeeding here retires every session token issued before it — the
+// caller's included — which is why the response carries a freshly minted one.
+registry.registerPath({
+  method: "post",
+  path: "/api/auth/password",
+  tags: ["Auth"],
+  summary: "Change the signed-in user's password (ends all existing sessions)",
+  security: [{ sessionCookie: [] }],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({ currentPassword: z.string(), newPassword: z.string().min(8) }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Password changed. Every previously issued token is now refused; the token returned here replaces the caller's.",
+      content: { "application/json": { schema: z.object({ token: z.string() }) } },
+    },
+    400: {
+      description: "Invalid JSON body, or the new password is shorter than 8 characters",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+    401: {
+      description: "No session, a stale session, or the current password did not match",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+  },
+});

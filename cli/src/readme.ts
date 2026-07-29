@@ -43,6 +43,48 @@ function evalSection(o: InstallOptions): string[] {
   return lines;
 }
 
+// Documents the three password-reset/change endpoints, common to both builds.
+// RESET_URL only means anything to a headless consumer running its own
+// frontend (mirrors VERIFY_URL for registration), so it is documented only in
+// the api-only README — a full-app deployment serves /reset itself.
+function passwordSection(o: InstallOptions): string[] {
+  const lines = ["## Passwords", ""];
+  lines.push("| Endpoint | Purpose |");
+  lines.push("| --- | --- |");
+  lines.push(
+    "| `POST /api/auth/forgot-password` | Emails a reset link. Answers `200` whether or not the address has an account — the response is deliberately identical either way, so it cannot be used to discover which addresses are registered. Rate limited per address and per email domain (`429`); a misconfigured or failing mailer answers `503`. |",
+  );
+  lines.push(
+    "| `POST /api/auth/reset-password` | Consumes the emailed token and sets the new password. Single use; links expire after 1 hour. |",
+  );
+  lines.push(
+    "| `POST /api/auth/password` | Changes the signed-in user's password. Requires the current password. Returns a fresh bearer token. |",
+  );
+  lines.push("");
+
+  if (o.appKind === "api") {
+    lines.push("Set `RESET_URL` to the full address of your own \"choose a new password\"");
+    lines.push("screen, e.g. `https://your-app.example/reset`. It is the complete link target,");
+    lines.push("not an origin — only `?token=...` is appended — and it wins over `AUTH_URL`.");
+    lines.push("Without it, reset emails point at this backend, which serves no pages.");
+    lines.push("");
+  }
+
+  lines.push("Resetting or changing a password signs the user out of every existing");
+  lines.push("session: each account carries a cut-off timestamp, and any session token");
+  lines.push("issued before it is refused. This is enforced on **API routes**, by the same");
+  lines.push("per-request lookup that makes blocking a user take effect immediately.");
+  if (o.appKind === "full") {
+    lines.push("Server-rendered pages are a known exception: they use Auth.js's own token");
+    lines.push("check, so a retired session can still render a page. Pages that query the");
+    lines.push("database directly — the admin analytics and usage pages — will therefore");
+    lines.push("still show their data to a retired admin session. Move page-level auth onto");
+    lines.push("the same lookup if that matters to you.");
+  }
+  lines.push("");
+  return lines;
+}
+
 // Pure function: renders the generated app's own README, tailored to the
 // caller's provider/vector-store/appKind selection. No filesystem access here —
 // scaffold() is the one that writes the result to disk, so this stays easy
@@ -190,6 +232,8 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("");
 
   lines.push(...evalSection(o));
+
+  lines.push(...passwordSection(o));
 
   lines.push("## Deploying", "");
   lines.push("The app ships as a Docker image. To run the whole stack — Postgres, MinIO");
@@ -392,6 +436,8 @@ function generateApiOnlyReadme(o: InstallOptions): string {
   lines.push("");
 
   lines.push(...evalSection(o));
+
+  lines.push(...passwordSection(o));
 
   lines.push("## Deploying", "");
   lines.push(

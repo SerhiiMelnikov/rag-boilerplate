@@ -96,3 +96,18 @@ describe("AuthForm register", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("AuthForm notices and links", () => {
+  it("renders a notice passed by the page", () => {
+    render(<AuthForm mode="login" notice="Your password has been reset. Sign in with your new password." />);
+    expect(screen.getByText(/your password has been reset/i)).toBeInTheDocument();
+  });
+
+  it("offers a way out to /forgot on the login form only", () => {
+    const { unmount } = render(<AuthForm mode="login" />);
+    expect(screen.getByRole("link", { name: /forgot password/i })).toHaveAttribute("href", "/forgot");
+    unmount();
+    render(<AuthForm mode="register" />);
+    expect(screen.queryByRole("link", { name: /forgot password/i })).not.toBeInTheDocument();
+  });
+});

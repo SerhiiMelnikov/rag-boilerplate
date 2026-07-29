@@ -23,6 +23,11 @@ export const users = pgTable("users", {
   // Null until the address is confirmed. In `open` registration mode nothing ever
   // sets this and the login gate that reads it is pruned out — see the CLI task.
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  // Every session token issued before this instant is refused by requireUser.
+  // Nullable with NO default on purpose: a `DEFAULT now()` would invalidate
+  // every session in existence the moment the migration runs and sign out the
+  // entire user base at deploy time. NULL means "nothing to enforce".
+  sessionsValidFrom: timestamp("sessions_valid_from", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -186,6 +191,21 @@ export const rateLimits = pgTable(
 // can never retarget a link already sitting in the real owner's inbox. See the
 // design doc's "Why the password cannot travel with the registration".
 export const emailVerificationTokens = pgTable("email_verification_tokens", {
+  token: text("token").primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+// Deliberately NOT a `purpose` column on emailVerificationTokens. The two flows
+// have inverted invariants: consumeVerificationToken sets a password only
+// WHERE email_verified_at IS NULL, and consuming a reset token is the exact
+// opposite. With one table and a discriminator, a single forgotten
+// `WHERE purpose = ...` makes one kind of token act as the other, and the guard
+// that would have caught it is the very one being weakened. Separately,
+// pruneAbandonedRegistrations reasons over the whole verification table
+// ("an unverified user with no live token is abandoned") — a premise that reset
+// tokens, which only ever belong to verified users, would break.
+export const passwordResetTokens = pgTable("password_reset_tokens", {
   token: text("token").primaryKey(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

@@ -127,6 +127,13 @@
       "when": 1785252800767,
       "tag": "0017_freezing_wilson_fisk",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785307750681,
+      "tag": "0018_spooky_micromacro",
+      "breakpoints": true
     }
   ]
 }

@@ -8,7 +8,7 @@ import { signIn } from "next-auth/react";
 // password is chosen later, by whoever clicks the verification link, never
 // carried in this request. See the design doc: "Why the password cannot travel
 // with the registration".
-export function AuthForm({ mode }: { mode: "login" | "register" }) {
+export function AuthForm({ mode, notice }: { mode: "login" | "register"; notice?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -70,6 +70,11 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   return (
     <form onSubmit={onSubmit} className="mx-auto mt-24 flex w-full max-w-sm flex-col gap-4 p-6">
       <h1 className="text-xl font-semibold">{mode === "login" ? "Sign in" : "Create account"}</h1>
+      {notice && (
+        <p role="status" className="rounded-md bg-green-100 px-3 py-2 text-sm text-green-800 dark:bg-green-950 dark:text-green-200">
+          {notice}
+        </p>
+      )}
       {error && (
         <p role="alert" className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
           {error}
@@ -97,6 +102,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       <a href={mode === "login" ? "/register" : "/login"} className="text-sm text-zinc-500 underline">
         {mode === "login" ? "Need an account? Register" : "Have an account? Sign in"}
       </a>
+      {mode === "login" && (
+        <a href="/forgot" className="text-sm text-zinc-500 underline">Forgot password?</a>
+      )}
     </form>
   );
 }

@@ -200,6 +200,12 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
 
   try {
     const token = await createTokenFn(userId);
+    // "/verify" points at the page that asks the clicker to choose a password —
+    // NOT an API route that consumes the token on GET. See src/app/verify/page.tsx.
+    // Outlook Safe Links and corporate mail scanners fetch every URL in every
+    // email with no human involved, so a token-consuming GET would let a
+    // scanner complete or destroy someone's registration before they ever
+    // click the link themselves.
     const { subject, html } = verificationEmail(buildLink(verifyBase, "/verify", token));
     await sendEmailFn({ to: email, subject, html });
   } catch (err) {

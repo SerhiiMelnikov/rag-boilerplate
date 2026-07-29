@@ -2,7 +2,7 @@
 
 import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/react";
 import { signOut } from "next-auth/react";
-import { UserCircle, Files, Boxes, Settings, KeyRound, Users, LogOut, BarChart3, FlaskConical, Coins } from "lucide-react";
+import { UserCircle, Files, Boxes, Settings, KeyRound, Users, LogOut, BarChart3, FlaskConical, Coins, Lock } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 
 // Single header dropdown ("Profile") consolidating account info, admin links,
@@ -77,6 +77,11 @@ export function ProfileMenu({
             )}
           </>
         )}
+        <MenuItem>
+          <a href="/account/password" className={itemClass}>
+            <Lock className="h-4 w-4" /> Change password
+          </a>
+        </MenuItem>
         <MenuItem>
           {/* ThemeToggle is a button; as a MenuItem child it stays keyboard-accessible. */}
           <ThemeToggle className={itemClass} />

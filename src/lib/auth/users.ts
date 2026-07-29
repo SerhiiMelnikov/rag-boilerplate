@@ -97,6 +97,25 @@ export async function createUnverifiedUser(input: NewUnverifiedUser, database = 
   return createUser({ email: input.email, password: placeholder, role: input.role }, database);
 }
 
+// An OAuth sign-in has already proved control of the mailbox, so the row is
+// created verified — there is no link to send and nothing left to confirm.
+// The password_hash column is NOT NULL and this account has no password, so it
+// gets a hash of 32 random bytes: never a constant, which would be a shared
+// backdoor across every OAuth row. The user can later set a real password
+// through the reset flow and end up with both sign-in routes.
+export async function createVerifiedOAuthUser(
+  email: string,
+  database = defaultDb,
+): Promise<{ id: string; role: "admin" | "user"; isSuperAdmin: boolean }> {
+  const placeholder = randomBytes(32).toString("base64url");
+  const passwordHash = await hashPassword(placeholder);
+  const [row] = await database
+    .insert(users)
+    .values({ email, passwordHash, role: "user", emailVerifiedAt: new Date() })
+    .returning({ id: users.id, role: users.role, isSuperAdmin: users.isSuperAdmin });
+  return row;
+}
+
 // Fetch a user by email, including the password hash (for credential verification).
 export async function getUserByEmail(email: string, database = defaultDb) {
   const rows = await database

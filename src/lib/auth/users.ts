@@ -107,6 +107,19 @@ export async function getUserByEmail(email: string, database = defaultDb) {
   return rows[0] ?? null;
 }
 
+// Fetch a user's hash by id. getUserByEmail is keyed by email; the session
+// carries only an id, so the authenticated change-password path needs this.
+// Explicit return type for the same reason findUserForRegistration documents.
+export async function getUserWithHashById(
+  id: string,
+  database = defaultDb,
+): Promise<{ id: string; passwordHash: string } | null> {
+  const [row] = await database
+    .select({ id: users.id, passwordHash: users.passwordHash })
+    .from(users).where(eq(users.id, id)).limit(1);
+  return row ?? null;
+}
+
 // One indexed lookup used by the guards (exists + not blocked + role + super-admin).
 export async function getAuthUserById(id: string, database = defaultDb) {
   const rows = await database

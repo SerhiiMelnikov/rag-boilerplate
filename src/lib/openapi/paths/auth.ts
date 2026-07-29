@@ -144,3 +144,37 @@ registry.registerPath({
     },
   },
 });
+
+// POST /api/auth/password (src/api/auth/password/handler.ts): the only guarded route
+// in this file. Succeeding here retires every session token issued before it — the
+// caller's included — which is why the response carries a freshly minted one.
+registry.registerPath({
+  method: "post",
+  path: "/api/auth/password",
+  tags: ["Auth"],
+  summary: "Change the signed-in user's password (ends all existing sessions)",
+  security: [{ sessionCookie: [] }],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({ currentPassword: z.string(), newPassword: z.string().min(8) }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Password changed. Every previously issued token is now refused; the token returned here replaces the caller's.",
+      content: { "application/json": { schema: z.object({ token: z.string() }) } },
+    },
+    400: {
+      description: "Invalid JSON body, or the new password is shorter than 8 characters",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+    401: {
+      description: "No session, a stale session, or the current password did not match",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+  },
+});

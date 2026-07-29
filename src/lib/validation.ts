@@ -14,3 +14,12 @@ export const setPasswordSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 export type SetPasswordInput = z.infer<typeof setPasswordSchema>;
+
+// The authenticated "change my password" body. Unlike setPasswordSchema this is
+// a genuinely different shape: there is no token, and the caller must re-prove
+// the password they already have.
+export const newPasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8, "Password must be at least 8 characters"),
+});
+export type NewPasswordInput = z.infer<typeof newPasswordSchema>;

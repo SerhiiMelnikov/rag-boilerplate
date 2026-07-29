@@ -33,20 +33,28 @@ export async function requireUser(request: Request, deps: GuardDeps = {}): Promi
   if (!session) throw new UnauthorizedError();
   const dbUser = await getAuthUser(session.id);
   if (!dbUser || dbUser.blockedAt) throw new UnauthorizedError();
-  // Retire every token minted before the user's last password change. requireUser
-  // already performs this lookup on every request (so a block takes effect
-  // immediately), so the check costs no extra query.
+  // Retire every session that began before the user's last password change.
+  // requireUser already performs this lookup on every request (so a block takes
+  // effect immediately), so the check costs no extra query.
   //
-  // `>=` against a FLOORED cut-off, not `>`: @auth/core writes `iat` in whole
-  // seconds while sessions_valid_from carries milliseconds, so a reset at
-  // 10:00:00.700 and a login at 10:00:00.900 produce iat=10:00:00, strictly less
-  // than the raw cut-off. A strict comparison would refuse the legitimate token
-  // the user receives immediately after resetting, every time. The residual hole
-  // is at most one second wide and requires an attacker to mint a token in the
+  // sessionIssuedAt is a CUSTOM claim, and that is deliberate: the registered
+  // `iat` claim was avoided because @auth/core re-signs the session token on
+  // every session read (and jose's .setIssuedAt() overwrites `iat` with "now"),
+  // which in the full app is reachable by anyone holding the cookie via
+  // GET /api/auth/session. Keying on `iat` therefore let a stolen session be
+  // laundered into one that post-dates the reset. The custom claim is written
+  // once at sign-in and survives re-signing untouched.
+  //
+  // `>=` against a FLOORED cut-off, not `>`: the claim is whole seconds while
+  // sessions_valid_from carries milliseconds, so a reset at 10:00:00.700 and a
+  // login at 10:00:00.900 both floor to 10:00:00, strictly less than the raw
+  // cut-off. A strict comparison would refuse the legitimate token the user
+  // receives immediately after resetting, every time. The residual hole is at
+  // most one second wide and requires an attacker to begin a session in the
   // same wall-clock second in which the victim resets.
   if (dbUser.sessionsValidFrom) {
     const cutoffSeconds = Math.floor(dbUser.sessionsValidFrom.getTime() / 1000);
-    if (session.issuedAt === null || session.issuedAt < cutoffSeconds) throw new UnauthorizedError();
+    if (session.sessionIssuedAt === null || session.sessionIssuedAt < cutoffSeconds) throw new UnauthorizedError();
   }
   return { id: dbUser.id, role: dbUser.role, isSuperAdmin: dbUser.isSuperAdmin };
 }

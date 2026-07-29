@@ -7,12 +7,12 @@ import type { getAuthUserById } from "@/lib/auth/users";
 // its contents never matter for these tests — only that a Request is passed.
 const req = () => new Request("http://localhost/api/x");
 
-// issuedAt is a fixed, arbitrary past instant: none of the tests using this
-// factory exercise the cut-off (their getAuthUser mocks all carry
+// sessionIssuedAt is a fixed, arbitrary past instant: none of the tests using
+// this factory exercise the cut-off (their getAuthUser mocks all carry
 // sessionsValidFrom: null), so the actual value never matters — only that the
 // field is present so the fixture keeps satisfying RequestSession.
 const session = (role?: "admin" | "user") =>
-  vi.fn(async () => (role ? { id: "u1", role, isSuperAdmin: false, issuedAt: 1_700_000_000 } : null)) as unknown as (
+  vi.fn(async () => (role ? { id: "u1", role, isSuperAdmin: false, sessionIssuedAt: 1_700_000_000 } : null)) as unknown as (
     request: Request,
   ) => Promise<RequestSession | null>;
 
@@ -64,8 +64,8 @@ describe("requireUser session cut-off", () => {
   const NOW_S = 1_700_000_000;
   const req = new Request("http://test/api/whatever");
 
-  const guard = (issuedAt: number | null, sessionsValidFrom: Date | null) => ({
-    getSession: async () => ({ id: "u1", role: "user", isSuperAdmin: false, issuedAt }),
+  const guard = (sessionIssuedAt: number | null, sessionsValidFrom: Date | null) => ({
+    getSession: async () => ({ id: "u1", role: "user", isSuperAdmin: false, sessionIssuedAt }),
     getAuthUser: async () => ({ id: "u1", role: "user" as const, isSuperAdmin: false, blockedAt: null, sessionsValidFrom }),
   });
 
@@ -78,11 +78,12 @@ describe("requireUser session cut-off", () => {
   });
 
   // The second-precision case, and the reason the comparison is >= against a
-  // FLOORED cut-off rather than >. `iat` is whole seconds; sessions_valid_from
-  // carries milliseconds. A reset at 10:00:00.700 followed by a login at
-  // 10:00:00.900 mints a token whose iat floors to 10:00:00 — strictly LESS than
-  // the raw cut-off. Under a strict comparison the legitimate token the user
-  // receives immediately after resetting would be refused every single time.
+  // FLOORED cut-off rather than >. sessionIssuedAt is whole seconds;
+  // sessions_valid_from carries milliseconds. A reset at 10:00:00.700 followed
+  // by a login at 10:00:00.900 mints a token whose claim floors to 10:00:00 —
+  // strictly LESS than the raw cut-off. Under a strict comparison the legitimate
+  // token the user receives immediately after resetting would be refused every
+  // single time.
   it("accepts a token issued in the same second as the cut-off", async () => {
     await expect(requireUser(req, guard(NOW_S, new Date(NOW_S * 1000 + 700)))).resolves.toMatchObject({ id: "u1" });
   });
@@ -91,10 +92,10 @@ describe("requireUser session cut-off", () => {
     await expect(requireUser(req, guard(NOW_S + 5, new Date(NOW_S * 1000)))).resolves.toMatchObject({ id: "u1" });
   });
 
-  // We cannot place an iat-less token relative to the cut-off, and defaulting to
-  // "accept" would make the whole mechanism opt-out for anything that mints a
-  // token without iat.
-  it("rejects a token with no iat once a cut-off exists", async () => {
+  // We cannot place a claim-less token relative to the cut-off, and defaulting
+  // to "accept" would make the whole mechanism opt-out for anything that mints a
+  // token without it — including every token minted before the claim existed.
+  it("rejects a token with no sessionIssuedAt once a cut-off exists", async () => {
     await expect(requireUser(req, guard(null, new Date(NOW_S * 1000)))).rejects.toBeInstanceOf(UnauthorizedError);
   });
 });

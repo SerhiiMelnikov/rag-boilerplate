@@ -7,11 +7,13 @@ export interface SessionUser {
 }
 
 // Wider than SessionUser on purpose: SessionUser is also the INPUT type of
-// encodeSessionToken, and putting issuedAt there would force every mint site to
-// supply an `iat` that @auth/core's encode writes for itself.
+// encodeSessionToken, and putting sessionIssuedAt there would force every mint
+// site to supply a value encodeSessionToken already stamps for itself.
 export interface RequestSession extends SessionUser {
-  // Seconds, from the token's `iat` claim. Null when the token carries none.
-  issuedAt: number | null;
+  // Seconds. When the SESSION began, from the custom `sessionIssuedAt` claim —
+  // NOT the registered `iat` (see encodeSessionToken). Null when the token
+  // carries no such claim, which the cut-off check treats as unplaceable.
+  sessionIssuedAt: number | null;
 }
 
 // NextAuth v5 (Auth.js) encrypts the session JWT (JWE) using AUTH_SECRET and a
@@ -50,7 +52,13 @@ function extractToken(request: Request): string | null {
 // (guards.ts / auth.config.ts's session callback) as one NextAuth issues.
 export async function encodeSessionToken(user: SessionUser): Promise<string> {
   return encode({
-    token: { sub: user.id, id: user.id, role: user.role, isSuperAdmin: user.isSuperAdmin },
+    token: {
+      sub: user.id, id: user.id, role: user.role, isSuperAdmin: user.isSuperAdmin,
+      // Mirrors auth.config.ts's jwt callback. Must be a CUSTOM claim: @auth/core
+      // re-signs the token on every session read and jose's .setIssuedAt()
+      // rewrites `iat` to "now", so `iat` cannot say when the session began.
+      sessionIssuedAt: Math.floor(Date.now() / 1000),
+    },
     secret: secret(),
     salt: COOKIE_NAME,
   });
@@ -69,12 +77,16 @@ export async function getSessionFromRequest(request: Request): Promise<RequestSe
       const payload = await decode({ token, secret: s, salt });
       if (!payload?.sub && !payload?.id) continue;
       const id = String(payload.id ?? payload.sub);
-      const iat = typeof payload.iat === "number" ? payload.iat : null;
+      // No fallback to `iat` when the claim is absent. Falling back would undo
+      // the whole point: `iat` is rewritten on every session refresh, so a
+      // stolen token could be laundered into one that post-dates the cut-off.
+      // Absent must mean null, which the cut-off check refuses outright.
+      const startedAt = typeof payload.sessionIssuedAt === "number" ? payload.sessionIssuedAt : null;
       return {
         id,
         role: String(payload.role ?? "user"),
         isSuperAdmin: Boolean(payload.isSuperAdmin),
-        issuedAt: iat,
+        sessionIssuedAt: startedAt,
       };
     } catch {
       // Wrong salt (or malformed token) for this candidate; try the next one.

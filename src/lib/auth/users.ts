@@ -27,6 +27,23 @@ export async function deleteUser(userId: string, database = defaultDb): Promise<
   await database.delete(users).where(eq(users.id, userId));
 }
 
+// Minimal projection for the reset path: does this address exist, is it
+// confirmed, and is it blocked?
+//
+// The explicit return type is required, not stylistic — see
+// findUserForRegistration's comment: without it TS infers the destructured row
+// as non-nullable and silently drops the `| null` that ForgotPasswordDeps
+// depends on.
+export async function findUserForReset(
+  email: string,
+  database = defaultDb,
+): Promise<{ id: string; emailVerifiedAt: Date | null; blockedAt: Date | null } | null> {
+  const [row] = await database
+    .select({ id: users.id, emailVerifiedAt: users.emailVerifiedAt, blockedAt: users.blockedAt })
+    .from(users).where(eq(users.email, email)).limit(1);
+  return row ?? null;
+}
+
 export interface NewUser {
   email: string;
   password: string;

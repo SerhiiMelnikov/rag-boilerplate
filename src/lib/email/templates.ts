@@ -23,3 +23,14 @@ export function verificationEmail(link: string): { subject: string; html: string
 <p>The link expires in 24 hours. If you did not request this, ignore this email.</p>`,
   };
 }
+
+export function passwordResetEmail(link: string): { subject: string; html: string } {
+  assertHttpUrl(link);
+  const safe = escapeHtml(link);
+  return {
+    subject: "Reset your password",
+    html: `<p>Choose a new password for your account:</p>
+<p><a href="${safe}">${safe}</a></p>
+<p>The link expires in 1 hour. If you did not request this, ignore this email — your password has not changed.</p>`,
+  };
+}

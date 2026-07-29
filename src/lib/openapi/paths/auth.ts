@@ -78,3 +78,36 @@ registry.registerPath({
     },
   },
 });
+
+// POST /api/auth/forgot-password (src/api/auth/forgot-password/handler.ts): public —
+// you cannot be signed in to have forgotten your password. Documented as always 200
+// on purpose: the uniform response IS the contract here. Any status that varied with
+// whether the address exists would make this a user-enumeration oracle, so consumers
+// must not expect one.
+registry.registerPath({
+  method: "post",
+  path: "/api/auth/forgot-password",
+  tags: ["Auth"],
+  summary: "Request a password reset link (always succeeds, whether or not the address has an account)",
+  request: {
+    body: { content: { "application/json": { schema: z.object({ email: z.string().email() }) } } },
+  },
+  responses: {
+    200: {
+      description: "Accepted. A link was sent only if the address belongs to a verified, unblocked account — the response is identical either way.",
+      content: { "application/json": { schema: z.object({ status: z.literal("reset_sent") }) } },
+    },
+    400: {
+      description: "Invalid JSON body, or the email failed validation",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+    429: {
+      description: "Rate limited, per address and per email domain. Carries Retry-After.",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+    503: {
+      description: "Email is not configured, sending failed, or AUTH_URL is unset in production",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+  },
+});

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, eq, isNotNull, isNull, lt } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, type SQL } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { passwordResetTokens, users } from "@/lib/db/schema";
 
@@ -42,19 +42,27 @@ type Tx = Parameters<Parameters<typeof defaultDb.transaction>[0]>[0];
 // requireUser). Both callers below go through here so "invalidate" cannot come
 // to mean two different things in two places.
 //
-// `scope` is the extra condition on the users row. Reset passes a scope; the
+// `scope` is the extra conditions on the users row. Reset passes some; the
 // authenticated change passes none, because requireUser has already established
 // the caller is that user and is not blocked.
+//
+// Taken as separate `SQL` conditions rather than one pre-combined
+// `ReturnType<typeof and>` (which is `SQL | undefined`): under that looser type
+// a caller building `and(...)` over a conditionally-empty list gets `undefined`,
+// and a `scope ? ... : ...` ternary would silently drop it, leaving an unscoped
+// `UPDATE users SET password_hash`. Here the id predicate is always the first
+// operand and the extras can only ever narrow it, so no argument a caller can
+// pass will widen the statement.
 async function writeNewPassword(
   tx: Tx,
   userId: string,
   passwordHash: string,
   now: number,
-  scope?: ReturnType<typeof and>,
+  ...scope: SQL[]
 ): Promise<number> {
   const updated = await tx.update(users)
     .set({ passwordHash, sessionsValidFrom: new Date(now) })
-    .where(scope ? and(eq(users.id, userId), scope) : eq(users.id, userId))
+    .where(and(eq(users.id, userId), ...scope))
     .returning({ id: users.id });
   if (updated.length === 0) return 0;
   // Disarm EVERY outstanding reset link for this user, not just the one used.
@@ -120,7 +128,7 @@ export async function consumePasswordResetToken(
     //    be able to complete it.
     const rows = await writeNewPassword(
       tx, row.userId, passwordHash, now,
-      and(isNotNull(users.emailVerifiedAt), isNull(users.blockedAt)),
+      isNotNull(users.emailVerifiedAt), isNull(users.blockedAt),
     );
     return rows > 0;
   });

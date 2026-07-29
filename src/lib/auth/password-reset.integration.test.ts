@@ -91,6 +91,27 @@ describe.runIf(RUN)("password reset (integration)", () => {
     expect((await hashOf(id)).passwordHash).toBe("new-hash");
   });
 
+  // The expiry branch had no coverage at all: password-reset.test.ts never calls
+  // consumePasswordResetToken (its fake db has no transaction), and nothing here
+  // built an expired token. Deleting the branch left the whole suite green while
+  // expired reset links kept working. That matters because
+  // deleteExpiredPasswordResetTokens is throttled to once an hour per process
+  // and only fires from forgot-password, so an expired row can sit for a long time.
+  it("refuses an expired token, leaves the hash untouched and drops the row", async () => {
+    const id = await makeUser({ verified: true });
+    // Minted two hours ago, so it expired an hour ago (RESET_TOKEN_TTL_MS is 1h).
+    const token = await createPasswordResetToken(id, { now: () => Date.now() - 2 * 3600_000 });
+
+    expect(await consumePasswordResetToken(token, "new-hash")).toBe(false);
+
+    const row = await hashOf(id);
+    expect(row.passwordHash).toBe("original-hash");
+    expect(row.sessionsValidFrom).toBeNull();
+    // Expired tokens are dead weight and must not be left to rot in the table.
+    const left = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.token, token));
+    expect(left).toEqual([]);
+  });
+
   it("cannot consume the same token twice", async () => {
     const id = await makeUser({ verified: true });
     const token = await createPasswordResetToken(id);

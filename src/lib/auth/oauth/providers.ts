@@ -85,6 +85,14 @@ function githubProvider(creds: { clientId: string; clientSecret: string }) {
         const res = await fetch("https://api.github.com/user", {
           headers: { Authorization: `Bearer ${token}`, "User-Agent": "rag-boilerplate" },
         });
+        // A non-OK response (rate limit, transient error, a token that died
+        // between the code exchange and here) still carries a JSON body
+        // (e.g. { message: "Bad credentials" }), which res.json() would
+        // happily parse into a syntactically valid but semantically bogus
+        // profile — see fetchVerifiedPrimaryEmail's own res.ok check, which
+        // this mirrors. Throwing here fails the sign-in loudly instead of
+        // silently minting an "undefined" subject id.
+        if (!res.ok) throw new Error(`GitHub /user request failed with status ${res.status}`);
         const profile = (await res.json()) as Record<string, unknown>;
         profile.email = await fetchVerifiedPrimaryEmail(token);
         return profile;

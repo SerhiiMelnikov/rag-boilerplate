@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { configuredOAuthProviderIds, oauthProviders } from "./providers";
 import type { OAuthUser } from "./providers";
 
@@ -78,5 +78,28 @@ describe("profile placeholders", () => {
     // the address is missing.
     const user = provider.options.profile({ id: 7, login: "octo", email: null, avatar_url: "a" });
     expect(user).toMatchObject({ id: "7", email: null, emailVerified: false, role: "user", isSuperAdmin: false });
+  });
+});
+
+describe("GitHub userinfo.request", () => {
+  // A non-OK response still carries a JSON body (e.g. a rate-limit or "Bad
+  // credentials" message), which would otherwise parse into a syntactically
+  // valid but bogus profile (id "undefined", shared across every caller hitting
+  // this failure mode). The request must reject instead of resolving, so
+  // Auth.js turns it into a failed sign-in rather than a silent garbage profile.
+  it("rejects when the /user response is not OK", async () => {
+    process.env.GITHUB_CLIENT_ID = "hid";
+    process.env.GITHUB_CLIENT_SECRET = "hsecret";
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ message: "Bad credentials" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = oauthProviders()[0] as {
+      options: { userinfo: { request: (ctx: { tokens: { access_token?: string } }) => Promise<unknown> } };
+    };
+    await expect(provider.options.userinfo.request({ tokens: { access_token: "tok" } })).rejects.toThrow("401");
+    vi.unstubAllGlobals();
   });
 });

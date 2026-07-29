@@ -318,3 +318,29 @@ describe("generateReadme URL ingest and chunk preview", () => {
     expect(readme).toMatch(/position/);
   });
 });
+
+describe("password reset documentation", () => {
+  it("documents the three auth endpoints in both app kinds", () => {
+    for (const appKind of ["full", "api"] as const) {
+      const readme = generateReadme(opts({ appKind }));
+      expect(readme).toContain("/api/auth/forgot-password");
+      expect(readme).toContain("/api/auth/reset-password");
+      expect(readme).toContain("/api/auth/password");
+    }
+  });
+
+  // RESET_URL only means anything to a headless consumer running its own UI.
+  // Documenting it in a full-app README would send people hunting for a setting
+  // that does nothing there.
+  it("documents RESET_URL in the api README only", () => {
+    expect(generateReadme(opts({ appKind: "api" }))).toContain("RESET_URL");
+    expect(generateReadme(opts({ appKind: "full" }))).not.toContain("RESET_URL");
+  });
+
+  // The limitation is real and users must not discover it by surprise.
+  it("states that a password change ends existing sessions, and where that is enforced", () => {
+    const readme = generateReadme(opts({ appKind: "full" }));
+    expect(readme).toMatch(/signs? (you |the user )?out/i);
+    expect(readme).toContain("API routes");
+  });
+});

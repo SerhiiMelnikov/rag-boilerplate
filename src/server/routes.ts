@@ -8,6 +8,7 @@ import { healthCheck } from "@/api/health/handler";
 import { loginResponse } from "@/api/auth/login/handler";
 import { submitVerification } from "@/api/auth/verify/handler";
 import { forgotPassword } from "@/api/auth/forgot-password/handler";
+import { resetPassword } from "@/api/auth/reset-password/handler";
 import { registerUser } from "@/api/register/handler";
 import { handleChat } from "@/api/chat/handler";
 import { listConversationsResponse, createConversationResponse } from "@/api/conversations/handler";
@@ -70,6 +71,7 @@ export function createServer(): Hono {
   app.post("/api/auth/login", (c) => loginResponse(c.req.raw));
   app.post("/api/auth/verify", (c) => submitVerification(c.req.raw));
   app.post("/api/auth/forgot-password", (c) => forgotPassword(c.req.raw));
+  app.post("/api/auth/reset-password", (c) => resetPassword(c.req.raw));
 
   // --- Register -----------------------------------------------------------
   app.post("/api/register", (c) => registerUser(c.req.raw));

@@ -111,3 +111,36 @@ registry.registerPath({
     },
   },
 });
+
+// POST /api/auth/reset-password (src/api/auth/reset-password/handler.ts): the ONLY
+// place a reset token is consumed — the /reset page's GET is deliberately read-only,
+// so an automated link-scanner can never burn the user's link. Dual-transport like
+// /api/auth/verify: a browser form submission gets a 303, a headless JSON caller
+// gets JSON. Public: you cannot be signed in to reset a forgotten password.
+registry.registerPath({
+  method: "post",
+  path: "/api/auth/reset-password",
+  tags: ["Auth"],
+  summary: "Consume a password reset token and set a new password",
+  request: {
+    body: {
+      content: {
+        "application/json": { schema: SetPasswordRequest },
+        "application/x-www-form-urlencoded": { schema: SetPasswordRequest },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "JSON callers only: the password was reset",
+      content: { "application/json": { schema: z.object({ status: z.literal("reset") }) } },
+    },
+    303: {
+      description: "Form callers only: redirects to /login?reset=1 on success, or back to /reset?token=...&error=1 otherwise",
+    },
+    400: {
+      description: "JSON callers only. Invalid JSON, invalid input, or an invalid/expired token — the last is one indistinguishable outcome covering unknown, expired, already-used, unverified and blocked.",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+  },
+});

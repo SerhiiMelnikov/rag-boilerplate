@@ -33,6 +33,21 @@ export async function requireUser(request: Request, deps: GuardDeps = {}): Promi
   if (!session) throw new UnauthorizedError();
   const dbUser = await getAuthUser(session.id);
   if (!dbUser || dbUser.blockedAt) throw new UnauthorizedError();
+  // Retire every token minted before the user's last password change. requireUser
+  // already performs this lookup on every request (so a block takes effect
+  // immediately), so the check costs no extra query.
+  //
+  // `>=` against a FLOORED cut-off, not `>`: @auth/core writes `iat` in whole
+  // seconds while sessions_valid_from carries milliseconds, so a reset at
+  // 10:00:00.700 and a login at 10:00:00.900 produce iat=10:00:00, strictly less
+  // than the raw cut-off. A strict comparison would refuse the legitimate token
+  // the user receives immediately after resetting, every time. The residual hole
+  // is at most one second wide and requires an attacker to mint a token in the
+  // same wall-clock second in which the victim resets.
+  if (dbUser.sessionsValidFrom) {
+    const cutoffSeconds = Math.floor(dbUser.sessionsValidFrom.getTime() / 1000);
+    if (session.issuedAt === null || session.issuedAt < cutoffSeconds) throw new UnauthorizedError();
+  }
   return { id: dbUser.id, role: dbUser.role, isSuperAdmin: dbUser.isSuperAdmin };
 }
 

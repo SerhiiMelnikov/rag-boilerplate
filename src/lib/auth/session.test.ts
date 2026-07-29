@@ -39,3 +39,16 @@ describe("getSessionFromRequest", () => {
     expect(s).toMatchObject({ id: "u1", role: "admin", isSuperAdmin: true });
   });
 });
+
+describe("getSessionFromRequest issuedAt", () => {
+  it("surfaces the token's iat so the cut-off check can place it in time", async () => {
+    const before = Math.floor(Date.now() / 1000);
+    const token = await encodeSessionToken(user);
+    const s = await getSessionFromRequest(reqWith({ authorization: `Bearer ${token}` }));
+    expect(s?.issuedAt).not.toBeNull();
+    expect(s!.issuedAt!).toBeGreaterThanOrEqual(before);
+    // Whole seconds — this is exactly why the guard compares against a floored
+    // cut-off rather than a millisecond one.
+    expect(Number.isInteger(s!.issuedAt)).toBe(true);
+  });
+});

@@ -6,6 +6,14 @@ export interface SessionUser {
   isSuperAdmin: boolean;
 }
 
+// Wider than SessionUser on purpose: SessionUser is also the INPUT type of
+// encodeSessionToken, and putting issuedAt there would force every mint site to
+// supply an `iat` that @auth/core's encode writes for itself.
+export interface RequestSession extends SessionUser {
+  // Seconds, from the token's `iat` claim. Null when the token carries none.
+  issuedAt: number | null;
+}
+
 // NextAuth v5 (Auth.js) encrypts the session JWT (JWE) using AUTH_SECRET and a
 // salt equal to the cookie name. We read/write with the SAME (secret, salt) so
 // a token minted here and a token minted by NextAuth's own cookie are mutually
@@ -48,7 +56,7 @@ export async function encodeSessionToken(user: SessionUser): Promise<string> {
   });
 }
 
-export async function getSessionFromRequest(request: Request): Promise<SessionUser | null> {
+export async function getSessionFromRequest(request: Request): Promise<RequestSession | null> {
   const token = extractToken(request);
   if (!token) return null;
   const s = secret();
@@ -61,7 +69,13 @@ export async function getSessionFromRequest(request: Request): Promise<SessionUs
       const payload = await decode({ token, secret: s, salt });
       if (!payload?.sub && !payload?.id) continue;
       const id = String(payload.id ?? payload.sub);
-      return { id, role: String(payload.role ?? "user"), isSuperAdmin: Boolean(payload.isSuperAdmin) };
+      const iat = typeof payload.iat === "number" ? payload.iat : null;
+      return {
+        id,
+        role: String(payload.role ?? "user"),
+        isSuperAdmin: Boolean(payload.isSuperAdmin),
+        issuedAt: iat,
+      };
     } catch {
       // Wrong salt (or malformed token) for this candidate; try the next one.
     }

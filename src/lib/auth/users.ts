@@ -93,7 +93,10 @@ export async function getUserByEmail(email: string, database = defaultDb) {
 // One indexed lookup used by the guards (exists + not blocked + role + super-admin).
 export async function getAuthUserById(id: string, database = defaultDb) {
   const rows = await database
-    .select({ id: users.id, role: users.role, isSuperAdmin: users.isSuperAdmin, blockedAt: users.blockedAt })
+    .select({
+      id: users.id, role: users.role, isSuperAdmin: users.isSuperAdmin,
+      blockedAt: users.blockedAt, sessionsValidFrom: users.sessionsValidFrom,
+    })
     .from(users)
     .where(eq(users.id, id))
     .limit(1);

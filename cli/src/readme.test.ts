@@ -337,10 +337,24 @@ describe("password reset documentation", () => {
     expect(generateReadme(opts({ appKind: "full" }))).not.toContain("RESET_URL");
   });
 
-  // The limitation is real and users must not discover it by surprise.
+  // The limitation is real and users must not discover it by surprise. Both app
+  // kinds emit these lines, so both must keep saying it.
   it("states that a password change ends existing sessions, and where that is enforced", () => {
+    for (const appKind of ["full", "api"] as const) {
+      const readme = generateReadme(opts({ appKind }));
+      expect(readme).toMatch(/signs? (you |the user )?out/i);
+      expect(readme).toContain("API routes");
+    }
+  });
+
+  // The full-app README used to claim "every endpoint behind it refuses to
+  // return data", which is false: the admin analytics and usage pages query the
+  // database directly from a server component, so a retired admin session still
+  // sees real conversation content. Naming the exception is the whole point.
+  it("names the server-rendered page exception instead of implying blanket coverage", () => {
     const readme = generateReadme(opts({ appKind: "full" }));
-    expect(readme).toMatch(/signs? (you |the user )?out/i);
-    expect(readme).toContain("API routes");
+    expect(readme).toContain("known exception");
+    expect(readme).toMatch(/analytics and usage/i);
+    expect(readme).not.toContain("refuses to return data");
   });
 });

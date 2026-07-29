@@ -75,8 +75,11 @@ function passwordSection(o: InstallOptions): string[] {
   lines.push("issued before it is refused. This is enforced on **API routes**, by the same");
   lines.push("per-request lookup that makes blocking a user take effect immediately.");
   if (o.appKind === "full") {
-    lines.push("Server-rendered pages still use Auth.js's own token check, so a stale token");
-    lines.push("can render a page shell — but every endpoint behind it refuses to return data.");
+    lines.push("Server-rendered pages are a known exception: they use Auth.js's own token");
+    lines.push("check, so a retired session can still render a page. Pages that query the");
+    lines.push("database directly — the admin analytics and usage pages — will therefore");
+    lines.push("still show their data to a retired admin session. Move page-level auth onto");
+    lines.push("the same lookup if that matters to you.");
   }
   lines.push("");
   return lines;

@@ -82,6 +82,72 @@ describe("profile placeholders", () => {
 });
 
 describe("GitHub userinfo.request", () => {
+  const json = (body: unknown) =>
+    new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+
+  const githubProvider = () => {
+    process.env.GITHUB_CLIENT_ID = "hid";
+    process.env.GITHUB_CLIENT_SECRET = "hsecret";
+    return oauthProviders()[0] as {
+      options: {
+        userinfo: { request: (ctx: { tokens: { access_token?: string } }) => Promise<Record<string, unknown>> };
+        profile: (p: Record<string, unknown>) => OAuthUser;
+      };
+    };
+  };
+
+  // Spec §7's designated must-pin case, and the whole reason this override
+  // exists. The stock provider consults /user/emails ONLY when the profile
+  // carries no public email (node_modules/@auth/core/providers/github.js), so a
+  // user with a public — possibly unverified — address skips the verification
+  // check entirely: exactly the account-takeover path linking-by-email cannot
+  // survive. Weaken the assignment to `profile.email ??= …` or wrap it in
+  // `if (!profile.email)` and every other test in this suite still passes; this
+  // is the only one that goes red.
+  it("fetches /user/emails even when the profile already carries an email", async () => {
+    const fetchMock = vi.fn(async (url: string | URL) =>
+      String(url).includes("/user/emails")
+        ? json([{ email: "primary-verified@x.test", primary: true, verified: true }])
+        : json({ id: 7, login: "octo", email: "public-unverified@x.test" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const provider = githubProvider();
+      const raw = await provider.options.userinfo.request({ tokens: { access_token: "tok" } });
+      // The address that survives is the primary VERIFIED one, not the public
+      // one /user handed over.
+      expect(raw.email).toBe("primary-verified@x.test");
+      expect(fetchMock.mock.calls.map((c) => String(c[0]))).toContainEqual(expect.stringContaining("/user/emails"));
+      // And it is what reaches signIn, which links by exactly this field.
+      expect(provider.options.profile(raw)).toMatchObject({
+        email: "primary-verified@x.test",
+        emailVerified: true,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  // The same override in its refusing direction: a public address plus a primary
+  // that GitHub has not verified must yield no email at all, rather than falling
+  // back to the one /user volunteered.
+  it("drops a public address when no primary verified one exists", async () => {
+    const fetchMock = vi.fn(async (url: string | URL) =>
+      String(url).includes("/user/emails")
+        ? json([{ email: "victim@x.test", primary: true, verified: false }])
+        : json({ id: 7, login: "octo", email: "public-unverified@x.test" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const provider = githubProvider();
+      const raw = await provider.options.userinfo.request({ tokens: { access_token: "tok" } });
+      expect(raw.email).toBeNull();
+      expect(provider.options.profile(raw).emailVerified).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   // A non-OK response still carries a JSON body (e.g. a rate-limit or "Bad
   // credentials" message), which would otherwise parse into a syntactically
   // valid but bogus profile (id "undefined", shared across every caller hitting

@@ -111,3 +111,32 @@ describe("AuthForm notices and links", () => {
     expect(screen.queryByRole("link", { name: /forgot password/i })).not.toBeInTheDocument();
   });
 });
+
+describe("AuthForm OAuth buttons", () => {
+  it("renders nothing extra when no provider is configured", () => {
+    render(<AuthForm mode="login" providers={[]} />);
+    expect(screen.queryByRole("button", { name: /continue with/i })).not.toBeInTheDocument();
+  });
+
+  it("renders one button per configured provider, on both modes", () => {
+    const { unmount } = render(<AuthForm mode="login" providers={["google", "github"]} />);
+    expect(screen.getByRole("button", { name: /continue with google/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /continue with github/i })).toBeInTheDocument();
+    unmount();
+    render(<AuthForm mode="register" providers={["google"]} />);
+    expect(screen.getByRole("button", { name: /continue with google/i })).toBeInTheDocument();
+  });
+
+  it("starts the flow for the provider that was clicked", async () => {
+    render(<AuthForm mode="login" providers={["github"]} />);
+    await userEvent.click(screen.getByRole("button", { name: /continue with github/i }));
+    expect(signIn).toHaveBeenCalledWith("github", { callbackUrl: "/" });
+  });
+});
+
+describe("AuthForm server-supplied error", () => {
+  it("renders an error passed by the page", () => {
+    render(<AuthForm mode="login" error="Your administrator has not allowed that email domain." />);
+    expect(screen.getByRole("alert")).toHaveTextContent(/not allowed that email domain/i);
+  });
+});

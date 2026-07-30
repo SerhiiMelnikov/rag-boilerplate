@@ -1,11 +1,10 @@
 import { Hono } from "hono";
-import { Auth, setEnvDefaults, type AuthConfig } from "@auth/core";
-import type { Provider } from "@auth/core/providers";
+import { Auth } from "@auth/core";
 import { Scalar } from "@scalar/hono-api-reference";
 import { requireSession } from "./middleware";
 import { schedule } from "./schedule";
 import { buildOpenApiDocument } from "@/lib/openapi/document";
-import { oauthConfig } from "@/lib/auth/oauth/config";
+import { buildAuthConfig } from "@/lib/auth/oauth/config";
 
 import { healthCheck } from "@/api/health/handler";
 import { loginResponse } from "@/api/auth/login/handler";
@@ -104,29 +103,12 @@ export function createServer(): Hono {
   // (lib/utils/env.js:40); without it, Auth() trusts the request's Host, which
   // is the same spoofing hazard src/lib/auth/link-base.ts refuses in production.
   //
-  // setEnvDefaults() must be called explicitly here: unlike NextAuth() (which
-  // calls it internally — see node_modules/next-auth/lib/env.js), @auth/core's
-  // bare Auth() never derives trustHost/secret/basePath from process.env on its
-  // own. Skipping this makes every request 500 with UntrustedHost, regardless
-  // of AUTH_URL or NODE_ENV, because config.trustHost is simply left undefined.
-  app.all("/api/auth/*", (c) => {
-    // oauthConfig() types `providers` as `unknown[]` on purpose (see its own
-    // comment) so this next-free module never has to name Auth.js's internal
-    // Provider union; src/auth.ts casts the same way for the Next.js runtime.
-    const { providers, ...rest } = oauthConfig();
-    const config: AuthConfig = { ...rest, providers: providers as Provider[] };
-    // Third argument (suppressBasePathWarning) must be true: oauthConfig() always
-    // sets basePath by design (that's what pins the redirect URI across build
-    // modes), and production requires AUTH_URL (see above) — so both are always
-    // present together in production, which is exactly the combination
-    // setEnvDefaults otherwise treats as "redundant" and warns about via
-    // logger.warn (unconditional — unlike debug, not gated on config.debug). That
-    // advice does not apply here: the pinned basePath is deliberate, not a mistake
-    // to flag on every single request. next-auth's own NextAuth() passes the same
-    // `true` for the same reason (node_modules/next-auth/lib/env.js).
-    setEnvDefaults(process.env, config, true);
-    return Auth(c.req.raw, config);
-  });
+  // buildAuthConfig() — never a bare oauthConfig() — is what makes Auth() work
+  // here: @auth/core's Auth(), unlike next-auth's NextAuth(), derives nothing from
+  // process.env by itself, so without the setEnvDefaults call that helper owns,
+  // every request 500s with UntrustedHost regardless of AUTH_URL. See its comment;
+  // src/api/auth/oauth/start/handler.ts is the other call site.
+  app.all("/api/auth/*", (c) => Auth(c.req.raw, buildAuthConfig()));
 
   // --- Register -----------------------------------------------------------
   app.post("/api/register", (c) => registerUser(c.req.raw));

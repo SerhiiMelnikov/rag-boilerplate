@@ -1,6 +1,5 @@
-import { Auth, setEnvDefaults, skipCSRFCheck } from "@auth/core";
-import type { Provider } from "@auth/core/providers";
-import { oauthConfig } from "@/lib/auth/oauth/config";
+import { Auth, skipCSRFCheck } from "@auth/core";
+import { buildAuthConfig, oauthConfig } from "@/lib/auth/oauth/config";
 import { configuredOAuthProviderIds, type OAuthProviderId } from "@/lib/auth/oauth/providers";
 
 export interface StartDeps {
@@ -52,26 +51,14 @@ export async function oauthStart(request: Request, provider: string, deps: Start
     body: "",
   });
 
-  // providers is the only field that needs a cast: oauthConfig() deliberately
-  // types it as unknown[] so this next-free module never has to name Auth.js's
-  // internal Provider union (see oauthConfig()'s own comment) — src/auth.ts and
-  // src/server/routes.ts cast it the same way for their own runtimes.
-  const { providers, ...rest } = configFn();
-  const config = { ...rest, providers: providers as Provider[] };
-
-  // Bare Auth() never applies environment defaults itself — only NextAuth()
-  // does that internally — so without this call, every request here fails
-  // assertConfig with UntrustedHost regardless of AUTH_URL, because trustHost
-  // (and secret) are populated exclusively by setEnvDefaults. This was found by
-  // actually driving the real @auth/core in Step 5, not assumed: src/server/
-  // routes.ts's catch-all calls this too, but this handler builds its own
-  // config object and gets no benefit from that separate call.
-  //
-  // The third argument suppresses Auth.js's "AUTH_URL and basePath are
-  // redundant" warning: oauthConfig() pins basePath deliberately (see its own
-  // comment), so that advice does not apply here, and logger.warn is
-  // unconditional — omitting this would print on every single request.
-  setEnvDefaults(process.env, config, true);
+  // buildAuthConfig(), not a bare configFn(): Auth() never applies environment
+  // defaults itself — only next-auth's NextAuth() does that internally — so
+  // without the setEnvDefaults call that helper owns, every request here fails
+  // assertConfig with UntrustedHost regardless of AUTH_URL, because trustHost and
+  // secret are populated exclusively by it. That was found by driving the real
+  // @auth/core rather than a fake, having already made the same mistake at the
+  // other call site; the helper is why a third site cannot repeat it.
+  const config = buildAuthConfig(configFn);
 
   const res = await authFn(signIn, { ...config, skipCSRFCheck });
 

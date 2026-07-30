@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { hashPassword } from "./password";
@@ -95,6 +95,46 @@ export interface NewUnverifiedUser {
 export async function createUnverifiedUser(input: NewUnverifiedUser, database = defaultDb): Promise<UserRecord> {
   const placeholder = randomBytes(32).toString("base64url");
   return createUser({ email: input.email, password: placeholder, role: input.role }, database);
+}
+
+// An OAuth sign-in has already proved control of the mailbox, so the row is
+// created verified — there is no link to send and nothing left to confirm.
+// The password_hash column is NOT NULL and this account has no password, so it
+// gets a hash of 32 random bytes: never a constant, which would be a shared
+// backdoor across every OAuth row. The user can later set a real password
+// through the reset flow and end up with both sign-in routes.
+export async function createVerifiedOAuthUser(
+  email: string,
+  database = defaultDb,
+): Promise<{ id: string; role: "admin" | "user"; isSuperAdmin: boolean }> {
+  const placeholder = randomBytes(32).toString("base64url");
+  const passwordHash = await hashPassword(placeholder);
+  const [row] = await database
+    .insert(users)
+    .values({ email, passwordHash, role: "user", emailVerifiedAt: new Date() })
+    .returning({ id: users.id, role: users.role, isSuperAdmin: users.isSuperAdmin });
+  return row;
+}
+
+// Confirm an existing row's address. An OAuth provider asserting a verified
+// address is the same evidence a clicked verification link carries, so a row
+// reached by LINKING (not creation) must be marked verified too — see
+// oauthSignIn's step 4b.
+//
+// Leaving it null is not cosmetic: pruneAbandonedRegistrations deletes exactly
+// that row 24 hours later (email_verified_at IS NULL, older than the token TTL,
+// no token left), and users.id cascades to conversations and user_workspaces.
+// The same null also makes authorizeCredentials refuse the account forever and
+// forgot-password silently no-op on it, so its owner could never set a password.
+//
+// Scoped to `email_verified_at IS NULL`, mirroring consumeVerificationToken: a
+// repeat sign-in must never churn a timestamp that already records when the
+// address was first confirmed.
+export async function markEmailVerified(userId: string, database = defaultDb): Promise<void> {
+  await database
+    .update(users)
+    .set({ emailVerifiedAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.emailVerifiedAt)));
 }
 
 // Fetch a user by email, including the password hash (for credential verification).

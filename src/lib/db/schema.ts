@@ -211,6 +211,18 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
+// Bridges a cookie session to a bearer token for headless (api-only) consumers,
+// whose frontend lives on another origin and cannot read our cookie. Its own
+// table, not a column on one of the others: this code mints a SESSION while the
+// other short-lived tokens set a PASSWORD, and no discriminator should ever
+// stand between those two outcomes. Sixty seconds is the gap between two
+// redirects and one fetch, not a session.
+export const oauthHandoffCodes = pgTable("oauth_handoff_codes", {
+  code: text("code").primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
 export const evalRunStatusEnum = pgEnum("eval_run_status", ["pending", "running", "done", "error"]);
 
 export const evalQuestions = pgTable("eval_questions", {

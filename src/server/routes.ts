@@ -1,8 +1,10 @@
 import { Hono } from "hono";
+import { Auth } from "@auth/core";
 import { Scalar } from "@scalar/hono-api-reference";
 import { requireSession } from "./middleware";
 import { schedule } from "./schedule";
 import { buildOpenApiDocument } from "@/lib/openapi/document";
+import { buildAuthConfig } from "@/lib/auth/oauth/config";
 
 import { healthCheck } from "@/api/health/handler";
 import { loginResponse } from "@/api/auth/login/handler";
@@ -10,6 +12,9 @@ import { submitVerification } from "@/api/auth/verify/handler";
 import { forgotPassword } from "@/api/auth/forgot-password/handler";
 import { resetPassword } from "@/api/auth/reset-password/handler";
 import { changePassword } from "@/api/auth/password/handler";
+import { oauthHandoff } from "@/api/auth/oauth/handoff/handler";
+import { oauthExchange } from "@/api/auth/oauth/exchange/handler";
+import { oauthStart } from "@/api/auth/oauth/start/handler";
 import { registerUser } from "@/api/register/handler";
 import { handleChat } from "@/api/chat/handler";
 import { listConversationsResponse, createConversationResponse } from "@/api/conversations/handler";
@@ -77,6 +82,33 @@ export function createServer(): Hono {
   // deliberately outside the coarse requireSession prefixes above, because the
   // other auth routes must stay reachable anonymously.
   app.post("/api/auth/password", (c) => changePassword(c.req.raw));
+  // Headless OAuth start/handoff/exchange: all three 404 unless OAUTH_SUCCESS_URL
+  // is set, so they are also inert in a full-app deployment. Kept with the other
+  // specific /api/auth/* routes — a later catch-all must be registered after
+  // every one of these, this trio included.
+  app.get("/api/auth/oauth/start/:provider", (c) => oauthStart(c.req.raw, c.req.param("provider")));
+  app.get("/api/auth/oauth/handoff", (c) => oauthHandoff(c.req.raw));
+  app.post("/api/auth/oauth/exchange", (c) => oauthExchange(c.req.raw));
+  // Auth.js's own surface (sign-in, provider callbacks, session, CSRF), mounted
+  // through @auth/core's framework-agnostic handler — the api-only build has no
+  // Next.js [...nextauth] route. basePath is pinned to /api/auth in
+  // src/lib/auth/oauth/config.ts so that <origin>/api/auth/callback/<provider>
+  // is the redirect URI in BOTH build modes and an operator registers only one.
+  //
+  // MUST be registered last: Hono matches in registration order, so this
+  // catch-all would otherwise swallow every specific /api/auth/* route above.
+  // src/server/routes.test.ts pins that.
+  //
+  // Requires AUTH_URL. @auth/core derives trustHost from its presence
+  // (lib/utils/env.js:40); without it, Auth() trusts the request's Host, which
+  // is the same spoofing hazard src/lib/auth/link-base.ts refuses in production.
+  //
+  // buildAuthConfig() — never a bare oauthConfig() — is what makes Auth() work
+  // here: @auth/core's Auth(), unlike next-auth's NextAuth(), derives nothing from
+  // process.env by itself, so without the setEnvDefaults call that helper owns,
+  // every request 500s with UntrustedHost regardless of AUTH_URL. See its comment;
+  // src/api/auth/oauth/start/handler.ts is the other call site.
+  app.all("/api/auth/*", (c) => Auth(c.req.raw, buildAuthConfig()));
 
   // --- Register -----------------------------------------------------------
   app.post("/api/register", (c) => registerUser(c.req.raw));

@@ -10,7 +10,7 @@ vi.mock("node:crypto", async (importOriginal) => {
 });
 
 import { randomBytes } from "node:crypto";
-import { createUser, createUnverifiedUser, getUserByEmail, getAuthUserById, DuplicateEmailError } from "@/lib/auth/users";
+import { createUser, createUnverifiedUser, getUserByEmail, getAuthUserById, markEmailVerified, DuplicateEmailError } from "@/lib/auth/users";
 
 // Minimal fake matching the Drizzle calls used by the service.
 function fakeDb(opts: { existing?: unknown[]; insertResult?: unknown[]; insertThrows?: unknown } = {}) {
@@ -75,6 +75,18 @@ describe("getUserByEmail", () => {
   it("returns the row including passwordHash when found", async () => {
     const db = fakeDb({ existing: [{ id: "u1", email: "a@b.com", role: "admin", passwordHash: "h" }] });
     expect(await getUserByEmail("a@b.com", db)).toMatchObject({ id: "u1", role: "admin", passwordHash: "h" });
+  });
+});
+
+describe("markEmailVerified", () => {
+  // Confirms a row reached by OAuth LINKING (oauthSignIn step 4b). The `set`
+  // payload is what matters here: a real timestamp, and nothing else touched —
+  // this must never become a way to change a role or clear a block.
+  it("stamps emailVerifiedAt with a real timestamp and nothing else", async () => {
+    const set = vi.fn(() => ({ where: async () => {} }));
+    await markEmailVerified("u1", { update: () => ({ set }) } as never);
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith({ emailVerifiedAt: expect.any(Date) });
   });
 });
 

@@ -358,3 +358,83 @@ describe("password reset documentation", () => {
     expect(readme).not.toContain("refuses to return data");
   });
 });
+
+describe("OAuth documentation", () => {
+  it("documents both providers and their variables in both app kinds", () => {
+    for (const appKind of ["full", "api"] as const) {
+      const readme = generateReadme(opts({ appKind }));
+      expect(readme).toContain("GOOGLE_CLIENT_ID");
+      expect(readme).toContain("GITHUB_CLIENT_ID");
+      expect(readme).toContain("/api/auth/callback/");
+    }
+  });
+
+  // Leaving them unset must read as a supported state, not an omission. Pinned to the
+  // exact sentence from oauthSection rather than a loose regex: /no (OAuth )?buttons?|
+  // disabled|nothing/i previously matched unrelated prose already in the README (e.g.
+  // "there is nothing to bundle", "nothing can be ingested...") and passed with the
+  // section removed entirely — asserting nothing about this feature.
+  it("says OAuth is simply off when nothing is configured, in both app kinds", () => {
+    for (const appKind of ["full", "api"] as const) {
+      const readme = generateReadme(opts({ appKind }));
+      expect(readme).toContain("Set neither and OAuth is simply off");
+    }
+  });
+
+  // Buttons on a sign-in screen are a full-app promise only: the api-only build
+  // deletes src/app and src/components outright, so there is no screen to put one
+  // on. This assertion used to be made against BOTH kinds, which is precisely what
+  // kept the api-only README describing a UI its own generator had pruned away.
+  it("promises buttons on the sign-in screens in the full app, and denies them in api-only", () => {
+    expect(generateReadme(opts({ appKind: "full" }))).toContain("sign-in and registration screens");
+    expect(generateReadme(opts({ appKind: "full" }))).toContain("no buttons, nothing to configure");
+
+    const api = generateReadme(opts({ appKind: "api" }));
+    expect(api).not.toContain("sign-in and registration screens");
+    expect(api).toContain("serves no pages, so there are no buttons");
+  });
+
+  // WHERE a half-configured pair surfaces differs by build, and getting it wrong
+  // sends the reader to the wrong logs. The full app calls oauthConfig() while
+  // src/auth.ts is still loading, so it cannot start; api-only calls it inside the
+  // /api/auth/* route closure, so it boots fine and throws on the first request
+  // that reaches Auth.js. The negative halves are what stop the shared "fails at
+  // startup" wording coming back for api-only.
+  it("says when a half-configured pair fails, per build mode", () => {
+    const full = generateReadme(opts({ appKind: "full" }));
+    expect(full).toContain("fails at\nstartup, naming the missing variable");
+    expect(full).not.toContain("first `/api/auth/*`\nrequest");
+
+    const api = generateReadme(opts({ appKind: "api" }));
+    expect(api).toContain("fails on the first `/api/auth/*`\nrequest, naming the missing variable");
+    expect(api).not.toContain("fails at\nstartup");
+  });
+
+  // The allowlist governs OAuth too — a reader must not assume it is a bypass. Pinned
+  // to the exact sentence rather than /allow(ed|list)/i, which previously matched the
+  // unrelated "allowed domain" wording already present in the Registration section and
+  // passed even with oauthSection removed entirely.
+  it("states that the domain allowlist applies to OAuth sign-ins, in both app kinds", () => {
+    for (const appKind of ["full", "api"] as const) {
+      const readme = generateReadme(opts({ appKind }));
+      expect(readme).toContain("The email-domain allowlist applies to OAuth too");
+    }
+  });
+
+  // The handoff flow means nothing to a full-app deployment.
+  it("documents the handoff flow and OAUTH_SUCCESS_URL in the api README only", () => {
+    expect(generateReadme(opts({ appKind: "api" }))).toContain("OAUTH_SUCCESS_URL");
+    expect(generateReadme(opts({ appKind: "api" }))).toContain("/api/auth/oauth/exchange");
+    expect(generateReadme(opts({ appKind: "full" }))).not.toContain("OAUTH_SUCCESS_URL");
+  });
+
+  // GET /api/auth/signin/<provider> throws (Auth.js's signin action only redirects
+  // on a POST carrying a CSRF token, which a plain link cannot send) — the old
+  // instruction sent readers straight at that failure. The negative assertion is
+  // the one that matters: it is what stops the broken instruction coming back.
+  it("points the headless first step at the GET-safe start endpoint, not the broken signin route", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("/api/auth/oauth/start/");
+    expect(readme).not.toContain("/api/auth/signin/");
+  });
+});

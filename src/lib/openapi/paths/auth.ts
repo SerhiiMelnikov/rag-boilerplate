@@ -178,3 +178,62 @@ registry.registerPath({
     },
   },
 });
+
+// GET /api/auth/oauth/start/{provider} (src/api/auth/oauth/start/handler.ts): the
+// GET-safe entry point for the headless flow. Auth.js's own signin action only
+// redirects on a POST carrying a CSRF token, which a consumer's link cannot send,
+// so this synthesises that POST server-side and relays the redirect verbatim,
+// along with every Set-Cookie the provider's configuration calls for (PKCE,
+// state, or both — the set varies by provider/configuration, which is why none
+// are named individually here). Public — you have no session yet. 404 in a
+// full-app build.
+registry.registerPath({
+  method: "get",
+  path: "/api/auth/oauth/start/{provider}",
+  tags: ["Auth"],
+  summary: "Begin a headless OAuth sign-in with one GET (link- and deep-link-safe)",
+  request: { params: z.object({ provider: z.string() }) },
+  responses: {
+    302: { description: "Redirects to the provider's consent screen, setting whichever check cookies (PKCE and/or state) its callback will later validate" },
+    404: { description: "OAUTH_SUCCESS_URL is not configured, or that provider is not configured" },
+  },
+});
+
+// GET /api/auth/oauth/handoff (src/api/auth/oauth/handoff/handler.ts): the end of the
+// headless OAuth flow. Auth.js sets a session cookie on this origin, which a consumer's
+// frontend on another origin cannot read; this trades it for a one-time code and redirects
+// to OAUTH_SUCCESS_URL. Answers 404 in a full-app deployment, where no consumer exists.
+registry.registerPath({
+  method: "get",
+  path: "/api/auth/oauth/handoff",
+  tags: ["Auth"],
+  summary: "Exchange the OAuth session cookie for a one-time code and redirect to the configured consumer",
+  responses: {
+    302: { description: "Redirects to OAUTH_SUCCESS_URL with ?code=... on success, or ?error=oauth_failed with no session" },
+    404: { description: "OAUTH_SUCCESS_URL is not configured — there is no headless consumer to hand off to" },
+  },
+});
+
+// POST /api/auth/oauth/exchange (src/api/auth/oauth/exchange/handler.ts): trades the
+// one-time code for a bearer token of the same shape POST /api/auth/login returns.
+// Single use, 60-second lifetime; unknown, expired and already-used are one answer.
+registry.registerPath({
+  method: "post",
+  path: "/api/auth/oauth/exchange",
+  tags: ["Auth"],
+  summary: "Exchange a one-time OAuth handoff code for a bearer session token",
+  request: {
+    body: { content: { "application/json": { schema: z.object({ code: z.string() }) } } },
+  },
+  responses: {
+    200: {
+      description: "Code accepted; returns a bearer token usable as Authorization: Bearer <token>",
+      content: { "application/json": { schema: z.object({ token: z.string() }) } },
+    },
+    400: {
+      description: "Invalid JSON, a missing code, or an unknown/expired/already-used code — indistinguishable by design",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+    404: { description: "OAUTH_SUCCESS_URL is not configured" },
+  },
+});

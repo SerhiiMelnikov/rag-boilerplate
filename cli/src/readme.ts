@@ -85,6 +85,82 @@ function passwordSection(o: InstallOptions): string[] {
   return lines;
 }
 
+// Documents Google/GitHub sign-in, common to both builds. OAUTH_SUCCESS_URL and
+// the handoff flow only mean anything to a headless consumer running its own
+// frontend (mirrors RESET_URL/VERIFY_URL), so that part is documented only in
+// the api-only README — a full-app deployment keeps the session cookie instead.
+function oauthSection(o: InstallOptions): string[] {
+  const lines = ["## Signing in with Google or GitHub", ""];
+  // This paragraph is the one part of the section that cannot be shared: both of
+  // its claims are about surfaces, and the two builds have different ones.
+  //
+  //   * Buttons. The api-only build has no `src/app` and no `src/components` at
+  //     all, so promising a button on a sign-in screen describes a screen that was
+  //     pruned out of the project the reader is holding.
+  //   * When a half-configured pair fails. The full app calls oauthConfig() while
+  //     `src/auth.ts` is still loading, so it cannot start. The api-only build
+  //     calls it inside the `/api/auth/*` route closure, so the process boots
+  //     perfectly and throws on the first request that reaches Auth.js — telling
+  //     someone to watch startup logs there sends them looking in the wrong place.
+  if (o.appKind === "api") {
+    lines.push("Set both variables of a pair and that provider becomes available. This build");
+    lines.push("serves no pages, so there are no buttons — see **Headless sign-in** below for");
+    lines.push("how a sign-in begins. Set neither and OAuth is simply off — nothing to");
+    lines.push("configure. Setting only one half of a pair fails on the first `/api/auth/*`");
+    lines.push("request, naming the missing variable, rather than failing later on the");
+    lines.push("provider's own consent screen.");
+  } else {
+    lines.push("Set both variables of a pair and that provider's button appears on the");
+    lines.push("sign-in and registration screens. Set neither and OAuth is simply off —");
+    lines.push("no buttons, nothing to configure. Setting only one half of a pair fails at");
+    lines.push("startup, naming the missing variable, rather than failing later on the");
+    lines.push("provider's own consent screen.");
+  }
+  lines.push("");
+  lines.push("| Provider | Variables |");
+  lines.push("| --- | --- |");
+  lines.push("| Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |");
+  lines.push("| GitHub | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` |");
+  lines.push("");
+  lines.push("Register `<your-origin>/api/auth/callback/google` (and `/github`) as the");
+  lines.push("redirect URI in the provider's console. `AUTH_URL` must be set, or the");
+  lines.push("callback URL is derived from a request header that a proxy can forge.");
+  lines.push("");
+  lines.push("**The email-domain allowlist applies to OAuth too.** A sign-in whose address");
+  lines.push("is outside it is refused, the same as a registration would be — OAuth is");
+  lines.push("another door through that gate, not a way around it. An address the provider");
+  lines.push("does not confirm as verified is refused as well, since linking an OAuth");
+  lines.push("sign-in to an existing account rests entirely on that guarantee.");
+  lines.push("");
+  lines.push("A first OAuth sign-in creates the account, already verified. That account has");
+  lines.push("no password; its owner can set one through the password-reset flow and then");
+  lines.push("use either route.");
+  lines.push("");
+
+  if (o.appKind === "api") {
+    lines.push("### Headless sign-in", "");
+    lines.push("This build serves no pages, so the browser cannot end up holding a session");
+    lines.push("cookie your own frontend can read. Set `OAUTH_SUCCESS_URL` to your screen's");
+    lines.push("address and the flow ends there instead:", "");
+    lines.push(
+      "1. Send the user to `<origin>/api/auth/oauth/start/google` — one plain GET, so a",
+    );
+    lines.push(
+      "   link or a deep link works. (Auth.js's own sign-in route needs a POST with a",
+    );
+    lines.push("   CSRF token, which a link cannot send.)");
+    lines.push("2. After the provider, they land back at `OAUTH_SUCCESS_URL?code=...`.");
+    lines.push("3. `POST /api/auth/oauth/exchange` with `{ \"code\": \"...\" }` returns");
+    lines.push("   `{ \"token\": \"...\" }` — the same bearer token `POST /api/auth/login` gives.");
+    lines.push("");
+    lines.push("The code is single-use and expires after 60 seconds. A token is never put in");
+    lines.push("the URL directly: query strings leak through `Referer` headers and browser");
+    lines.push("history, and a code that dies on first use bounds that exposure.");
+    lines.push("");
+  }
+  return lines;
+}
+
 // Pure function: renders the generated app's own README, tailored to the
 // caller's provider/vector-store/appKind selection. No filesystem access here —
 // scaffold() is the one that writes the result to disk, so this stays easy
@@ -234,6 +310,8 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push(...evalSection(o));
 
   lines.push(...passwordSection(o));
+
+  lines.push(...oauthSection(o));
 
   lines.push("## Deploying", "");
   lines.push("The app ships as a Docker image. To run the whole stack — Postgres, MinIO");
@@ -438,6 +516,8 @@ function generateApiOnlyReadme(o: InstallOptions): string {
   lines.push(...evalSection(o));
 
   lines.push(...passwordSection(o));
+
+  lines.push(...oauthSection(o));
 
   lines.push("## Deploying", "");
   lines.push(

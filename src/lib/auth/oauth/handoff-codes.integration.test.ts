@@ -51,16 +51,19 @@ describe.runIf(RUN)("oauth handoff codes (integration)", () => {
     expect(await consumeHandoffCode("never-existed")).toBeNull();
   });
 
-  // The sequential test above never contends for the row, so a SELECT-then-
-  // DELETE implementation (no row lock taken by a plain SELECT under READ
-  // COMMITTED) would pass it while still letting two concurrent redemptions
-  // both see the row and both return the same user id. Firing both calls via
-  // Promise.all forces genuine contention: exactly one must win.
-  it("lets exactly one of two concurrent redemptions win", async () => {
+  // N=20, not 2, and the number is load-bearing. Against the vulnerable
+  // SELECT-then-DELETE shape this reproduced up to 10 simultaneous winners;
+  // at N=2 in a cold CI process it reproduced 0 times in 10 runs, because
+  // connection setup serialises the two calls before either reaches the row.
+  // DELETE ... RETURNING makes exactly-one-winner true by construction, so
+  // raising N costs nothing here and buys a guard that actually fires.
+  it("lets exactly one of many concurrent redemptions win", async () => {
     const id = await makeUser();
     const code = await createHandoffCode(id);
-    const [a, b] = await Promise.all([consumeHandoffCode(code), consumeHandoffCode(code)]);
-    expect([a, b].filter((r) => r === id)).toHaveLength(1);
-    expect([a, b].filter((r) => r === null)).toHaveLength(1);
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => consumeHandoffCode(code)),
+    );
+    expect(results.filter((r) => r === id)).toHaveLength(1);
+    expect(results.filter((r) => r === null)).toHaveLength(19);
   });
 });

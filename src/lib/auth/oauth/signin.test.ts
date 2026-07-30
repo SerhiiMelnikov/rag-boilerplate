@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { oauthSignIn, OAUTH_ERRORS } from "./signin";
 import type { OAuthUser } from "./providers";
 
-const base: OAuthUser = { id: "provider-sub-123", email: "person@company.com", name: "P", image: null, emailVerified: true, role: "user", isSuperAdmin: false };
+const base: OAuthUser = { id: "not-our-uuid", email: "person@company.com", name: "P", image: null, emailVerified: true, role: "user", isSuperAdmin: false };
 
 type Row = { id: string; role: "admin" | "user"; isSuperAdmin: boolean; blockedAt: Date | null; emailVerifiedAt: Date | null } | null;
 

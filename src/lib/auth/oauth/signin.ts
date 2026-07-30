@@ -33,11 +33,15 @@ export interface OAuthSignInDeps {
 // MUTATES `user`. That is deliberate and is the only channel Auth.js offers
 // between signIn and jwt without a database adapter: with no adapter,
 // handleLoginOrRegister returns the user object unchanged
-// (@auth/core/lib/actions/callback/handle-login.js:24-25), so the object the jwt
-// callback receives is literally the one provider.profile() produced — and its
-// `id` is the PROVIDER's subject, not ours. Without this reassignment every
-// OAuth session would carry an id that resolves to no row, and requireUser would
-// reject the user on their very first request.
+// (@auth/core/lib/actions/callback/handle-login.js:24-26), so the object the jwt
+// callback receives is the very one handed to signIn.
+//
+// Its `id` is neither ours nor the provider's: @auth/core replaced
+// provider.profile()'s id with a `crypto.randomUUID()` before either callback ran,
+// moving the provider's subject to `account.providerAccountId`
+// (lib/actions/callback/oauth/callback.js:218-235). Without the reassignment below
+// every OAuth session would carry that random id, which resolves to no row, and
+// requireUser would reject the user on their very first request.
 export async function oauthSignIn(
   user: OAuthUser & Record<string, unknown>,
   deps: OAuthSignInDeps = {},

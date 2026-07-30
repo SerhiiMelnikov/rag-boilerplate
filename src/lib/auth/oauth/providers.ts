@@ -11,7 +11,12 @@ export type OAuthProviderId = "google" | "github";
 // The one user shape both providers map to, so signin.ts has no provider-specific
 // branching. Two fields are placeholders rather than facts:
 //
-//   `id` is the PROVIDER's subject here, not ours;
+//   `id` is set from the provider's subject and then discarded before anything
+//   reads it. @auth/core builds `{ ...userFromProfile, id: crypto.randomUUID() }`
+//   on the way out of the callback (lib/actions/callback/oauth/callback.js:218-235)
+//   and keeps the subject on `account.providerAccountId` instead — deliberately,
+//   so a user is not tied to one provider's id. So whichever value signIn sees, it
+//   is NOT one of our uuids and resolves to no row of ours.
 //   `role`/`isSuperAdmin` are least-privilege defaults, because profile() runs
 //   BEFORE signIn and we have not looked this person up yet.
 //

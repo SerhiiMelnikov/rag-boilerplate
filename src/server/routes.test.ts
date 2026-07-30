@@ -89,3 +89,42 @@ describe("createServer", () => {
     expect(wired).toEqual(docRoutes);
   });
 });
+
+describe("Auth.js catch-all mounting order", () => {
+  // Hono matches in registration order, so a catch-all registered before these
+  // would swallow every one of them — and the failure would look like Auth.js
+  // rejecting a perfectly good login rather than a routing mistake.
+  //
+  // Bodies, not status codes: Auth.js also answers 400 for an action it does not
+  // recognise, so a status-only assertion would pass while swallowed.
+  it("routes POST /api/auth/login to the login handler", async () => {
+    const res = await createServer().request("/api/auth/login", {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "email and password are required" });
+  });
+
+  // OAUTH_SUCCESS_URL is unset in the test environment, so both headless
+  // endpoints answer 404 with a plain-text body. Auth.js would answer neither.
+  it.each([
+    ["GET", "/api/auth/oauth/handoff"],
+    ["POST", "/api/auth/oauth/exchange"],
+  ])("routes %s %s to its own handler", async (method, path) => {
+    const res = await createServer().request(path, {
+      method,
+      ...(method === "POST" ? { headers: { "content-type": "application/json" }, body: "{}" } : {}),
+    });
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("Not Found");
+  });
+
+  // The Auth.js surface itself is reachable — proving the catch-all is mounted
+  // at all, and that the two assertions above are not passing merely because it
+  // is missing.
+  it("serves the Auth.js providers endpoint from the catch-all", async () => {
+    const res = await createServer().request("/api/auth/providers");
+    expect(res.status).toBe(200);
+    expect(Object.keys(await res.json())).toContain("credentials");
+  });
+});

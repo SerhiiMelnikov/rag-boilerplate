@@ -1,8 +1,11 @@
 import { Hono } from "hono";
+import { Auth, setEnvDefaults, type AuthConfig } from "@auth/core";
+import type { Provider } from "@auth/core/providers";
 import { Scalar } from "@scalar/hono-api-reference";
 import { requireSession } from "./middleware";
 import { schedule } from "./schedule";
 import { buildOpenApiDocument } from "@/lib/openapi/document";
+import { oauthConfig } from "@/lib/auth/oauth/config";
 
 import { healthCheck } from "@/api/health/handler";
 import { loginResponse } from "@/api/auth/login/handler";
@@ -85,6 +88,34 @@ export function createServer(): Hono {
   // of these, this pair included.
   app.get("/api/auth/oauth/handoff", (c) => oauthHandoff(c.req.raw));
   app.post("/api/auth/oauth/exchange", (c) => oauthExchange(c.req.raw));
+  // Auth.js's own surface (sign-in, provider callbacks, session, CSRF), mounted
+  // through @auth/core's framework-agnostic handler — the api-only build has no
+  // Next.js [...nextauth] route. basePath is pinned to /api/auth in
+  // src/lib/auth/oauth/config.ts so that <origin>/api/auth/callback/<provider>
+  // is the redirect URI in BOTH build modes and an operator registers only one.
+  //
+  // MUST be registered last: Hono matches in registration order, so this
+  // catch-all would otherwise swallow every specific /api/auth/* route above.
+  // src/server/routes.test.ts pins that.
+  //
+  // Requires AUTH_URL. @auth/core derives trustHost from its presence
+  // (lib/utils/env.js:40); without it, Auth() trusts the request's Host, which
+  // is the same spoofing hazard src/lib/auth/link-base.ts refuses in production.
+  //
+  // setEnvDefaults() must be called explicitly here: unlike NextAuth() (which
+  // calls it internally — see node_modules/next-auth/lib/env.js), @auth/core's
+  // bare Auth() never derives trustHost/secret/basePath from process.env on its
+  // own. Skipping this makes every request 500 with UntrustedHost, regardless
+  // of AUTH_URL or NODE_ENV, because config.trustHost is simply left undefined.
+  app.all("/api/auth/*", (c) => {
+    // oauthConfig() types `providers` as `unknown[]` on purpose (see its own
+    // comment) so this next-free module never has to name Auth.js's internal
+    // Provider union; src/auth.ts casts the same way for the Next.js runtime.
+    const { providers, ...rest } = oauthConfig();
+    const config: AuthConfig = { ...rest, providers: providers as Provider[] };
+    setEnvDefaults(process.env, config);
+    return Auth(c.req.raw, config);
+  });
 
   // --- Register -----------------------------------------------------------
   app.post("/api/register", (c) => registerUser(c.req.raw));

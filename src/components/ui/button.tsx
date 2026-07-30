@@ -38,7 +38,7 @@ export function Button({
   return (
     <button
       {...props}
-      // A loading button that still fires submits the form twice.
+      // A loading button that still responds to clicks submits the form twice.
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={cn(

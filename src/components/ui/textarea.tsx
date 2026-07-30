@@ -34,6 +34,9 @@ export function Textarea({
       onInput={handleInput}
       className={cn(
         "w-full resize-none rounded border bg-surface px-3 py-2 text-md text-ink placeholder:text-ink-subtle",
+        // A rows={1} textarea is shorter than a finger; the touch minimum is not
+        // optional here just because the control is usually tall.
+        "min-h-11 md:min-h-0",
         invalid ? "border-danger" : "border-border-strong",
         FOCUS_RING,
         "disabled:cursor-not-allowed disabled:opacity-60",

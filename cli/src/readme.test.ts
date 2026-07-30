@@ -369,14 +369,28 @@ describe("OAuth documentation", () => {
     }
   });
 
-  // Leaving them unset must read as a supported state, not an omission.
-  it("says OAuth is simply off when nothing is configured", () => {
-    expect(generateReadme(opts({ appKind: "full" }))).toMatch(/no (OAuth )?buttons?|disabled|nothing/i);
+  // Leaving them unset must read as a supported state, not an omission. Pinned to the
+  // exact sentence from oauthSection rather than a loose regex: /no (OAuth )?buttons?|
+  // disabled|nothing/i previously matched unrelated prose already in the README (e.g.
+  // "there is nothing to bundle", "nothing can be ingested...") and passed with the
+  // section removed entirely — asserting nothing about this feature.
+  it("says OAuth is simply off when nothing is configured, in both app kinds", () => {
+    for (const appKind of ["full", "api"] as const) {
+      const readme = generateReadme(opts({ appKind }));
+      expect(readme).toContain("Set neither and OAuth is simply off");
+      expect(readme).toContain("no buttons, nothing to configure");
+    }
   });
 
-  // The allowlist governs OAuth too — a reader must not assume it is a bypass.
-  it("states that the domain allowlist applies to OAuth sign-ins", () => {
-    expect(generateReadme(opts({ appKind: "full" }))).toMatch(/allow(ed|list)/i);
+  // The allowlist governs OAuth too — a reader must not assume it is a bypass. Pinned
+  // to the exact sentence rather than /allow(ed|list)/i, which previously matched the
+  // unrelated "allowed domain" wording already present in the Registration section and
+  // passed even with oauthSection removed entirely.
+  it("states that the domain allowlist applies to OAuth sign-ins, in both app kinds", () => {
+    for (const appKind of ["full", "api"] as const) {
+      const readme = generateReadme(opts({ appKind }));
+      expect(readme).toContain("The email-domain allowlist applies to OAuth too");
+    }
   });
 
   // The handoff flow means nothing to a full-app deployment.

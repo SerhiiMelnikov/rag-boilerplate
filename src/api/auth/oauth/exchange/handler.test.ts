@@ -66,6 +66,18 @@ describe("oauthExchange", () => {
     expect(d.encodeTokenFn).not.toHaveBeenCalled();
   });
 
+  // Distinct from the "deleted" case above: the row still exists, so a lone
+  // `!user` check would let this one through. Mutation testing during
+  // self-review caught that the suite otherwise never exercises this branch.
+  it("refuses a code whose user row still exists but is now blocked", async () => {
+    const d = {
+      ...deps("u1"),
+      getAuthUserFn: vi.fn(async () => ({ id: "u1", role: "admin" as const, isSuperAdmin: true, blockedAt: new Date(), sessionsValidFrom: null })),
+    };
+    expect((await oauthExchange(req({ code: "c" }), d)).status).toBe(400);
+    expect(d.encodeTokenFn).not.toHaveBeenCalled();
+  });
+
   it("sweeps expired codes without blocking the response", async () => {
     const d = deps("u1");
     await oauthExchange(req({ code: "c" }), d);

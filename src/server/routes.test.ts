@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createServer } from "./routes";
 import { buildOpenApiDocument } from "@/lib/openapi/document";
 
@@ -126,5 +126,39 @@ describe("Auth.js catch-all mounting order", () => {
     const res = await createServer().request("/api/auth/providers");
     expect(res.status).toBe(200);
     expect(Object.keys(await res.json())).toContain("credentials");
+  });
+});
+
+describe("Auth.js basePath warning suppression", () => {
+  // oauthConfig() always sets basePath (that's what pins the redirect URI
+  // across build modes), and production requires AUTH_URL. Both present
+  // together is exactly the combination setEnvDefaults's default
+  // suppressBasePathWarning=false treats as "redundant" and warns about via
+  // logger.warn, which — unlike logger.debug — is never gated on config.debug,
+  // so it would otherwise print on every single request in production.
+  //
+  // vitest.config.ts never sets AUTH_URL, so no other test in this file
+  // reaches this branch; stubbed and always restored here, scoped to only this
+  // one test — a leaked AUTH_URL would silently change trustHost derivation for
+  // every OTHER test file sharing this worker (see
+  // src/api/auth/forgot-password/handler.test.ts's own comment on the same
+  // hazard).
+  beforeEach(() => {
+    vi.stubEnv("AUTH_URL", "https://app.example");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("does not warn when AUTH_URL and the pinned basePath overlap", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const res = await createServer().request("/api/auth/providers");
+      expect(res.status).toBe(200);
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });

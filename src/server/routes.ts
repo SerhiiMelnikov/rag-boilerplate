@@ -113,7 +113,16 @@ export function createServer(): Hono {
     // Provider union; src/auth.ts casts the same way for the Next.js runtime.
     const { providers, ...rest } = oauthConfig();
     const config: AuthConfig = { ...rest, providers: providers as Provider[] };
-    setEnvDefaults(process.env, config);
+    // Third argument (suppressBasePathWarning) must be true: oauthConfig() always
+    // sets basePath by design (that's what pins the redirect URI across build
+    // modes), and production requires AUTH_URL (see above) — so both are always
+    // present together in production, which is exactly the combination
+    // setEnvDefaults otherwise treats as "redundant" and warns about via
+    // logger.warn (unconditional — unlike debug, not gated on config.debug). That
+    // advice does not apply here: the pinned basePath is deliberate, not a mistake
+    // to flag on every single request. next-auth's own NextAuth() passes the same
+    // `true` for the same reason (node_modules/next-auth/lib/env.js).
+    setEnvDefaults(process.env, config, true);
     return Auth(c.req.raw, config);
   });
 

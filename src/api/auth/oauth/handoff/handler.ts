@@ -1,8 +1,8 @@
-import { getSessionFromRequest } from "@/lib/auth/session";
+import { requireUser, UnauthorizedError } from "@/lib/auth/guards";
 import { createHandoffCode } from "@/lib/auth/oauth/handoff-codes";
 
 export interface HandoffHandlerDeps {
-  getSessionFn?: typeof getSessionFromRequest;
+  requireUserFn?: typeof requireUser;
   createCodeFn?: typeof createHandoffCode;
 }
 
@@ -24,7 +24,7 @@ export async function oauthHandoff(request: Request, deps: HandoffHandlerDeps = 
   // its cookie and this endpoint has nothing to do.
   if (!successUrl) return new Response("Not Found", { status: 404 });
 
-  const getSessionFn = deps.getSessionFn ?? getSessionFromRequest;
+  const requireUserFn = deps.requireUserFn ?? requireUser;
   const createCodeFn = deps.createCodeFn ?? createHandoffCode;
 
   const headers = new Headers();
@@ -41,15 +41,34 @@ export async function oauthHandoff(request: Request, deps: HandoffHandlerDeps = 
     headers.append("set-cookie", `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}`);
   }
 
-  const session = await getSessionFn(request);
-  if (!session) {
+  let user;
+  try {
+    // requireUser, NOT getSessionFromRequest: decrypting the token proves only
+    // that this deployment minted it once, never that it is still good. Every
+    // check that can retire a session — blocked, deleted, and 0.5.7's
+    // sessions_valid_from cut-off — lives in requireUser and nowhere else, and
+    // it is next-free, so it works in both build modes.
+    //
+    // Skipping it would make this endpoint launder a revoked session: it accepts
+    // an `Authorization: Bearer` token as readily as the cookie (see
+    // getSessionFromRequest), and the exchange it hands off to mints a token
+    // with a FRESH sessionIssuedAt — putting a stolen, already-retired session
+    // back on the live side of the cut-off, repeatably.
+    //
+    // The cookie Auth.js has just set passes this: the jwt callback stamps
+    // sessionIssuedAt at sign-in.
+    user = await requireUserFn(request);
+  } catch (err) {
+    // A failed lookup (a database outage, say) is not a refusal and must not be
+    // reported as one — only UnauthorizedError means "no usable session".
+    if (!(err instanceof UnauthorizedError)) throw err;
     // Nothing to hand over. Say so at the consumer's own screen rather than
     // rendering an error page they never designed.
     headers.set("location", `${successUrl}?error=oauth_failed`);
     return new Response(null, { status: 302, headers });
   }
 
-  const code = await createCodeFn(session.id);
+  const code = await createCodeFn(user.id);
   headers.set("location", `${successUrl}?code=${encodeURIComponent(code)}`);
   return new Response(null, { status: 302, headers });
 }

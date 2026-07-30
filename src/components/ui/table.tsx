@@ -53,8 +53,10 @@ export function TD({
     <td
       {...props}
       className={cn(
-        // 52px rows on touch, 40px once there is a pointer.
-        "px-3 py-3.5 text-ink md:py-2.5",
+        // 52px rows on touch, 40px once there is a pointer: text-sm is 13px on a
+        // 19px line, so 16px of padding either side plus the 1px border makes 52,
+        // and 10px makes 40.
+        "px-3 py-4 text-ink md:py-2.5",
         numeric && "text-right font-mono tabular-nums",
         className,
       )}

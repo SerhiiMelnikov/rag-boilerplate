@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Dialog } from "@/components/ui/dialog";
+import { FOCUS_RING } from "@/components/ui/button";
 
 describe("Dialog", () => {
   it("renders nothing while closed", () => {
@@ -46,5 +47,15 @@ describe("Dialog", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("gives its close button the shared focus ring", () => {
+    render(
+      <Dialog open onClose={vi.fn()} title="Chunks for report.pdf">
+        <p>body</p>
+      </Dialog>,
+    );
+    const cls = screen.getByRole("button", { name: "Close" }).className;
+    for (const utility of FOCUS_RING.split(" ")) expect(cls).toContain(utility);
   });
 });

@@ -5,9 +5,69 @@
 /* Code block theme for react-markdown + rehype-highlight */
 @import "highlight.js/styles/github-dark.css";
 
+/* Design tokens — the only place a colour is written down.
+   Values are RGB triplets, not hex, so Tailwind's <alpha-value> opacity
+   modifiers keep working: bg-accent/10 compiles to rgb(var(--c-accent) / 0.1).
+   Contrast for every pair used on screen is asserted by tokens.test.ts; that
+   test is the authority, so a nudged value here must keep it green. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
+  --c-bg: 250 249 247;
+  --c-surface: 255 255 255;
+  --c-surface-2: 242 240 236;
+  --c-border: 229 225 219;
+  --c-border-strong: 211 206 198;
+  --c-ink: 31 29 27;
+  --c-ink-muted: 110 104 98;
+  --c-ink-subtle: 125 118 109;
+  --c-accent: 13 110 110;
+  --c-accent-hover: 10 83 82;
+  --c-accent-soft: 227 240 239;
+  --c-accent-ink: 255 255 255;
+  --c-success: 47 107 79;
+  --c-success-soft: 230 240 234;
+  --c-warning: 138 90 17;
+  --c-warning-soft: 251 240 220;
+  --c-danger: 166 58 43;
+  --c-danger-soft: 251 233 229;
+  --c-danger-ink: 255 255 255;
 }
+
+.dark {
+  color-scheme: dark;
+  --c-bg: 23 22 20;
+  --c-surface: 30 29 26;
+  --c-surface-2: 38 36 33;
+  --c-border: 48 46 42;
+  --c-border-strong: 62 59 54;
+  --c-ink: 242 239 234;
+  --c-ink-muted: 163 156 147;
+  --c-ink-subtle: 138 130 121;
+  --c-accent: 79 195 191;
+  --c-accent-hover: 127 216 212;
+  --c-accent-soft: 22 48 47;
+  --c-accent-ink: 16 32 31;
+  --c-success: 111 190 149;
+  --c-success-soft: 22 40 31;
+  --c-warning: 217 169 74;
+  --c-warning-soft: 48 37 18;
+  --c-danger: 229 140 122;
+  --c-danger-soft: 51 28 23;
+  --c-danger-ink: 51 28 23;
+}
+
 body {
-  @apply bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100;
+  @apply bg-bg text-ink font-sans text-md;
+}
+
+/* A dashed gutter, a spinner and a drawer all animate; none of them may move for
+   someone who asked the OS to stop animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -358,3 +358,31 @@ describe("password reset documentation", () => {
     expect(readme).not.toContain("refuses to return data");
   });
 });
+
+describe("OAuth documentation", () => {
+  it("documents both providers and their variables in both app kinds", () => {
+    for (const appKind of ["full", "api"] as const) {
+      const readme = generateReadme(opts({ appKind }));
+      expect(readme).toContain("GOOGLE_CLIENT_ID");
+      expect(readme).toContain("GITHUB_CLIENT_ID");
+      expect(readme).toContain("/api/auth/callback/");
+    }
+  });
+
+  // Leaving them unset must read as a supported state, not an omission.
+  it("says OAuth is simply off when nothing is configured", () => {
+    expect(generateReadme(opts({ appKind: "full" }))).toMatch(/no (OAuth )?buttons?|disabled|nothing/i);
+  });
+
+  // The allowlist governs OAuth too — a reader must not assume it is a bypass.
+  it("states that the domain allowlist applies to OAuth sign-ins", () => {
+    expect(generateReadme(opts({ appKind: "full" }))).toMatch(/allow(ed|list)/i);
+  });
+
+  // The handoff flow means nothing to a full-app deployment.
+  it("documents the handoff flow and OAUTH_SUCCESS_URL in the api README only", () => {
+    expect(generateReadme(opts({ appKind: "api" }))).toContain("OAUTH_SUCCESS_URL");
+    expect(generateReadme(opts({ appKind: "api" }))).toContain("/api/auth/oauth/exchange");
+    expect(generateReadme(opts({ appKind: "full" }))).not.toContain("OAUTH_SUCCESS_URL");
+  });
+});

@@ -122,7 +122,13 @@ function oauthSection(o: InstallOptions): string[] {
     lines.push("This build serves no pages, so the browser cannot end up holding a session");
     lines.push("cookie your own frontend can read. Set `OAUTH_SUCCESS_URL` to your screen's");
     lines.push("address and the flow ends there instead:", "");
-    lines.push("1. Send the user to `<origin>/api/auth/signin/google`.");
+    lines.push(
+      "1. Send the user to `<origin>/api/auth/oauth/start/google` — one plain GET, so a",
+    );
+    lines.push(
+      "   link or a deep link works. (Auth.js's own sign-in route needs a POST with a",
+    );
+    lines.push("   CSRF token, which a link cannot send.)");
     lines.push("2. After the provider, they land back at `OAUTH_SUCCESS_URL?code=...`.");
     lines.push("3. `POST /api/auth/oauth/exchange` with `{ \"code\": \"...\" }` returns");
     lines.push("   `{ \"token\": \"...\" }` — the same bearer token `POST /api/auth/login` gives.");

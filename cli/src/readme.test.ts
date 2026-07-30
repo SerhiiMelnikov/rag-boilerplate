@@ -399,4 +399,14 @@ describe("OAuth documentation", () => {
     expect(generateReadme(opts({ appKind: "api" }))).toContain("/api/auth/oauth/exchange");
     expect(generateReadme(opts({ appKind: "full" }))).not.toContain("OAUTH_SUCCESS_URL");
   });
+
+  // GET /api/auth/signin/<provider> throws (Auth.js's signin action only redirects
+  // on a POST carrying a CSRF token, which a plain link cannot send) — the old
+  // instruction sent readers straight at that failure. The negative assertion is
+  // the one that matters: it is what stops the broken instruction coming back.
+  it("points the headless first step at the GET-safe start endpoint, not the broken signin route", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("/api/auth/oauth/start/");
+    expect(readme).not.toContain("/api/auth/signin/");
+  });
 });

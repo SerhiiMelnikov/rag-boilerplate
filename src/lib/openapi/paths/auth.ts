@@ -179,6 +179,26 @@ registry.registerPath({
   },
 });
 
+// GET /api/auth/oauth/start/{provider} (src/api/auth/oauth/start/handler.ts): the
+// GET-safe entry point for the headless flow. Auth.js's own signin action only
+// redirects on a POST carrying a CSRF token, which a consumer's link cannot send,
+// so this synthesises that POST server-side and relays the redirect verbatim,
+// along with every Set-Cookie the provider's configuration calls for (PKCE,
+// state, or both — the set varies by provider/configuration, which is why none
+// are named individually here). Public — you have no session yet. 404 in a
+// full-app build.
+registry.registerPath({
+  method: "get",
+  path: "/api/auth/oauth/start/{provider}",
+  tags: ["Auth"],
+  summary: "Begin a headless OAuth sign-in with one GET (link- and deep-link-safe)",
+  request: { params: z.object({ provider: z.string() }) },
+  responses: {
+    302: { description: "Redirects to the provider's consent screen, setting whichever check cookies (PKCE and/or state) its callback will later validate" },
+    404: { description: "OAUTH_SUCCESS_URL is not configured, or that provider is not configured" },
+  },
+});
+
 // GET /api/auth/oauth/handoff (src/api/auth/oauth/handoff/handler.ts): the end of the
 // headless OAuth flow. Auth.js sets a session cookie on this origin, which a consumer's
 // frontend on another origin cannot read; this trades it for a one-time code and redirects

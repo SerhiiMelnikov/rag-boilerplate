@@ -378,8 +378,36 @@ describe("OAuth documentation", () => {
     for (const appKind of ["full", "api"] as const) {
       const readme = generateReadme(opts({ appKind }));
       expect(readme).toContain("Set neither and OAuth is simply off");
-      expect(readme).toContain("no buttons, nothing to configure");
     }
+  });
+
+  // Buttons on a sign-in screen are a full-app promise only: the api-only build
+  // deletes src/app and src/components outright, so there is no screen to put one
+  // on. This assertion used to be made against BOTH kinds, which is precisely what
+  // kept the api-only README describing a UI its own generator had pruned away.
+  it("promises buttons on the sign-in screens in the full app, and denies them in api-only", () => {
+    expect(generateReadme(opts({ appKind: "full" }))).toContain("sign-in and registration screens");
+    expect(generateReadme(opts({ appKind: "full" }))).toContain("no buttons, nothing to configure");
+
+    const api = generateReadme(opts({ appKind: "api" }));
+    expect(api).not.toContain("sign-in and registration screens");
+    expect(api).toContain("serves no pages, so there are no buttons");
+  });
+
+  // WHERE a half-configured pair surfaces differs by build, and getting it wrong
+  // sends the reader to the wrong logs. The full app calls oauthConfig() while
+  // src/auth.ts is still loading, so it cannot start; api-only calls it inside the
+  // /api/auth/* route closure, so it boots fine and throws on the first request
+  // that reaches Auth.js. The negative halves are what stop the shared "fails at
+  // startup" wording coming back for api-only.
+  it("says when a half-configured pair fails, per build mode", () => {
+    const full = generateReadme(opts({ appKind: "full" }));
+    expect(full).toContain("fails at\nstartup, naming the missing variable");
+    expect(full).not.toContain("first `/api/auth/*`\nrequest");
+
+    const api = generateReadme(opts({ appKind: "api" }));
+    expect(api).toContain("fails on the first `/api/auth/*`\nrequest, naming the missing variable");
+    expect(api).not.toContain("fails at\nstartup");
   });
 
   // The allowlist governs OAuth too — a reader must not assume it is a bypass. Pinned

@@ -91,11 +91,31 @@ function passwordSection(o: InstallOptions): string[] {
 // the api-only README — a full-app deployment keeps the session cookie instead.
 function oauthSection(o: InstallOptions): string[] {
   const lines = ["## Signing in with Google or GitHub", ""];
-  lines.push("Set both variables of a pair and that provider's button appears on the");
-  lines.push("sign-in and registration screens. Set neither and OAuth is simply off —");
-  lines.push("no buttons, nothing to configure. Setting only one half of a pair fails at");
-  lines.push("startup naming the missing variable, rather than failing later on the");
-  lines.push("provider's own consent screen.");
+  // This paragraph is the one part of the section that cannot be shared: both of
+  // its claims are about surfaces, and the two builds have different ones.
+  //
+  //   * Buttons. The api-only build has no `src/app` and no `src/components` at
+  //     all, so promising a button on a sign-in screen describes a screen that was
+  //     pruned out of the project the reader is holding.
+  //   * When a half-configured pair fails. The full app calls oauthConfig() while
+  //     `src/auth.ts` is still loading, so it cannot start. The api-only build
+  //     calls it inside the `/api/auth/*` route closure, so the process boots
+  //     perfectly and throws on the first request that reaches Auth.js — telling
+  //     someone to watch startup logs there sends them looking in the wrong place.
+  if (o.appKind === "api") {
+    lines.push("Set both variables of a pair and that provider becomes available. This build");
+    lines.push("serves no pages, so there are no buttons — see **Headless sign-in** below for");
+    lines.push("how a sign-in begins. Set neither and OAuth is simply off — nothing to");
+    lines.push("configure. Setting only one half of a pair fails on the first `/api/auth/*`");
+    lines.push("request, naming the missing variable, rather than failing later on the");
+    lines.push("provider's own consent screen.");
+  } else {
+    lines.push("Set both variables of a pair and that provider's button appears on the");
+    lines.push("sign-in and registration screens. Set neither and OAuth is simply off —");
+    lines.push("no buttons, nothing to configure. Setting only one half of a pair fails at");
+    lines.push("startup, naming the missing variable, rather than failing later on the");
+    lines.push("provider's own consent screen.");
+  }
   lines.push("");
   lines.push("| Provider | Variables |");
   lines.push("| --- | --- |");

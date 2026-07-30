@@ -3,8 +3,11 @@ import { oauthHandoff } from "./handler";
 import { requireUser } from "@/lib/auth/guards";
 import type { getAuthUserById } from "@/lib/auth/users";
 import { encodeSessionToken } from "@/lib/auth/session";
+import { oauthConfig } from "@/lib/auth/oauth/config";
+import { OAUTH_ERRORS } from "@/lib/auth/oauth/signin";
 
 const req = (init?: RequestInit) => new Request("http://api.test/api/auth/oauth/handoff", init);
+const reqAt = (url: string, init?: RequestInit) => new Request(url, init);
 
 // The database row requireUser reads on every request.
 type DbUser = {
@@ -114,6 +117,75 @@ describe("oauthHandoff", () => {
       const location = new URL(res.headers.get("location") as string);
       expect(location.searchParams.get("error")).toBe("oauth_failed");
       expect(location.searchParams.get("src")).toBe("oauth");
+    });
+  });
+
+  // A refused sign-in never reaches the browser as a refusal: @auth/core hands
+  // the string signIn returned to the redirect callback (handleAuthorized), and
+  // in headless mode that callback rewrites to this endpoint. If the reason is
+  // not forwarded from here, the three refusals are unreachable in the only build
+  // mode the handoff exists for — a consumer cannot tell a blocked account from a
+  // disallowed domain.
+  describe("a reason reported on the way in", () => {
+    it.each(["OAuthEmailUnverified", "OAuthDomainNotAllowed", "OAuthAccountBlocked"])(
+      "forwards %s rather than the generic code",
+      async (code) => {
+        const d = deps(liveRow, undefined);
+        const res = await oauthHandoff(reqAt(`http://api.test/api/auth/oauth/handoff?error=${code}`), d);
+        expect(res.status).toBe(302);
+        expect(res.headers.get("location")).toBe(`https://consumer.app/signed-in?error=${code}`);
+        expect(d.createCodeFn).not.toHaveBeenCalled();
+      },
+    );
+
+    // The seam the bug lived in, driven end to end: the REAL redirect callback's
+    // output becomes this endpoint's request URL. Either half can look correct
+    // alone — a callback that carries the code to a handoff that ignores it, or a
+    // handoff that forwards a code no callback ever sends — and only this
+    // composition catches that.
+    it.each(Object.entries(OAUTH_ERRORS))(
+      "survives the real redirect callback for the %s refusal",
+      async (_key, refusal) => {
+        const redirect = oauthConfig().callbacks.redirect as (p: { url: string; baseUrl: string }) => string;
+        const handoffUrl = redirect({ url: refusal, baseUrl: "http://api.test" });
+        const res = await oauthHandoff(reqAt(handoffUrl), deps(liveRow, undefined));
+        const location = new URL(res.headers.get("location") as string);
+        // The code signin.ts issued, all the way through to the consumer's URL.
+        expect(location.searchParams.get("error")).toBe(new URL(refusal, "http://api.test").searchParams.get("error"));
+        expect(location.searchParams.get("error")).not.toBe("oauth_failed");
+      },
+    );
+
+    // The parameter arrives on a URL anyone can craft, and its value is pasted
+    // into the consumer's address bar for their own screen to render. Real codes
+    // are bare identifiers; anything else is reported generically rather than
+    // reflected.
+    it.each([
+      ["a script tag", "<script>alert(1)</script>"],
+      ["an absolute url", "https://evil.test/phish"],
+      ["an empty-ish value", "  "],
+    ])("reduces %s to the generic code", async (_label, value) => {
+      const url = new URL("http://api.test/api/auth/oauth/handoff");
+      url.searchParams.set("error", value);
+      const res = await oauthHandoff(reqAt(url.toString()), deps(liveRow, undefined));
+      expect(res.headers.get("location")).toBe("https://consumer.app/signed-in?error=oauth_failed");
+    });
+
+    // The browser must not be left holding a session cookie just because the
+    // refusal took the early exit.
+    it("still clears the session cookies", async () => {
+      const res = await oauthHandoff(reqAt("http://api.test/api/auth/oauth/handoff?error=OAuthAccountBlocked"), deps(liveRow, live));
+      expect(res.headers.getSetCookie().join("; ")).toContain("Max-Age=0");
+    });
+
+    // Reporting a reason must not become a way to suppress a code for a caller
+    // who does have a live session — but it must also not mint one, since a
+    // refusal is exactly the case where no session was created.
+    it("never mints a code even when a live session is present", async () => {
+      const d = deps(liveRow, live);
+      const res = await oauthHandoff(reqAt("http://api.test/api/auth/oauth/handoff?error=OAuthDomainNotAllowed"), d);
+      expect(res.headers.get("location")).toBe("https://consumer.app/signed-in?error=OAuthDomainNotAllowed");
+      expect(d.createCodeFn).not.toHaveBeenCalled();
     });
   });
 

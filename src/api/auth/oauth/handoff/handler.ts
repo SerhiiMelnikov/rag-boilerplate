@@ -10,6 +10,16 @@ export interface HandoffHandlerDeps {
 // no longer use. Expiring both is harmless when only one is present.
 const SESSION_COOKIES = ["authjs.session-token", "__Secure-authjs.session-token"];
 
+// What this endpoint is willing to reflect out of its own query string. Every
+// real code is a bare identifier — signin.ts's three refusals
+// (OAuthEmailUnverified, OAuthDomainNotAllowed, OAuthAccountBlocked) and
+// Auth.js's own AuthError `type`s (OAuthCallbackError, MissingCSRF, …) — and the
+// value arrives from a URL anybody can craft, so anything of another shape is
+// reported as the generic code instead of being pasted verbatim into the
+// consumer's address bar for their screen to render.
+const CODE_SHAPE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+const GENERIC_ERROR = "oauth_failed";
+
 // Built with URL/searchParams rather than `${successUrl}?${param}=…`, because
 // OAUTH_SUCCESS_URL may perfectly reasonably carry a query string of its own
 // (https://app.example/callback?src=oauth). Concatenation produces a second `?`
@@ -53,6 +63,26 @@ export async function oauthHandoff(request: Request, deps: HandoffHandlerDeps = 
     headers.append("set-cookie", `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}`);
   }
 
+  // A failed sign-in arrives here as a redirect carrying `?error=<code>`, from
+  // either of the two places Auth.js can send one:
+  //
+  //   * our own redirect callback, rewriting one of signin.ts's refusal URLs
+  //     (src/lib/auth/oauth/config.ts — handleAuthorized hands the string signIn
+  //     returned to `redirect`, so the browser never sees it directly);
+  //   * @auth/core's catch block, which builds `${origin}${pages[kind]}?error=…`
+  //     and — because headless mode points BOTH pages.signIn and pages.error at
+  //     this path, /login being a page only the full app has — lands its own
+  //     error types here too.
+  //
+  // Checked before requireUser because a refusal sets no session cookie: without
+  // this branch the lookup below simply fails and every distinct reason collapses
+  // into `oauth_failed`, which is what made the taxonomy dead in the one build
+  // mode it was written for.
+  const reported = new URL(request.url).searchParams.get("error");
+  if (reported) {
+    return redirectTo(successUrl, headers, "error", CODE_SHAPE.test(reported) ? reported : GENERIC_ERROR);
+  }
+
   let user;
   try {
     // requireUser, NOT getSessionFromRequest: decrypting the token proves only
@@ -74,9 +104,9 @@ export async function oauthHandoff(request: Request, deps: HandoffHandlerDeps = 
     // A failed lookup (a database outage, say) is not a refusal and must not be
     // reported as one — only UnauthorizedError means "no usable session".
     if (!(err instanceof UnauthorizedError)) throw err;
-    // Nothing to hand over. Say so at the consumer's own screen rather than
-    // rendering an error page they never designed.
-    return redirectTo(successUrl, headers, "error", "oauth_failed");
+    // Nothing to hand over, and no reason was reported. Say so at the consumer's
+    // own screen rather than rendering an error page they never designed.
+    return redirectTo(successUrl, headers, "error", GENERIC_ERROR);
   }
 
   const code = await createCodeFn(user.id);

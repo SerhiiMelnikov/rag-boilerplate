@@ -29,7 +29,16 @@ export async function oauthHandoff(request: Request, deps: HandoffHandlerDeps = 
 
   const headers = new Headers();
   for (const name of SESSION_COOKIES) {
-    headers.append("set-cookie", `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+    // The `__Secure-` name prefix is a browser-enforced rule, not just a naming
+    // convention: a Set-Cookie for a `__Secure-`-prefixed name is rejected
+    // outright unless it also carries `Secure`. In production Auth.js sets
+    // exactly that cookie (not the bare name), so omitting `Secure` here would
+    // make this clear a silent no-op on the one cookie that actually exists —
+    // leaving the browser holding a fully valid session alongside the bearer
+    // token it just received. The bare name must NOT get `Secure` unconditionally,
+    // or the dev-mode (plain http) clear of that cookie silently no-ops instead.
+    const secure = name.startsWith("__Secure-") ? "; Secure" : "";
+    headers.append("set-cookie", `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}`);
   }
 
   const session = await getSessionFn(request);

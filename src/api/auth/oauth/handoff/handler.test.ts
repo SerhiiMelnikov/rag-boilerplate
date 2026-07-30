@@ -40,6 +40,21 @@ describe("oauthHandoff", () => {
     expect(cookies).toContain("Max-Age=0");
   });
 
+  // Browsers enforce the `__Secure-` name-prefix rule and reject a Set-Cookie for
+  // such a name outright unless it carries `Secure` — so the `__Secure-` clear
+  // MUST carry it (production Auth.js sets exactly that cookie), while the
+  // bare-name clear must NOT (it is the dev-mode, plain-http cookie, and adding
+  // `Secure` there would make that clear silently no-op instead). A blanket
+  // fix in either direction breaks one of these two assertions.
+  it("marks only the __Secure-prefixed cookie clear as Secure", async () => {
+    const res = await oauthHandoff(req(), deps(live));
+    const cookies = res.headers.getSetCookie();
+    const secureCookie = cookies.find((c) => c.startsWith("__Secure-authjs.session-token="));
+    const bareCookie = cookies.find((c) => c.startsWith("authjs.session-token=") && !c.startsWith("__Secure-"));
+    expect(secureCookie).toContain("; Secure");
+    expect(bareCookie).not.toContain("Secure");
+  });
+
   // A full-app deployment has no headless consumer, so the endpoint means nothing.
   it("is absent when no consumer is configured", async () => {
     delete process.env.OAUTH_SUCCESS_URL;

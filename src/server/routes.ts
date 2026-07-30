@@ -10,6 +10,8 @@ import { submitVerification } from "@/api/auth/verify/handler";
 import { forgotPassword } from "@/api/auth/forgot-password/handler";
 import { resetPassword } from "@/api/auth/reset-password/handler";
 import { changePassword } from "@/api/auth/password/handler";
+import { oauthHandoff } from "@/api/auth/oauth/handoff/handler";
+import { oauthExchange } from "@/api/auth/oauth/exchange/handler";
 import { registerUser } from "@/api/register/handler";
 import { handleChat } from "@/api/chat/handler";
 import { listConversationsResponse, createConversationResponse } from "@/api/conversations/handler";
@@ -77,6 +79,12 @@ export function createServer(): Hono {
   // deliberately outside the coarse requireSession prefixes above, because the
   // other auth routes must stay reachable anonymously.
   app.post("/api/auth/password", (c) => changePassword(c.req.raw));
+  // Headless OAuth handoff/exchange: both 404 unless OAUTH_SUCCESS_URL is set, so
+  // they are also inert in a full-app deployment. Kept with the other specific
+  // /api/auth/* routes — a later catch-all must be registered after every one
+  // of these, this pair included.
+  app.get("/api/auth/oauth/handoff", (c) => oauthHandoff(c.req.raw));
+  app.post("/api/auth/oauth/exchange", (c) => oauthExchange(c.req.raw));
 
   // --- Register -----------------------------------------------------------
   app.post("/api/register", (c) => registerUser(c.req.raw));

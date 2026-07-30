@@ -95,6 +95,28 @@ describe("oauthHandoff", () => {
     expect(d.createCodeFn).not.toHaveBeenCalled();
   });
 
+  // A consumer's callback screen may well already carry a query string of its
+  // own. String concatenation puts a second `?` in the URL, and the consumer
+  // then reads `src=oauth?code=…` — no `code` parameter at all, so the flow dies
+  // silently for that deployment.
+  describe("a consumer URL that already has a query string", () => {
+    beforeEach(() => { process.env.OAUTH_SUCCESS_URL = "https://consumer.app/callback?src=oauth"; });
+
+    it("appends the code as a real parameter, keeping the existing one", async () => {
+      const res = await oauthHandoff(req(), deps(liveRow, live));
+      const location = new URL(res.headers.get("location") as string);
+      expect(location.searchParams.get("code")).toBe("code-123");
+      expect(location.searchParams.get("src")).toBe("oauth");
+    });
+
+    it("appends the error the same way", async () => {
+      const res = await oauthHandoff(req(), deps(liveRow, undefined));
+      const location = new URL(res.headers.get("location") as string);
+      expect(location.searchParams.get("error")).toBe("oauth_failed");
+      expect(location.searchParams.get("src")).toBe("oauth");
+    });
+  });
+
   // Every check requireUser owns, reached through this endpoint. Blocked and
   // deleted matter because the exchange re-reads the row and would catch them a
   // step later; the cut-off is the one nothing else catches — see below.

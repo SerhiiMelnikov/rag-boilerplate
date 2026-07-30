@@ -10,6 +10,18 @@ export interface HandoffHandlerDeps {
 // no longer use. Expiring both is harmless when only one is present.
 const SESSION_COOKIES = ["authjs.session-token", "__Secure-authjs.session-token"];
 
+// Built with URL/searchParams rather than `${successUrl}?${param}=…`, because
+// OAUTH_SUCCESS_URL may perfectly reasonably carry a query string of its own
+// (https://app.example/callback?src=oauth). Concatenation produces a second `?`
+// there, and the consumer reads `src=oauth?code=…` with no `code` parameter at
+// all — the handoff silently stops working for that deployment.
+function redirectTo(successUrl: string, headers: Headers, param: "code" | "error", value: string): Response {
+  const target = new URL(successUrl);
+  target.searchParams.set(param, value);
+  headers.set("location", target.toString());
+  return new Response(null, { status: 302, headers });
+}
+
 // The end of the headless OAuth flow. Auth.js has just set a session cookie on
 // OUR origin, which a consumer's frontend on another origin cannot read. This
 // endpoint — same origin, so the cookie arrives — trades it for a one-time code
@@ -64,11 +76,9 @@ export async function oauthHandoff(request: Request, deps: HandoffHandlerDeps = 
     if (!(err instanceof UnauthorizedError)) throw err;
     // Nothing to hand over. Say so at the consumer's own screen rather than
     // rendering an error page they never designed.
-    headers.set("location", `${successUrl}?error=oauth_failed`);
-    return new Response(null, { status: 302, headers });
+    return redirectTo(successUrl, headers, "error", "oauth_failed");
   }
 
   const code = await createCodeFn(user.id);
-  headers.set("location", `${successUrl}?code=${encodeURIComponent(code)}`);
-  return new Response(null, { status: 302, headers });
+  return redirectTo(successUrl, headers, "code", code);
 }

@@ -8,7 +8,7 @@
 // test stays green while one code mints unlimited sessions.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
-import { inArray } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { createHandoffCode, consumeHandoffCode, HANDOFF_CODE_TTL_MS } from "./handoff-codes";
@@ -60,6 +60,15 @@ describe.runIf(RUN)("oauth handoff codes (integration)", () => {
   it("lets exactly one of many concurrent redemptions win", async () => {
     const id = await makeUser();
     const code = await createHandoffCode(id);
+
+    // Warm the pool before the real burst. In a fresh process each call spends
+    // its first moments opening a connection, which serialises the redemptions
+    // before any of them reaches the row — measured at 0/5 reproductions of the
+    // race against the deliberately vulnerable implementation, versus 29/30
+    // once connections were already open. Without this the test asserts the
+    // right invariant but cannot fail when the invariant is violated.
+    await Promise.all(Array.from({ length: 20 }, () => db.execute(sql`select 1`)));
+
     const results = await Promise.all(
       Array.from({ length: 20 }, () => consumeHandoffCode(code)),
     );

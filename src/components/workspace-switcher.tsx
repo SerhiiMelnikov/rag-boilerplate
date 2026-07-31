@@ -16,9 +16,9 @@ function writeCookie(workspaceId: string): void {
   document.cookie = `${ACTIVE_WORKSPACE_COOKIE}=${encodeURIComponent(workspaceId)}; path=/; max-age=${ONE_YEAR_SECONDS}; samesite=lax${secure}`;
 }
 
-// Header control for switching the workspace the assistant answers from. Renders
-// nothing when there is nothing to switch between, or when the list can't be read
-// (the header must never break the app).
+// Sits at the top of the contextual panel, above the conversation list or the
+// section list. Renders nothing when there is nothing to switch between, or when
+// the list can't be read: the shell must never break because one fetch failed.
 export function WorkspaceSwitcher() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -60,7 +60,7 @@ export function WorkspaceSwitcher() {
       value={activeName}
       onChange={onChange}
       options={workspaces.map((w) => w.name)}
-      className="min-w-32"
+      className="w-full"
     />
   );
 }

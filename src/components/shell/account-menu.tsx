@@ -8,8 +8,13 @@ import { cn } from "@/lib/cn";
 import { FOCUS_RING } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
-const ITEM =
-  "flex w-full items-center gap-2 rounded px-2 py-2 text-sm text-ink data-[focus]:bg-surface-2 md:py-1.5";
+// FOCUS_RING belongs in the shared row class, not on each row: a menu where two of
+// three rows show the app's ring and the third shows the browser default is worse
+// than one that is uniformly plain.
+const ITEM = cn(
+  "flex w-full items-center gap-2 rounded px-2 py-2 text-sm text-ink data-[focus]:bg-surface-2 md:py-1.5",
+  FOCUS_RING,
+);
 
 // What is left of the old profile dropdown once its eight admin links move to the
 // rail: identity, the account page, the theme, and the way out.

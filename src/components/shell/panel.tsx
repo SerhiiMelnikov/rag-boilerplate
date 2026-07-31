@@ -8,12 +8,15 @@ import { usePanel } from "./panel-context";
 const DESKTOP = "(min-width: 1024px)";
 
 // A media query, not `hidden lg:flex`. CSS only hides the aside — React still
-// mounts it and runs its children's effects, so below lg the panel's content would
-// exist twice the moment the drawer opened: one invisible copy and one visible,
-// each with its own fetches and its own state.
+// mounts it and runs its children's effects, so below lg the panel's content
+// existed twice the moment the drawer opened: one invisible copy and one visible.
 //
-// The server snapshot is `true` because the layout is desktop-first, so hydration
-// on a wide screen sees what the server rendered.
+// The server snapshot is `true` because the layout is desktop-first, which keeps
+// hydration on a wide screen stable. The cost is that a phone's first paint still
+// renders the aside branch and runs its children's effects once before the store
+// corrects and unmounts it. That transient mount is a known residual: closing it
+// needs the panel's content to stop fetching on mount, which is where the
+// conversation list is headed in the next package.
 function useIsDesktop(): boolean {
   return useSyncExternalStore(
     (onChange) => {

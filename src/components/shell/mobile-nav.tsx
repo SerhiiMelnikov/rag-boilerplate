@@ -79,7 +79,7 @@ export function MobileNav({
           <Link href="/account" onClick={() => setMoreOpen(false)} className={cn(SHEET_ROW, FOCUS_RING)}>
             <UserCircle className="h-4 w-4" aria-hidden="true" /> Account settings
           </Link>
-          <ThemeToggle className={cn(SHEET_ROW, FOCUS_RING)} />
+          <ThemeToggle className={cn(SHEET_ROW, FOCUS_RING)} onClick={() => setMoreOpen(false)} />
           <button
             type="button"
             onClick={() => signOut({ callbackUrl: "/login" })}

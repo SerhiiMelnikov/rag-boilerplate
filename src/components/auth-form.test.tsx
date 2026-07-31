@@ -105,10 +105,13 @@ describe("AuthForm notices and links", () => {
 
   it("offers a way out to /forgot on the login form only", () => {
     const { unmount } = render(<AuthForm mode="login" />);
-    expect(screen.getByRole("link", { name: /forgot password/i })).toHaveAttribute("href", "/forgot");
+    // "Forgot your password?" is the card redesign's copy (previously "Forgot
+    // password?"); the link's target and its login-only presence are the
+    // behaviour under test, not the exact wording.
+    expect(screen.getByRole("link", { name: /forgot your password/i })).toHaveAttribute("href", "/forgot");
     unmount();
     render(<AuthForm mode="register" />);
-    expect(screen.queryByRole("link", { name: /forgot password/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /forgot your password/i })).not.toBeInTheDocument();
   });
 });
 
@@ -116,6 +119,14 @@ describe("AuthForm OAuth buttons", () => {
   it("renders nothing extra when no provider is configured", () => {
     render(<AuthForm mode="login" providers={[]} />);
     expect(screen.queryByRole("button", { name: /continue with/i })).not.toBeInTheDocument();
+  });
+
+  // The one worth having: an unconfigured provider must leave no orphaned
+  // divider behind, which a presentation pass can break without noticing.
+  it("renders no provider buttons and no divider when none are configured", () => {
+    render(<AuthForm mode="login" providers={[]} />);
+    expect(screen.queryByRole("button", { name: /Continue with/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("or")).not.toBeInTheDocument();
   });
 
   it("renders one button per configured provider, on both modes", () => {

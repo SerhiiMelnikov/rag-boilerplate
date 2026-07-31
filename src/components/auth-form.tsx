@@ -4,6 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import type { OAuthProviderId } from "@/lib/auth/oauth/providers";
+import { AuthCard } from "@/components/auth/auth-card";
+import { PROVIDER_MARKS } from "@/components/auth/provider-icons";
+import { Button, FOCUS_RING } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
+import { Alert } from "@/components/ui/alert";
+import { cn } from "@/lib/cn";
 
 const PROVIDER_LABELS: Record<OAuthProviderId, string> = {
   google: "Google",
@@ -79,68 +86,68 @@ export function AuthForm({
 
   if (mode === "register" && registered) {
     return (
-      <div className="mx-auto mt-24 flex w-full max-w-sm flex-col gap-4 p-6">
-        <h1 className="text-xl font-semibold">Check your email</h1>
-        <p className="text-sm text-zinc-500">
+      <AuthCard title="Check your email">
+        <p className="text-xs text-ink-muted">
           We sent a link to {email}. Open it to choose your password and finish creating your account.
         </p>
-      </div>
+      </AuthCard>
     );
   }
 
   return (
-    <form onSubmit={onSubmit} className="mx-auto mt-24 flex w-full max-w-sm flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold">{mode === "login" ? "Sign in" : "Create account"}</h1>
-      {notice && (
-        <p role="status" className="rounded-md bg-green-100 px-3 py-2 text-sm text-green-800 dark:bg-green-950 dark:text-green-200">
-          {notice}
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
-          {error}
-        </p>
-      )}
-      {providers.length > 0 && (
-        <>
-          {providers.map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => signIn(p, { callbackUrl: "/" })}
-              className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700"
-            >
-              Continue with {PROVIDER_LABELS[p]}
-            </button>
-          ))}
-          <div className="text-center text-xs text-zinc-500">or</div>
-        </>
-      )}
-      <label className="flex flex-col gap-1 text-sm">
-        Email
-        <input
-          type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-          className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
-        />
-      </label>
-      {mode === "login" && (
-        <label className="flex flex-col gap-1 text-sm">
-          Password
-          <input
-            type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}
-            className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
-          />
-        </label>
-      )}
-      <button type="submit" disabled={pending} className="rounded-md bg-zinc-900 px-3 py-2 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900">
-        {mode === "login" ? "Sign in" : "Create account"}
-      </button>
-      <a href={mode === "login" ? "/register" : "/login"} className="text-sm text-zinc-500 underline">
-        {mode === "login" ? "Need an account? Register" : "Have an account? Sign in"}
-      </a>
-      {mode === "login" && (
-        <a href="/forgot" className="text-sm text-zinc-500 underline">Forgot password?</a>
-      )}
-    </form>
+    <AuthCard
+      title={mode === "login" ? "Sign in" : "Create account"}
+      description={
+        mode === "login"
+          ? "Ask questions about your team's documents."
+          : "Choose your password from the link we email you."
+      }
+      footer={
+        <a href={mode === "login" ? "/register" : "/login"} className={cn("text-accent hover:underline", FOCUS_RING)}>
+          {mode === "login" ? "Need an account? Register" : "Have an account? Sign in"}
+        </a>
+      }
+    >
+      <form onSubmit={onSubmit} className="flex flex-col gap-3">
+        {notice && <Alert tone="success">{notice}</Alert>}
+        {error && <Alert tone="danger">{error}</Alert>}
+        {providers.length > 0 && (
+          <>
+            {providers.map((p) => {
+              const Mark = PROVIDER_MARKS[p];
+              return (
+                <Button key={p} type="button" variant="secondary" onClick={() => signIn(p, { callbackUrl: "/" })}>
+                  <Mark className="h-4 w-4" />
+                  Continue with {PROVIDER_LABELS[p]}
+                </Button>
+              );
+            })}
+            <div className="flex items-center gap-2 text-2xs text-ink-subtle">
+              <span className="h-px flex-1 bg-border" />
+              or
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          </>
+        )}
+        <Field label="Email" required>
+          {(control) => <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} {...control} />}
+        </Field>
+        {mode === "login" && (
+          <>
+            <Field label="Password" required>
+              {(control) => (
+                <Input type="password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} {...control} />
+              )}
+            </Field>
+            <a href="/forgot" className={cn("-mt-1 self-end text-xs text-accent hover:underline", FOCUS_RING)}>
+              Forgot your password?
+            </a>
+          </>
+        )}
+        <Button type="submit" loading={pending}>
+          {mode === "login" ? "Sign in" : "Create account"}
+        </Button>
+      </form>
+    </AuthCard>
   );
 }

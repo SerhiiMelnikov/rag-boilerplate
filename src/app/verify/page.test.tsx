@@ -1,97 +1,46 @@
-import React from "react";
-import { describe, it, expect, vi } from "vitest";
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen } from "@testing-library/react";
 import VerifyPage from "./page";
 
-// Mock the verification check function
 vi.mock("@/lib/auth/verification", () => ({
   isVerificationTokenValid: vi.fn(),
 }));
-
 import { isVerificationTokenValid } from "@/lib/auth/verification";
 
+const valid = vi.mocked(isVerificationTokenValid);
+beforeEach(() => { valid.mockReset(); });
+
 describe("VerifyPage", () => {
-  it("renders the password form when token is valid", async () => {
-    const mockIsVerificationTokenValid = isVerificationTokenValid as ReturnType<typeof vi.fn>;
-    mockIsVerificationTokenValid.mockResolvedValue(true);
+  it("renders the choose-password form, posting to the verify endpoint, for a live token", async () => {
+    valid.mockResolvedValue(true);
+    const { container } = render(await VerifyPage({ searchParams: Promise.resolve({ token: "valid-token-123" }) }));
 
-    const element = await VerifyPage({
-      searchParams: Promise.resolve({ token: "valid-token-123" }),
-    });
-
-    // Element should be a JSX element. Access its structure to validate.
-    expect(element).not.toBeNull();
-    if (!React.isValidElement(element)) throw new Error("Expected valid element");
-    expect(element.type).toBe("form");
-
-    const formProps = element.props as Record<string, unknown>;
-    expect(formProps.method).toBe("POST");
-    expect(formProps.action).toBe("/api/auth/verify");
-
-    // Find the hidden input field with the token
-    const children = React.Children.toArray(formProps.children as React.ReactNode);
-    const hiddenInput = children.find(
-      (child) =>
-        React.isValidElement(child) &&
-        child.type === "input" &&
-        (child.props as Record<string, unknown>).type === "hidden" &&
-        (child.props as Record<string, unknown>).name === "token"
-    );
-
-    expect(hiddenInput).toBeDefined();
-    if (React.isValidElement(hiddenInput)) {
-      const inputProps = hiddenInput.props as Record<string, unknown>;
-      expect(inputProps.value).toBe("valid-token-123");
-    }
-
-    // Validate the heading exists
-    const heading = children.find(
-      (child) =>
-        React.isValidElement(child) &&
-        child.type === "h1"
-    );
-    expect(heading).toBeDefined();
+    expect(screen.getByRole("heading", { level: 1, name: /choose your password/i })).toBeInTheDocument();
+    const form = container.querySelector("form");
+    expect(form).toHaveAttribute("method", "POST");
+    expect(form).toHaveAttribute("action", "/api/auth/verify");
+    expect(screen.getByRole("button", { name: /set password/i })).toBeInTheDocument();
+    expect(screen.getByDisplayValue("valid-token-123")).toBeInTheDocument();
   });
 
-  it("renders the error message when token is missing", async () => {
-    const mockIsVerificationTokenValid = isVerificationTokenValid as ReturnType<typeof vi.fn>;
-    mockIsVerificationTokenValid.mockResolvedValue(false);
+  it("refuses a missing token without offering the form", async () => {
+    render(await VerifyPage({ searchParams: Promise.resolve({ token: undefined }) }));
 
-    const element = await VerifyPage({
-      searchParams: Promise.resolve({ token: undefined }),
-    });
-
-    // Element should be a div with the error message
-    expect(element).not.toBeNull();
-    if (!React.isValidElement(element)) throw new Error("Expected valid element");
-    expect(element.type).toBe("div");
-
-    // Verify no form is rendered
-    const divProps = element.props as Record<string, unknown>;
-    const children = React.Children.toArray(divProps.children as React.ReactNode);
-    const form = children.find(
-      (child) => React.isValidElement(child) && child.type === "form"
-    );
-    expect(form).toBeUndefined();
+    expect(valid).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /set password/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: /link expired/i })).toBeInTheDocument();
+    // Regex is `/or has expired/i`, not `/expired/i`: the heading ("Link
+    // expired") and this paragraph ("...or has expired.") both contain
+    // "expired", so a bare /expired/i match is ambiguous between two elements.
+    expect(screen.getByText(/or has expired/i)).toBeInTheDocument();
   });
 
-  it("renders the error message when token is invalid", async () => {
-    const mockIsVerificationTokenValid = isVerificationTokenValid as ReturnType<typeof vi.fn>;
-    mockIsVerificationTokenValid.mockResolvedValue(false);
+  it("refuses an invalid token without offering the form", async () => {
+    valid.mockResolvedValue(false);
+    render(await VerifyPage({ searchParams: Promise.resolve({ token: "invalid-token" }) }));
 
-    const element = await VerifyPage({
-      searchParams: Promise.resolve({ token: "invalid-token" }),
-    });
-
-    expect(element).not.toBeNull();
-    if (!React.isValidElement(element)) throw new Error("Expected valid element");
-    expect(element.type).toBe("div");
-
-    // Verify no form is rendered
-    const divProps = element.props as Record<string, unknown>;
-    const children = React.Children.toArray(divProps.children as React.ReactNode);
-    const form = children.find(
-      (child) => React.isValidElement(child) && child.type === "form"
-    );
-    expect(form).toBeUndefined();
+    expect(screen.queryByRole("button", { name: /set password/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/or has expired/i)).toBeInTheDocument();
   });
 });

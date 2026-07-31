@@ -174,7 +174,7 @@ export function FilesManager() {
         title="Files"
         description="Everything the assistant can read. A file answers questions only in the workspaces it belongs to."
       />
-      <PageBody className="mx-auto max-w-5xl space-y-4">
+      <PageBody className="mx-auto max-w-3xl space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <label
             className={cn(
@@ -199,12 +199,9 @@ export function FilesManager() {
               disabled={urlBusy}
               className={cn("rounded border border-border-strong bg-transparent px-3 py-2 text-sm", FOCUS_RING)}
             />
-            <Button type="submit" variant="secondary" loading={urlBusy} disabled={urlBusy || urlValue.trim() === ""}>
-              {urlBusy ? "Ingesting..." : (
-                <>
-                  <Link2 className="h-4 w-4" /> Ingest URL
-                </>
-              )}
+            <Button type="submit" variant="secondary" disabled={urlBusy || urlValue.trim() === ""}>
+              {urlBusy ? <Spinner label="Ingesting" /> : <Link2 className="h-4 w-4" />}
+              {urlBusy ? "Ingesting..." : "Ingest URL"}
             </Button>
           </form>
           <div className="flex items-center gap-2 text-sm">

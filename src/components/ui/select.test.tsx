@@ -21,15 +21,15 @@ describe("Select", () => {
 
   it("defaults to the roomy button metrics used by the admin forms", () => {
     render(<Select ariaLabel="Chat provider" value="google" onChange={() => {}} options={["google"]} />);
-    expect(screen.getByLabelText("Chat provider").className).toContain("px-3 py-2");
+    expect(screen.getByLabelText("Chat provider").className).toContain("h-[34px] min-h-11 px-3 text-md md:min-h-0");
   });
 
-  // The compact button must match the app-bar's profile button (px-2 py-1 text-sm),
-  // otherwise the workspace switcher renders taller than it and the header looks off.
-  it("compact matches the app-bar button metrics", () => {
+  // Compact drops the touch minimum and tightens the metrics for the workspace
+  // switcher, which sits in a fixed-height row; admin forms keep the roomier default.
+  it("compact drops the touch minimum and tightens the metrics", () => {
     render(<Select compact ariaLabel="Active workspace" value="General" onChange={() => {}} options={["General"]} />);
     const cls = screen.getByLabelText("Active workspace").className;
-    expect(cls).toContain("px-2 py-1 text-sm");
-    expect(cls).not.toContain("px-3 py-2");
+    expect(cls).toContain("h-[30px] px-2 text-sm");
+    expect(cls).not.toContain("h-[34px] min-h-11 px-3 text-md md:min-h-0");
   });
 });

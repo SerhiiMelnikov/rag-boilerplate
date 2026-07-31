@@ -4,11 +4,17 @@ import { useEffect, useState } from "react";
 import { Sidebar } from "./sidebar";
 import { ChatView } from "./chat-view";
 import { WORKSPACE_CHANGED_EVENT } from "@/lib/workspaces/cookie";
+import { Panel } from "@/components/shell/panel";
+import { MobileHeader } from "@/components/shell/mobile-header";
+import { usePanel } from "@/components/shell/panel-context";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Button } from "@/components/ui/button";
 
 // Composition: sidebar + the active conversation's chat.
 export function ChatPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const { setOpen: setPanelOpen } = usePanel();
 
   // Eject from a deleted conversation if it was the active one.
   function handleDeleted(id: string) {
@@ -25,23 +31,34 @@ export function ChatPage() {
   }, []);
 
   return (
-    <div className="flex h-full">
-      <Sidebar
-        activeId={activeId}
-        onSelect={setActiveId}
-        onNew={(id) => setActiveId(id)}
-        onDeleted={handleDeleted}
-        refreshKey={refreshKey}
-      />
-      <main className="min-w-0 flex-1">
+    <>
+      <Panel label="Conversations">
+        <Sidebar
+          activeId={activeId}
+          onSelect={(id) => {
+            setActiveId(id);
+            setPanelOpen(false);
+          }}
+          onNew={(id) => {
+            setActiveId(id);
+            setPanelOpen(false);
+          }}
+          onDeleted={handleDeleted}
+          refreshKey={refreshKey}
+        />
+      </Panel>
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <MobileHeader />
         {activeId ? (
           <ChatView key={activeId} conversationId={activeId} onTurnComplete={() => setRefreshKey((k) => k + 1)} />
         ) : (
-          <div className="flex h-full items-center justify-center text-zinc-500">
-            Start a new chat or pick a conversation.
-          </div>
+          <EmptyState
+            title="Ask your documents a question"
+            description="Start a new chat, or pick one from the list."
+            action={<Button onClick={() => setPanelOpen(true)} className="lg:hidden">Browse conversations</Button>}
+          />
         )}
       </main>
-    </div>
+    </>
   );
 }

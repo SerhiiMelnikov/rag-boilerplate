@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Button, FOCUS_RING } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 import { WORKSPACE_CHANGED_EVENT } from "@/lib/workspaces/cookie";
 
 interface ConversationRow {
@@ -63,17 +65,33 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex h-full w-64 flex-col border-r border-zinc-200 dark:border-zinc-800">
-      <button type="button" onClick={newChat} className="m-2 flex items-center justify-center gap-2 rounded-md border border-zinc-300 px-3 py-2 text-sm transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
+    <div className="flex h-full min-h-0 flex-col">
+      <Button onClick={newChat} className="m-2 w-[calc(100%-1rem)]">
         <Plus className="h-4 w-4" /> New chat
-      </button>
+      </Button>
       <ul className="min-h-0 flex-1 overflow-y-auto px-2">
         {items.map((c) => (
-          <li key={c.id} className={`group flex items-center justify-between rounded-md px-2 py-2 text-sm transition-colors ${c.id === activeId ? "bg-zinc-200 dark:bg-zinc-800" : "hover:bg-zinc-100 dark:hover:bg-zinc-900"}`}>
+          <li
+            key={c.id}
+            className={cn(
+              "group flex items-center justify-between rounded px-2 py-2.5 text-sm transition-colors md:py-2",
+              c.id === activeId ? "bg-accent-soft font-semibold text-accent" : "hover:bg-surface-2",
+            )}
+          >
             <button type="button" onClick={() => onSelect(c.id)} className="min-w-0 flex-1 truncate text-left">
               {c.title}
             </button>
-            <button type="button" aria-label={`Delete ${c.title}`} onClick={() => setPendingDelete(c)} className="ml-2 hidden text-zinc-400 transition-colors hover:text-red-600 group-hover:block">
+            <button
+              type="button"
+              aria-label={`Delete ${c.title}`}
+              onClick={() => setPendingDelete(c)}
+              className={cn(
+                "ml-2 rounded p-1 text-ink-subtle hover:text-danger",
+                // Always present on touch, revealed on hover once there is a pointer.
+                "opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100",
+                FOCUS_RING,
+              )}
+            >
               <Trash2 className="h-4 w-4" />
             </button>
           </li>
@@ -88,6 +106,6 @@ export function Sidebar({
         onConfirm={confirmDelete}
         onCancel={() => setPendingDelete(null)}
       />
-    </aside>
+    </div>
   );
 }

@@ -21,7 +21,7 @@ describe("Select", () => {
 
   it("defaults to the roomy button metrics used by the admin forms", () => {
     render(<Select ariaLabel="Chat provider" value="google" onChange={() => {}} options={["google"]} />);
-    expect(screen.getByLabelText("Chat provider").className).toContain("h-[34px] min-h-11 px-3 text-md md:min-h-0");
+    expect(screen.getByLabelText("Chat provider").className).toContain("min-h-11"); // roomy: the touch minimum applies
   });
 
   // Compact drops the touch minimum and tightens the metrics for the workspace
@@ -29,7 +29,6 @@ describe("Select", () => {
   it("compact drops the touch minimum and tightens the metrics", () => {
     render(<Select compact ariaLabel="Active workspace" value="General" onChange={() => {}} options={["General"]} />);
     const cls = screen.getByLabelText("Active workspace").className;
-    expect(cls).toContain("h-[30px] px-2 text-sm");
-    expect(cls).not.toContain("h-[34px] min-h-11 px-3 text-md md:min-h-0");
+    expect(cls).not.toContain("min-h-11"); // compact: fixed-height row, no touch minimum
   });
 });

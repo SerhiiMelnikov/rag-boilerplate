@@ -4,7 +4,7 @@ import { Dialog } from "./dialog";
 import { Button } from "./button";
 
 // A thin, opinionated wrapper over Dialog for the one flow it serves: confirming a
-// destructive action. Its props are unchanged — six call sites depend on them.
+// destructive action. Its props are unchanged — four call sites depend on them.
 export function ConfirmDialog({
   open,
   title,

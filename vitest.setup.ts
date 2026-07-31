@@ -9,3 +9,18 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     disconnect() {}
   } as unknown as typeof ResizeObserver;
 }
+
+// jsdom implements no matchMedia; Panel uses it to decide between its static column
+// and its drawer. Default to desktop, matching the layout's desktop-first CSS.
+if (typeof globalThis.matchMedia === "undefined") {
+  globalThis.matchMedia = ((query: string) => ({
+    matches: true,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof matchMedia;
+}

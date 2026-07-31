@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PanelProvider } from "@/components/shell/panel-context";
@@ -12,6 +12,28 @@ import { MobileHeader } from "@/components/shell/mobile-header";
 // dereferences and throws on. Every sibling test in this directory mocks it the
 // same way.
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
+
+// Panel picks the aside or the drawer based on window.matchMedia. The shared jsdom
+// stub in vitest.setup.ts defaults to desktop (matches: true) so tests elsewhere see
+// the layout's normal, wide-screen shape without having to think about this at all.
+// This file exercises the drawer specifically, so it overrides the stub per-file to
+// report not-desktop, rather than changing what every other test gets by default.
+beforeEach(() => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })),
+  );
+});
+afterEach(() => vi.unstubAllGlobals());
 
 function Harness() {
   return (

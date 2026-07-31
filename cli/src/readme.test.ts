@@ -114,6 +114,26 @@ describe("generateReadme guidance", () => {
   });
 });
 
+describe("generateReadme navigation", () => {
+  // The rail (src/components/shell/nav-config.ts) replaced eight admin
+  // destinations hardcoded inside a profile dropdown. This generator is the
+  // only README a scaffolded project gets, so it must describe the rail, not
+  // the navigation it replaced.
+  it("describes the rail, not the old profile dropdown", () => {
+    const readme = generateReadme(opts({ appKind: "full" }));
+    expect(readme).toContain("left rail");
+    expect(readme).toContain("Settings → Provider keys");
+    expect(readme).not.toContain("Admin → Evaluation");
+    expect(readme).not.toMatch(/profile (menu|dropdown)/i);
+  });
+
+  it("still describes no screens at all for an api-only build", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).not.toContain("left rail");
+    expect(readme).not.toContain("bottom bar");
+  });
+});
+
 describe("generateReadme deploying", () => {
   it("documents the Docker deployment path and that migrations stay on the host", () => {
     const out = generateReadme(opts());
@@ -271,7 +291,7 @@ describe("generateReadme secrets", () => {
     const readme = generateReadme(opts({ appKind: "full" }));
     expect(readme).toContain("npm run eval");
     expect(readme).toContain("--min-judge");
-    expect(readme).toContain("Admin → Evaluation");
+    expect(readme).toContain("Insights → Evaluation");
   });
 
   it("documents the eval runner in api-only, where it is the only way to run one", () => {
@@ -281,7 +301,7 @@ describe("generateReadme secrets", () => {
     // No admin panel exists in this build, so the questions must be described
     // as an API surface rather than a page.
     expect(readme).toContain("/api/admin/evaluation/questions");
-    expect(readme).not.toContain("Admin → Evaluation");
+    expect(readme).not.toContain("Insights → Evaluation");
   });
 });
 

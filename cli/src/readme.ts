@@ -24,7 +24,7 @@ function evalSection(o: InstallOptions): string[] {
   lines.push(
     o.appKind === "api"
       ? "Golden questions are managed over the API (`/api/admin/evaluation/questions`). Once you have some, score the current settings against them:"
-      : "Add golden questions in the admin panel (Admin → Evaluation), then score the current settings against them from the terminal:",
+      : "Add golden questions under **Insights → Evaluation**, then score the current settings against them from the terminal:",
   );
   lines.push("");
   lines.push("```bash");
@@ -192,7 +192,7 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push(`${step++}. \`npm install\` (skip this if the installer already installed dependencies for you)`);
   lines.push(
     `${step++}. \`.env\` is already generated with a fresh \`AUTH_SECRET\` / \`SETTINGS_ENCRYPTION_KEY\`; ` +
-      "set provider API keys later in the admin UI (admin → Provider keys). Set " +
+      "set provider API keys later under **Settings → Provider keys**. Set " +
       "`ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env` if you want non-default admin credentials.",
   );
   const composeCmd = `docker compose up -d db minio${store.dockerService ? ` ${store.dockerService}` : ""}`;
@@ -227,8 +227,14 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("");
 
   lines.push("## Admin", "");
-  lines.push("Sign in with the `ADMIN_EMAIL` / `ADMIN_PASSWORD` from your `.env`. Under the");
-  lines.push("profile menu you can:", "");
+  lines.push("Sign in with the `ADMIN_EMAIL` / `ADMIN_PASSWORD` from your `.env`.", "");
+  lines.push(
+    "Everything lives in the left rail: **Chat**, **Knowledge** (files and workspaces), " +
+      "**Insights** (feedback, token usage, evaluation), **Settings** (models and provider keys) " +
+      "and **People** (users, super-admin only). The rail collapses to a bottom bar on a phone.",
+    "",
+  );
+  lines.push("### Knowledge", "");
   lines.push("- **Files** — upload documents (PDF/DOCX/Markdown/text) and images, or ingest a");
   lines.push("  page directly from a URL (paste it and click **Ingest URL** — no file, no");
   lines.push("  extension, just the page's readable article text); see status, and set which");
@@ -237,17 +243,25 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("  each chunk's position and length. Chunks ingested before position tracking");
   lines.push("  was added show as order-unknown rather than being renumbered to hide the gap.");
   lines.push("- **Workspaces** — create workspaces and grant users access to them.");
-  lines.push("- **Provider keys** — set your API keys (encrypted at rest). Do this first:");
-  lines.push("  nothing can be ingested or answered without them.");
-  lines.push("- **Settings** — pick the chat/embedding/image models, tune retrieval, set rate limits");
-  lines.push("  (chat requests per minute and per day per user). `0` disables a limit — see");
-  lines.push("  **Rate limits** below. Also configure the allowed-domains list and SMTP for");
-  lines.push("  registration — see **Registration** below.");
-  lines.push("- **Users** — manage accounts and roles.");
-  lines.push("- **Analytics** — see how answers were rated.");
+  lines.push("");
+  lines.push("### Insights", "");
+  lines.push("- **Feedback** — see how answers were rated.");
   lines.push("- **Usage** — model tokens spent over the last 30 days: totals, per user and");
   lines.push("  per workspace, plus a daily trend. Also served as `GET /api/admin/usage`.");
   lines.push("  Replies that never reach the model record no tokens and are not counted.");
+  lines.push("- **Evaluation** — golden questions and the runs scored against them; see");
+  lines.push("  **Evaluating retrieval quality** below.");
+  lines.push("");
+  lines.push("### Settings", "");
+  lines.push("- **Models** — pick the chat/embedding/image models, tune retrieval, set rate limits");
+  lines.push("  (chat requests per minute and per day per user). `0` disables a limit — see");
+  lines.push("  **Rate limits** below. Also configure the allowed-domains list and SMTP for");
+  lines.push("  registration — see **Registration** below.");
+  lines.push("- **Provider keys** — set your API keys (encrypted at rest). Do this first:");
+  lines.push("  nothing can be ingested or answered without them.");
+  lines.push("");
+  lines.push("### People", "");
+  lines.push("- **Users** — manage accounts and roles (super-admin only).");
   lines.push("");
 
   lines.push("## API docs", "");
@@ -277,7 +291,7 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("that mailbox clicks the confirmation link sent to it. Nobody can log in until");
   lines.push("they do — the login gate rejects any account whose email is not yet verified.", "");
   lines.push("**SMTP must be configured before anyone can register.** Until you fill in the SMTP");
-  lines.push("host/port/user/from and password under **Admin → Settings**, registration returns 503");
+  lines.push("host/port/user/from and password under **Settings → Models**, registration returns 503");
   lines.push("— there is no mailer yet to send the verification link with. This is the first");
   lines.push("thing you will hit on a fresh install; it is expected, not a bug.", "");
   lines.push("The allowed-domains list (also in Settings) is comma-separated, e.g.");

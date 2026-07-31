@@ -34,6 +34,9 @@ describe("template EXCLUDE", () => {
   // whose template lost them fails `next build` outright rather than falling
   // back to a system face.
   it("ships the vendored font files", () => {
+    // Fails here, with the fix in hand, instead of as three confusing
+    // per-filename failures below when nobody has built the template yet.
+    expect(existsSync(templateDir), "run `npm run build:template` first").toBe(true);
     for (const file of ["public-sans-variable.woff2", "ibm-plex-mono-400.woff2", "ibm-plex-mono-500.woff2"]) {
       expect(existsSync(join(templateDir, "src", "app", "fonts", file)), file).toBe(true);
     }

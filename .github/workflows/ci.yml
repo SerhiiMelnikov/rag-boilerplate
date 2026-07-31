@@ -93,6 +93,9 @@ jobs:
           cache: npm
           cache-dependency-path: cli/package-lock.json
       - run: npm ci
+      # build-template.test.ts asserts the vendored fonts survive into the
+      # template, which requires the template to have been built.
+      - run: npm run build:template
       - run: npm test
       - run: npm run build
 

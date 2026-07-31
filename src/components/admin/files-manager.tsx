@@ -6,6 +6,13 @@ import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
+import { PageHeader, PageBody } from "@/components/ui/page-header";
+import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { Button, FOCUS_RING } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Gutter } from "@/components/ui/gutter";
+import { Alert } from "@/components/ui/alert";
+import { cn } from "@/lib/cn";
 import { ImageModal } from "./image-modal";
 import { FileWorkspacesModal } from "./file-workspaces-modal";
 import { ChunksModal } from "./chunks-modal";
@@ -162,114 +169,151 @@ export function FilesManager() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-4 text-xl font-semibold">Files</h1>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-zinc-300 px-3 py-2 text-sm transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
-          {busy ? <Spinner label="Uploading" /> : <Upload className="h-4 w-4" />}
-          {busy ? "Uploading..." : "Upload file"}
-          <input ref={fileInputRef} type="file" accept={ACCEPT} aria-label="Upload file" onChange={upload} className="hidden" disabled={busy} />
-        </label>
-        {/* noValidate: bad input is reported by our own error state (from the
-            server's validation), not the browser's native url-constraint popup —
-            keeps the failure path consistent with every other error in this form. */}
-        <form onSubmit={ingestUrl} noValidate className="flex items-center gap-2">
-          <input
-            type="url"
-            aria-label="Ingest from URL"
-            placeholder="Paste a URL to ingest"
-            value={urlValue}
-            onChange={(e) => setUrlValue(e.target.value)}
-            disabled={urlBusy}
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-transparent"
-          />
-          <button
-            type="submit"
-            disabled={urlBusy || urlValue.trim() === ""}
-            className="inline-flex items-center gap-2 rounded-md border border-zinc-300 px-3 py-2 text-sm transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+    <>
+      <PageHeader
+        title="Files"
+        description="Everything the assistant can read. A file answers questions only in the workspaces it belongs to."
+      />
+      <PageBody className="mx-auto max-w-5xl space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <label
+            className={cn(
+              "inline-flex cursor-pointer items-center gap-2 rounded border border-border-strong px-3 py-2 text-sm transition-colors hover:bg-surface-2",
+              FOCUS_RING,
+            )}
           >
-            {urlBusy ? <Spinner label="Ingesting" /> : <Link2 className="h-4 w-4" />}
-            {urlBusy ? "Ingesting..." : "Ingest URL"}
-          </button>
-        </form>
-        <div className="flex items-center gap-2 text-sm">
-          <span>Type</span>
-          <Select ariaLabel="Filter by type" value={extFilter} onChange={setExtFilter} options={["all", ...exts]} className="min-w-28" />
+            {busy ? <Spinner label="Uploading" /> : <Upload className="h-4 w-4" />}
+            {busy ? "Uploading..." : "Upload file"}
+            <input ref={fileInputRef} type="file" accept={ACCEPT} aria-label="Upload file" onChange={upload} className="hidden" disabled={busy} />
+          </label>
+          {/* noValidate: bad input is reported by our own error state (from the
+              server's validation), not the browser's native url-constraint popup —
+              keeps the failure path consistent with every other error in this form. */}
+          <form onSubmit={ingestUrl} noValidate className="flex items-center gap-2">
+            <input
+              type="url"
+              aria-label="Ingest from URL"
+              placeholder="Paste a URL to ingest"
+              value={urlValue}
+              onChange={(e) => setUrlValue(e.target.value)}
+              disabled={urlBusy}
+              className={cn("rounded border border-border-strong bg-transparent px-3 py-2 text-sm", FOCUS_RING)}
+            />
+            <Button type="submit" variant="secondary" loading={urlBusy} disabled={urlBusy || urlValue.trim() === ""}>
+              {urlBusy ? "Ingesting..." : (
+                <>
+                  <Link2 className="h-4 w-4" /> Ingest URL
+                </>
+              )}
+            </Button>
+          </form>
+          <div className="flex items-center gap-2 text-sm">
+            <span>Type</span>
+            <Select ariaLabel="Filter by type" value={extFilter} onChange={setExtFilter} options={["all", ...exts]} className="min-w-28" />
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span>Upload to</span>
+            <MultiSelect
+              ariaLabel="Workspaces for upload"
+              value={uploadWorkspaceIds}
+              onChange={setUploadWorkspaceIds}
+              options={allWorkspaces.map((w) => ({ value: w.id, label: w.name, hint: w.isDefault ? "everyone" : undefined }))}
+              className="min-w-36"
+            />
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span>Workspace</span>
+            <Select
+              ariaLabel="Filter by workspace"
+              value={workspaceFilter}
+              onChange={setWorkspaceFilter}
+              options={["all", ...allWorkspaces.map((w) => w.name), "unassigned"]}
+              className="min-w-32"
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-sm">
-          <span>Upload to</span>
-          <MultiSelect
-            ariaLabel="Workspaces for upload"
-            value={uploadWorkspaceIds}
-            onChange={setUploadWorkspaceIds}
-            options={allWorkspaces.map((w) => ({ value: w.id, label: w.name, hint: w.isDefault ? "everyone" : undefined }))}
-            className="min-w-36"
-          />
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <span>Workspace</span>
-          <Select
-            ariaLabel="Filter by workspace"
-            value={workspaceFilter}
-            onChange={setWorkspaceFilter}
-            options={["all", ...allWorkspaces.map((w) => w.name), "unassigned"]}
-            className="min-w-32"
-          />
-        </div>
-      </div>
-      {urlError && <p role="alert" className="mb-4 text-sm text-red-600">{urlError}</p>}
-      <table className="w-full text-left text-sm">
-        <thead>
-          <tr className="border-b border-zinc-200 dark:border-zinc-800">
-            <th className="py-2"><button type="button" onClick={() => toggleSort("name")} className="inline-flex items-center gap-1">Name <ArrowUpDown className="h-3 w-3" /></button></th>
-            <th>Type</th>
-            <th>Status</th>
-            <th><button type="button" onClick={() => toggleSort("date")} className="inline-flex items-center gap-1">Date <ArrowUpDown className="h-3 w-3" /></button></th>
-            <th>Workspaces</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map((f) => (
-            <tr key={f.id} className="border-b border-zinc-100 dark:border-zinc-900">
-              <td className="py-2">
-                {f.kind === "image" ? (
-                  <button type="button" onClick={() => setModalImage(f)} className="text-left underline-offset-2 hover:underline">{f.filename}</button>
-                ) : (
-                  f.filename
-                )}
-              </td>
-              <td><span className="rounded bg-zinc-100 px-2 py-0.5 text-xs dark:bg-zinc-800">{f.ext || "—"}</span></td>
-              <td><StatusBadge status={f.status} error={f.error} /></td>
-              <td className="text-xs text-zinc-500">{new Date(f.createdAt).toLocaleDateString()}</td>
-              <td>
-                <button
-                  type="button"
-                  aria-label={`Edit workspaces of ${f.filename}`}
-                  onClick={() => setWsFor(f)}
-                  className="flex flex-wrap items-center gap-1"
-                >
-                  {f.workspaces.length === 0 ? (
-                    <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">unassigned</span>
-                  ) : (
-                    f.workspaces.map((w) => (
-                      <span key={w.id} className="rounded bg-zinc-100 px-2 py-0.5 text-xs dark:bg-zinc-800">{w.name}</span>
-                    ))
-                  )}
+        {urlError && <Alert tone="danger">{urlError}</Alert>}
+        <Table>
+          <THead>
+            <TR>
+              <TH>
+                <button type="button" onClick={() => toggleSort("name")} className={cn("inline-flex items-center gap-1", FOCUS_RING)}>
+                  Name <ArrowUpDown className="h-3 w-3" />
                 </button>
-              </td>
-              <td className="text-right">
-                <div className="flex items-center justify-end gap-3">
-                  {f.kind === "document" && (
-                    <button type="button" aria-label={`View chunks of ${f.filename}`} onClick={() => setChunksFor(f)} className="text-zinc-400 transition-colors hover:text-zinc-900 dark:hover:text-zinc-100"><Layers className="h-4 w-4" /></button>
-                  )}
-                  <button type="button" aria-label={`Delete ${f.filename}`} onClick={() => setPendingDelete(f)} className="text-zinc-400 transition-colors hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </TH>
+              <TH>Type</TH>
+              <TH>Status</TH>
+              <TH>
+                <button type="button" onClick={() => toggleSort("date")} className={cn("inline-flex items-center gap-1", FOCUS_RING)}>
+                  Date <ArrowUpDown className="h-3 w-3" />
+                </button>
+              </TH>
+              <TH>Workspaces</TH>
+              <TH />
+            </TR>
+          </THead>
+          <TBody>
+            {visible.map((f) => (
+              <TR key={f.id}>
+                <TD>
+                  <div className="flex items-center gap-2">
+                    {/* The name cell is where a file's grounding in the knowledge base
+                        shows up: one tick per workspace it belongs to, dashed when none.
+                        The workspaces cell below still carries the count as text. */}
+                    <Gutter sources={f.workspaces.length} size="sm" />
+                    {f.kind === "image" ? (
+                      <button type="button" onClick={() => setModalImage(f)} className={cn("text-left underline-offset-2 hover:underline", FOCUS_RING)}>
+                        {f.filename}
+                      </button>
+                    ) : (
+                      f.filename
+                    )}
+                  </div>
+                </TD>
+                <TD><Badge>{f.ext || "—"}</Badge></TD>
+                <TD><StatusBadge status={f.status} error={f.error} /></TD>
+                <TD className="text-xs text-ink-muted">{new Date(f.createdAt).toLocaleDateString()}</TD>
+                <TD>
+                  <button
+                    type="button"
+                    aria-label={`Edit workspaces of ${f.filename}`}
+                    onClick={() => setWsFor(f)}
+                    className={cn("flex flex-wrap items-center gap-1", FOCUS_RING)}
+                  >
+                    {f.workspaces.length === 0 ? (
+                      <Badge dashed>unassigned</Badge>
+                    ) : (
+                      f.workspaces.map((w) => <Badge key={w.id}>{w.name}</Badge>)
+                    )}
+                  </button>
+                </TD>
+                <TD className="text-right">
+                  <div className="flex items-center justify-end gap-3">
+                    {f.kind === "document" && (
+                      <button
+                        type="button"
+                        aria-label={`View chunks of ${f.filename}`}
+                        onClick={() => setChunksFor(f)}
+                        className={cn("text-ink-subtle transition-colors hover:text-ink", FOCUS_RING)}
+                      >
+                        <Layers className="h-4 w-4" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      aria-label={`Delete ${f.filename}`}
+                      onClick={() => setPendingDelete(f)}
+                      className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      </PageBody>
       <ConfirmDialog
         open={pendingDelete !== null}
         title="Delete file?"
@@ -299,12 +343,25 @@ export function FilesManager() {
           onClose={() => setChunksFor(null)}
         />
       )}
-    </div>
+    </>
   );
 }
 
 function StatusBadge({ status, error }: { status: string; error?: string | null }) {
-  if (status === "processing" || status === "pending") return <span className="flex items-center gap-1.5 text-zinc-500"><Spinner label="Processing" /> {status}</span>;
-  if (status === "error") return <span className="text-red-600" title={error ?? undefined}>error</span>;
-  return <span className="text-green-600 dark:text-green-500">ready</span>;
+  if (status === "processing" || status === "pending") {
+    return (
+      <Badge tone="warning">
+        <Spinner label="Processing" /> {status}
+      </Badge>
+    );
+  }
+  if (status === "error") {
+    // Badge doesn't forward a `title`, so the tooltip lives on a wrapping span instead.
+    return (
+      <span title={error ?? undefined}>
+        <Badge tone="danger">error</Badge>
+      </span>
+    );
+  }
+  return <Badge tone="success">ready</Badge>;
 }

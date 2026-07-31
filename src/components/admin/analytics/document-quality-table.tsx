@@ -1,30 +1,31 @@
+import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import type { DocumentQuality } from "@/lib/analytics/feedback";
 
 // Documents ranked by how often they feed downvoted answers.
 export function DocumentQualityTable({ rows }: { rows: DocumentQuality[] }) {
-  if (rows.length === 0) return <p className="text-sm text-zinc-500">No document feedback yet.</p>;
+  if (rows.length === 0) return <p className="text-sm text-ink-muted">No document feedback yet.</p>;
   return (
-    <table className="w-full text-sm">
-      <thead className="text-left text-xs text-zinc-500">
-        <tr>
-          <th className="py-1">Document</th>
-          <th>Uses</th>
-          <th>👍</th>
-          <th>👎</th>
-          <th>Satisfaction</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <THead>
+        <TR>
+          <TH>Document</TH>
+          <TH numeric>Uses</TH>
+          <TH numeric>👍</TH>
+          <TH numeric>👎</TH>
+          <TH numeric>Satisfaction</TH>
+        </TR>
+      </THead>
+      <TBody>
         {rows.map((r) => (
-          <tr key={r.documentId} className="border-t border-zinc-200 dark:border-zinc-800">
-            <td className="truncate py-1">{r.filename || r.documentId}</td>
-            <td>{r.appearances}</td>
-            <td>{r.up}</td>
-            <td>{r.down}</td>
-            <td>{r.up + r.down === 0 ? "—" : `${Math.round(r.satisfaction * 100)}%`}</td>
-          </tr>
+          <TR key={r.documentId}>
+            <TD className="truncate">{r.filename || r.documentId}</TD>
+            <TD numeric>{r.appearances}</TD>
+            <TD numeric>{r.up}</TD>
+            <TD numeric>{r.down}</TD>
+            <TD numeric>{r.up + r.down === 0 ? "—" : `${Math.round(r.satisfaction * 100)}%`}</TD>
+          </TR>
         ))}
-      </tbody>
-    </table>
+      </TBody>
+    </Table>
   );
 }

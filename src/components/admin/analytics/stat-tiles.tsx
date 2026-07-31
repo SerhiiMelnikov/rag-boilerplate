@@ -2,9 +2,9 @@ import type { FeedbackSummary } from "@/lib/analytics/feedback";
 
 function Tile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <div className="text-2xl font-semibold">{value}</div>
-      <div className="text-xs text-zinc-500">{label}</div>
+    <div className="rounded-lg border border-border p-4">
+      <div className="font-mono text-2xl font-semibold tabular-nums">{value}</div>
+      <div className="text-xs text-ink-muted">{label}</div>
     </div>
   );
 }

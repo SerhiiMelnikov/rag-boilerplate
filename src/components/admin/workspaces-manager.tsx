@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Trash2, Plus, Save, Users } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader, PageBody } from "@/components/ui/page-header";
+import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { Button, FOCUS_RING } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert } from "@/components/ui/alert";
+import { cn } from "@/lib/cn";
 import { WorkspaceAccessModal } from "./workspace-access-modal";
 
 interface Row {
@@ -13,8 +19,7 @@ interface Row {
   createdAt: string;
 }
 
-const inputClass = "rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700";
-const buttonClass = "inline-flex items-center gap-1 rounded-md border border-zinc-300 px-2 py-1 text-sm transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800";
+const inputClass = "rounded border border-border-strong bg-transparent px-2 py-1 text-sm";
 
 export function WorkspacesManager() {
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -93,63 +98,92 @@ export function WorkspacesManager() {
     }
   }
 
-  if (!rows) return <div className="p-6 text-zinc-500">Loading...</div>;
+  if (!rows) return <div className="p-6 text-ink-muted">Loading...</div>;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-1 text-xl font-semibold">Workspaces</h1>
-      <p className="mb-4 text-sm text-zinc-500">Group documents and images. Everyone always has access to the default workspace.</p>
+    <>
+      <PageHeader
+        title="Workspaces"
+        description="Groups of files. Each conversation asks questions of exactly one workspace."
+      />
+      <PageBody className="mx-auto max-w-3xl space-y-4">
+        {/* Kept verbatim from the pre-redesign page: the header description above
+            doesn't mention that the default workspace is always accessible to everyone. */}
+        <p className="text-sm text-ink-muted">Group documents and images. Everyone always has access to the default workspace.</p>
 
-      {error && <p role="alert" className="mb-3 text-sm text-red-600">{error}</p>}
+        {error && <Alert tone="danger">{error}</Alert>}
 
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <input aria-label="New workspace name" placeholder="Name" value={newName} onChange={(e) => setNewName(e.target.value)} className={inputClass} />
-        <input aria-label="New workspace description" placeholder="Description (optional)" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} className={`${inputClass} flex-1`} />
-        <button type="button" onClick={create} disabled={busy || !newName.trim()} className={buttonClass}>
-          <Plus className="h-4 w-4" /> Create
-        </button>
-      </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input aria-label="New workspace name" placeholder="Name" value={newName} onChange={(e) => setNewName(e.target.value)} className={cn(inputClass, FOCUS_RING)} />
+          <input aria-label="New workspace description" placeholder="Description (optional)" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} className={cn(inputClass, "flex-1", FOCUS_RING)} />
+          <Button variant="secondary" size="sm" onClick={create} disabled={busy || !newName.trim()}>
+            <Plus className="h-4 w-4" /> Create
+          </Button>
+        </div>
 
-      <ul className="flex flex-col gap-2">
-        {rows.map((w) => {
-          const d = draft[w.id] ?? { name: w.name, description: "" };
-          return (
-            <li key={w.id} className="flex flex-wrap items-center gap-2 rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-              {w.isDefault ? (
-                <span className="flex items-center gap-2 font-medium">
-                  {w.name}
-                  <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs dark:bg-zinc-700">default</span>
-                </span>
-              ) : (
-                <input
-                  aria-label={`Name of ${w.name}`}
-                  value={d.name}
-                  onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, name: e.target.value } }))}
-                  className={inputClass}
-                />
-              )}
-              <input
-                aria-label={`Description of ${w.name}`}
-                placeholder="Description"
-                value={d.description}
-                onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, description: e.target.value } }))}
-                className={`${inputClass} flex-1`}
-              />
-              <button type="button" aria-label={`Save ${d.name}`} onClick={() => save(w)} disabled={busy} className={buttonClass}>
-                <Save className="h-4 w-4" /> Save
-              </button>
-              <button type="button" aria-label={`Manage access to ${w.name}`} onClick={() => setAccessFor(w)} className={buttonClass}>
-                <Users className="h-4 w-4" /> Access
-              </button>
-              {!w.isDefault && (
-                <button type="button" aria-label={`Delete ${w.name}`} onClick={() => setPendingDelete(w)} className="text-zinc-400 transition-colors hover:text-red-600">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+        <Table>
+          <THead>
+            <TR>
+              <TH>Name</TH>
+              <TH>Description</TH>
+              <TH />
+            </TR>
+          </THead>
+          <TBody>
+            {rows.map((w) => {
+              const d = draft[w.id] ?? { name: w.name, description: "" };
+              return (
+                <TR key={w.id}>
+                  <TD>
+                    {w.isDefault ? (
+                      <span className="flex items-center gap-2 font-medium">
+                        {w.name}
+                        <Badge>default</Badge>
+                      </span>
+                    ) : (
+                      <input
+                        aria-label={`Name of ${w.name}`}
+                        value={d.name}
+                        onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, name: e.target.value } }))}
+                        className={cn(inputClass, "w-full", FOCUS_RING)}
+                      />
+                    )}
+                  </TD>
+                  <TD>
+                    <input
+                      aria-label={`Description of ${w.name}`}
+                      placeholder="Description"
+                      value={d.description}
+                      onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, description: e.target.value } }))}
+                      className={cn(inputClass, "w-full", FOCUS_RING)}
+                    />
+                  </TD>
+                  <TD className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button variant="secondary" size="sm" aria-label={`Save ${d.name}`} onClick={() => save(w)} disabled={busy}>
+                        <Save className="h-4 w-4" /> Save
+                      </Button>
+                      <Button variant="secondary" size="sm" aria-label={`Manage access to ${w.name}`} onClick={() => setAccessFor(w)}>
+                        <Users className="h-4 w-4" /> Access
+                      </Button>
+                      {!w.isDefault && (
+                        <button
+                          type="button"
+                          aria-label={`Delete ${w.name}`}
+                          onClick={() => setPendingDelete(w)}
+                          className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </TD>
+                </TR>
+              );
+            })}
+          </TBody>
+        </Table>
+      </PageBody>
 
       <ConfirmDialog
         open={pendingDelete !== null}
@@ -167,6 +201,6 @@ export function WorkspacesManager() {
           onClose={() => setAccessFor(null)}
         />
       )}
-    </div>
+    </>
   );
 }

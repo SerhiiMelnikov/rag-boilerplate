@@ -14,4 +14,13 @@ describe("Badge", () => {
     render(<Badge dashed>No workspace</Badge>);
     expect(screen.getByText("No workspace").className).toContain("border-dashed");
   });
+
+  // Without this, `dashed` silently becoming a no-op would still pass every test
+  // above — nothing asserted the *absence* of the dashed border on the common
+  // case, and that border is the only signal for "not connected to the
+  // knowledge base".
+  it("does not use a dashed border by default", () => {
+    render(<Badge>General</Badge>);
+    expect(screen.getByText("General").className).not.toContain("border-dashed");
+  });
 });

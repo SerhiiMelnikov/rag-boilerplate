@@ -75,12 +75,22 @@ describe("activeGroup", () => {
     ["/admin/keys", "settings"],
     ["/admin/users", "people"],
     ["/account", "account"],
+    // A sub-route of a file, not a sub-item's own href — the longest-match scan
+    // must still land on Knowledge via the /admin/files prefix.
+    ["/admin/files/some-id", "knowledge"],
   ])("resolves %s to %s", (pathname, expected) => {
     expect(activeGroup(pathname)?.id).toBe(expected);
   });
 
   it("does not let the chat's / match every other route", () => {
     expect(activeGroup("/admin/files")?.id).not.toBe("chat");
+  });
+
+  // Shares a prefix with /account but is a different route entirely — a naive
+  // `pathname.startsWith(href)` without the "/" boundary check would wrongly
+  // match this to the account group.
+  it("does not match a route that merely shares a prefix with a group's href", () => {
+    expect(activeGroup("/accounts-payable")).toBeUndefined();
   });
 
   it("returns undefined for a route outside the shell", () => {

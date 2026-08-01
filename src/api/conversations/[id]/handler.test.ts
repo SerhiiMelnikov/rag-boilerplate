@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { getConversationResponse, deleteConversationResponse } from "./handler";
+import { getConversationResponse, deleteConversationResponse, patchConversationResponse } from "./handler";
 import { UnauthorizedError } from "@/lib/auth/guards";
 
 const user = vi.fn(async () => ({ id: "u1", role: "user", isSuperAdmin: false }));
@@ -65,5 +65,52 @@ describe("deleteConversationResponse", () => {
       deleteConversationFn: deleteConversationFn as never,
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("patchConversationResponse", () => {
+  const user = { id: "u1", role: "user" as const };
+  const req = (body: unknown) =>
+    new Request("http://localhost/api/conversations/c1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  it("renames and echoes the stored title", async () => {
+    const renameConversationFn = vi.fn(async () => true);
+    const res = await patchConversationResponse(req({ title: "  Quarterly numbers  " }), "c1", {
+      getUser: async () => user,
+      renameConversationFn,
+    } as never);
+    expect(res.status).toBe(200);
+    // The trimmed value is what was stored, so it is what comes back.
+    expect(await res.json()).toEqual({ id: "c1", title: "Quarterly numbers" });
+    expect(renameConversationFn).toHaveBeenCalledWith("u1", "c1", "Quarterly numbers");
+  });
+
+  it("404s when the conversation is not the caller's", async () => {
+    const res = await patchConversationResponse(req({ title: "x" }), "c1", {
+      getUser: async () => user,
+      renameConversationFn: async () => false,
+    } as never);
+    // Same status as "does not exist": ownership must not be probeable.
+    expect(res.status).toBe(404);
+  });
+
+  it("400s on a blank title", async () => {
+    const renameConversationFn = vi.fn(async () => true);
+    const res = await patchConversationResponse(req({ title: "   " }), "c1", {
+      getUser: async () => user,
+      renameConversationFn,
+    } as never);
+    expect(res.status).toBe(400);
+    expect(renameConversationFn).not.toHaveBeenCalled();
+  });
+
+  it("400s on a body that is not JSON", async () => {
+    const bad = new Request("http://localhost/api/conversations/c1", { method: "PATCH", body: "{" });
+    const res = await patchConversationResponse(bad, "c1", { getUser: async () => user } as never);
+    expect(res.status).toBe(400);
   });
 });

@@ -4,6 +4,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import {
   createConversation, listConversations, getConversationWithMessages,
   deleteConversation, addMessage, setRating, setConversationTitleIfDefault,
+  renameConversation,
   type ImageResultRef,
 } from "@/lib/chat/conversations";
 import { conversations } from "@/lib/db/schema";
@@ -208,6 +209,38 @@ function fieldSql(value: unknown): string {
   if (is(value, Column)) return value.name;
   return dialect.sqlToQuery(value as SQL).sql;
 }
+
+describe("renameConversation", () => {
+  it("updates only a row owned by the caller", async () => {
+    let capturedWhere: unknown;
+    let capturedSet: unknown;
+    const db = {
+      update: () => ({
+        set: (v: unknown) => {
+          capturedSet = v;
+          return {
+            where: (w: unknown) => {
+              capturedWhere = w;
+              return { returning: async () => [{ id: "c1" }] };
+            },
+          };
+        },
+      }),
+    } as never;
+
+    expect(await renameConversation("u1", "c1", "Quarterly numbers", db)).toBe(true);
+    expect(capturedSet).toEqual({ title: "Quarterly numbers" });
+    // The same ownership predicate every other item operation uses.
+    expect(capturedWhere).toEqual(and(eq(conversations.id, "c1"), eq(conversations.userId, "u1")));
+  });
+
+  it("reports false when no row matched", async () => {
+    const db = {
+      update: () => ({ set: () => ({ where: () => ({ returning: async () => [] }) }) }),
+    } as never;
+    expect(await renameConversation("u1", "nope", "x", db)).toBe(false);
+  });
+});
 
 describe("getConversationWithMessages projection", () => {
   it("selects a source count and never the source rows themselves", async () => {

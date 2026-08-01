@@ -122,6 +122,18 @@ export async function setConversationTitleIfDefault(userId: string, id: string, 
     .where(and(eq(conversations.id, id), eq(conversations.userId, userId), eq(conversations.title, "New conversation")));
 }
 
+// Rename a conversation the caller owns. Note the interaction with
+// setConversationTitleIfDefault above: that one only writes while the title is
+// still "New conversation", so a user's rename survives every later message.
+export async function renameConversation(userId: string, id: string, title: string, database = defaultDb) {
+  const updated = await database
+    .update(conversations)
+    .set({ title })
+    .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+    .returning({ id: conversations.id });
+  return updated.length > 0;
+}
+
 // Update a message's rating only if it belongs to a conversation owned by userId.
 export async function setRating(userId: string, messageId: string, rating: 1 | -1 | null, database = defaultDb) {
   // Step 1: ownership check — ensure the message belongs to a conversation owned by the given user.

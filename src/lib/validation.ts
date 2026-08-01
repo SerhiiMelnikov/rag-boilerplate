@@ -23,3 +23,10 @@ export const newPasswordSchema = z.object({
   newPassword: z.string().min(8, "Password must be at least 8 characters"),
 });
 export type NewPasswordInput = z.infer<typeof newPasswordSchema>;
+
+// A conversation title is free text the user types over an auto-generated one.
+// Trimmed first, so " " is rejected rather than stored as a blank row label.
+export const renameConversationSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+});
+export type RenameConversationInput = z.infer<typeof renameConversationSchema>;

@@ -80,7 +80,6 @@ describe("groupConversations", () => {
       ],
       now,
     );
-    const keys = groups.map((g) => g.key);
     const items = Object.fromEntries(groups.flatMap((g) => g.items.map((i) => [i.id, g.key])));
     expect(items["midnight"]).toBe("today");
     expect(items["almostMidnight"]).toBe("yesterday");

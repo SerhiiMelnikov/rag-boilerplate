@@ -46,7 +46,7 @@ export function ImageModal({ image, onClose, onSaved }: ImageModalProps) {
   }
 
   return (
-    <Dialog open onClose={onClose} title={image.filename} size="lg">
+    <Dialog open onClose={onClose} title={`Image ${image.filename}`} size="lg">
       {/* eslint-disable-next-line @next/next/no-img-element -- served bytes, not a static asset */}
       <img src={`/api/images/${image.id}`} alt={image.filename} className="mb-3 max-h-[50vh] w-full rounded object-contain" />
       <label className="flex flex-col gap-1 text-sm">

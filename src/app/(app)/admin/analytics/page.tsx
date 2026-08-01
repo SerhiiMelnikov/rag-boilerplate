@@ -6,6 +6,8 @@ import {
   getDocumentQuality,
   getSatisfactionTrend,
 } from "@/lib/analytics/feedback";
+import { PageHeader, PageBody } from "@/components/ui/page-header";
+import { Card } from "@/components/ui/card";
 import { StatTiles } from "@/components/admin/analytics/stat-tiles";
 import { NegativeList } from "@/components/admin/analytics/negative-list";
 import { DocumentQualityTable } from "@/components/admin/analytics/document-quality-table";
@@ -21,23 +23,24 @@ export default async function AnalyticsPage() {
     getSatisfactionTrend(),
   ]);
   return (
-    <div className="mx-auto max-w-4xl space-y-8 p-4">
-      <h1 className="text-lg font-semibold">Answer feedback</h1>
-      <section>
+    <>
+      <PageHeader
+        className="mx-auto max-w-4xl"
+        title="Answer feedback"
+        description="What people thought of the answers, and which documents produced them."
+      />
+      <PageBody className="mx-auto max-w-4xl space-y-8">
         <StatTiles summary={summary} />
-      </section>
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium">Satisfaction (last 30 days)</h2>
-        <TrendBars points={trend} />
-      </section>
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium">Recent 👎 answers</h2>
-        <NegativeList items={negatives} />
-      </section>
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium">Document quality</h2>
-        <DocumentQualityTable rows={docs} />
-      </section>
-    </div>
+        <Card title="Satisfaction (last 30 days)">
+          <TrendBars points={trend} />
+        </Card>
+        <Card title="Recent 👎 answers">
+          <NegativeList items={negatives} />
+        </Card>
+        <Card title="Document quality">
+          <DocumentQualityTable rows={docs} />
+        </Card>
+      </PageBody>
+    </>
   );
 }

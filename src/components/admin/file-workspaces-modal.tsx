@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Spinner } from "@/components/ui/spinner";
+import { Dialog } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 
 interface Workspace { id: string; name: string; isDefault: boolean }
 interface Props {
@@ -24,12 +27,6 @@ export function FileWorkspacesModal({ file, onClose, onSaved }: Props) {
     setAll(list);
   }, []);
   useEffect(() => { void load(); }, [load]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   function toggle(id: string) {
     setChecked((prev) => {
@@ -62,42 +59,37 @@ export function FileWorkspacesModal({ file, onClose, onSaved }: Props) {
   }
 
   return (
-    <div onClick={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Workspaces for ${file.filename}`}
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
-      >
-        <h2 className="mb-1 text-lg font-semibold">Workspaces for {file.filename}</h2>
-        <p className="mb-4 text-sm text-zinc-500">A file with no workspaces stays in this list but is never used to answer questions.</p>
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Workspaces for ${file.filename}`}
+      description="A file with no workspaces stays in this list but is never used to answer questions."
+      size="md"
+    >
+      {error && <Alert tone="danger" className="mb-3">{error}</Alert>}
 
-        {error && <p role="alert" className="mb-3 text-sm text-red-600">{error}</p>}
+      {!all ? (
+        <div className="flex items-center gap-2 text-sm text-ink-muted"><Spinner label="Loading" /> Loading...</div>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {all.map((w) => (
+            <li key={w.id} className="flex items-center gap-2 rounded px-1 py-1 text-sm">
+              <input id={`ws-${w.id}`} type="checkbox" checked={checked.has(w.id)} onChange={() => toggle(w.id)} className="h-4 w-4" />
+              {/* The "everyone" hint sits outside the <label> so the checkbox's
+                  accessible name stays exactly the workspace name. */}
+              <label htmlFor={`ws-${w.id}`} className="flex-1">{w.name}</label>
+              {w.isDefault && <span className="text-xs text-ink-subtle">everyone</span>}
+            </li>
+          ))}
+        </ul>
+      )}
 
-        {!all ? (
-          <div className="flex items-center gap-2 text-sm text-zinc-500"><Spinner label="Loading" /> Loading...</div>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {all.map((w) => (
-              <li key={w.id} className="flex items-center gap-2 rounded px-1 py-1 text-sm">
-                <input id={`ws-${w.id}`} type="checkbox" checked={checked.has(w.id)} onChange={() => toggle(w.id)} className="h-4 w-4" />
-                {/* The "everyone" hint sits outside the <label> so the checkbox's
-                    accessible name stays exactly the workspace name. */}
-                <label htmlFor={`ws-${w.id}`} className="flex-1">{w.name}</label>
-                {w.isDefault && <span className="text-xs text-zinc-500">everyone</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">Cancel</button>
-          <button type="button" onClick={save} disabled={saving || !all} className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">
-            {saving ? "Saving..." : "Save"}
-          </button>
-        </div>
+      <div className="mt-5 flex justify-end gap-2">
+        <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button type="button" variant="secondary" onClick={save} disabled={saving || !all}>
+          {saving ? "Saving..." : "Save"}
+        </Button>
       </div>
-    </div>
+    </Dialog>
   );
 }

@@ -4,6 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Trash2, Plus, Save, Pencil } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MultiSelect } from "@/components/ui/multi-select";
+import { PageHeader, PageBody } from "@/components/ui/page-header";
+import { Button, FOCUS_RING } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert } from "@/components/ui/alert";
+import { cn } from "@/lib/cn";
 
 interface QuestionRow {
   id: string;
@@ -27,8 +32,7 @@ interface FileRow {
   filename: string;
 }
 
-const inputClass = "w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1.5 text-sm dark:border-zinc-700";
-const buttonClass = "inline-flex items-center gap-1 rounded-md border border-zinc-300 px-2 py-1 text-sm transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800";
+const inputClass = "w-full rounded border border-border-strong bg-transparent px-2 py-1.5 text-sm";
 
 const emptyForm = { question: "", expectedDocumentIds: [] as string[], referenceAnswer: "" };
 
@@ -112,72 +116,81 @@ export function QuestionsManager() {
     return documents.find((d) => d.id === id)?.filename ?? id;
   }
 
-  if (!rows) return <div className="p-6 text-zinc-500">Loading...</div>;
+  if (!rows) return <div className="p-6 text-ink-muted">Loading...</div>;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-1 text-xl font-semibold">Evaluation</h1>
-      <p className="mb-4 text-sm text-zinc-500">Golden questions used to measure retrieval and answer quality.</p>
+    <>
+      <PageHeader
+        className="mx-auto max-w-3xl"
+        title="Evaluation"
+        description="Golden questions and the runs scored against them."
+      />
+      <PageBody className="mx-auto max-w-3xl space-y-4">
+        {error && <Alert tone="danger">{error}</Alert>}
 
-      {error && <p role="alert" className="mb-3 text-sm text-red-600">{error}</p>}
-
-      <div className="mb-5 flex flex-col gap-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-        <textarea
-          aria-label="Question"
-          placeholder="Question"
-          value={form.question}
-          onChange={(e) => setForm((f) => ({ ...f, question: e.target.value }))}
-          className={`${inputClass} min-h-16`}
-        />
-        <MultiSelect
-          ariaLabel="Expected documents"
-          value={form.expectedDocumentIds}
-          onChange={(v) => setForm((f) => ({ ...f, expectedDocumentIds: v }))}
-          options={documents.map((d) => ({ value: d.id, label: d.filename }))}
-        />
-        <textarea
-          aria-label="Reference answer"
-          placeholder="Reference answer (optional)"
-          value={form.referenceAnswer}
-          onChange={(e) => setForm((f) => ({ ...f, referenceAnswer: e.target.value }))}
-          className={`${inputClass} min-h-12`}
-        />
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={save} disabled={busy || !form.question.trim()} className={buttonClass}>
-            {editingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            {editingId ? "Save changes" : "Add question"}
-          </button>
-          {editingId && (
-            <button type="button" onClick={cancelEdit} className={buttonClass}>Cancel</button>
-          )}
-        </div>
-      </div>
-
-      <ul className="flex flex-col gap-2">
-        {rows.map((q) => (
-          <li key={q.id} className="flex flex-col gap-1 rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-            <div className="flex items-start justify-between gap-2">
-              <span className="font-medium">{q.question}</span>
-              <span className="flex shrink-0 gap-2">
-                <button type="button" aria-label={`Edit ${q.question}`} onClick={() => startEdit(q)} className={buttonClass}>
-                  <Pencil className="h-4 w-4" /> Edit
-                </button>
-                <button type="button" aria-label={`Delete ${q.question}`} onClick={() => setPendingDelete(q)} className="text-zinc-400 transition-colors hover:text-red-600">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </span>
-            </div>
-            {q.expectedDocumentIds.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {q.expectedDocumentIds.map((id) => (
-                  <span key={id} className="rounded bg-zinc-100 px-2 py-0.5 text-xs dark:bg-zinc-800">{filenameFor(id)}</span>
-                ))}
-              </div>
+        <div className="flex flex-col gap-2 rounded border border-border p-3">
+          <textarea
+            aria-label="Question"
+            placeholder="Question"
+            value={form.question}
+            onChange={(e) => setForm((f) => ({ ...f, question: e.target.value }))}
+            className={cn(inputClass, "min-h-16", FOCUS_RING)}
+          />
+          <MultiSelect
+            ariaLabel="Expected documents"
+            value={form.expectedDocumentIds}
+            onChange={(v) => setForm((f) => ({ ...f, expectedDocumentIds: v }))}
+            options={documents.map((d) => ({ value: d.id, label: d.filename }))}
+          />
+          <textarea
+            aria-label="Reference answer"
+            placeholder="Reference answer (optional)"
+            value={form.referenceAnswer}
+            onChange={(e) => setForm((f) => ({ ...f, referenceAnswer: e.target.value }))}
+            className={cn(inputClass, "min-h-12", FOCUS_RING)}
+          />
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={save} disabled={busy || !form.question.trim()}>
+              {editingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {editingId ? "Save changes" : "Add question"}
+            </Button>
+            {editingId && (
+              <Button variant="secondary" size="sm" onClick={cancelEdit}>Cancel</Button>
             )}
-            {q.referenceAnswer && <p className="text-xs text-zinc-500">{q.referenceAnswer}</p>}
-          </li>
-        ))}
-      </ul>
+          </div>
+        </div>
+
+        <ul className="flex flex-col gap-2">
+          {rows.map((q) => (
+            <li key={q.id} className="flex flex-col gap-1 rounded border border-border p-3 text-sm">
+              <div className="flex items-start justify-between gap-2">
+                <span className="font-medium">{q.question}</span>
+                <span className="flex shrink-0 gap-2">
+                  <Button variant="secondary" size="sm" aria-label={`Edit ${q.question}`} onClick={() => startEdit(q)}>
+                    <Pencil className="h-4 w-4" /> Edit
+                  </Button>
+                  <button
+                    type="button"
+                    aria-label={`Delete ${q.question}`}
+                    onClick={() => setPendingDelete(q)}
+                    className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </span>
+              </div>
+              {q.expectedDocumentIds.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {q.expectedDocumentIds.map((id) => (
+                    <Badge key={id}>{filenameFor(id)}</Badge>
+                  ))}
+                </div>
+              )}
+              {q.referenceAnswer && <p className="text-xs text-ink-muted">{q.referenceAnswer}</p>}
+            </li>
+          ))}
+        </ul>
+      </PageBody>
 
       <ConfirmDialog
         open={pendingDelete !== null}
@@ -188,6 +201,6 @@ export function QuestionsManager() {
         onConfirm={confirmDelete}
         onCancel={() => setPendingDelete(null)}
       />
-    </div>
+    </>
   );
 }

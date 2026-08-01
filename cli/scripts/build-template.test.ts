@@ -1,7 +1,11 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import { EXCLUDE } from "./build-template.js";
+
+// Same path build-template.ts itself writes to (its OUT constant). Requires
+// `npm run build:template` to have been run first — see build-template.ts.
+const templateDir = resolve(import.meta.dirname, "..", "template");
 
 describe("template EXCLUDE", () => {
   // This repo's own CI is a matrix over cli/ and all five vector stores. It is
@@ -24,6 +28,18 @@ describe("template EXCLUDE", () => {
   // sync check below, so this specific regression is unambiguous in a failure.
   it("does not ship generated knowledge-graph artifacts", () => {
     expect(EXCLUDE.has("graphify-out")).toBe(true);
+  });
+
+  // next/font/local resolves these paths at build time, so a generated project
+  // whose template lost them fails `next build` outright rather than falling
+  // back to a system face.
+  it("ships the vendored font files", () => {
+    // Fails here, with the fix in hand, instead of as three confusing
+    // per-filename failures below when nobody has built the template yet.
+    expect(existsSync(templateDir), "run `npm run build:template` first").toBe(true);
+    for (const file of ["public-sans-variable.woff2", "ibm-plex-mono-400.woff2", "ibm-plex-mono-500.woff2"]) {
+      expect(existsSync(join(templateDir, "src", "app", "fonts", file)), file).toBe(true);
+    }
   });
 });
 

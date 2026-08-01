@@ -1,6 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { AuthCard } from "@/components/auth/auth-card";
+import { Button, FOCUS_RING } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
+import { Alert } from "@/components/ui/alert";
+import { cn } from "@/lib/cn";
 
 // Always renders the same confirmation, whatever the endpoint says about the
 // address. The API is enumeration-safe by design (one 200 for every case), and a
@@ -36,35 +42,39 @@ export default function ForgotPage() {
 
   if (sent) {
     return (
-      <div className="mx-auto mt-24 flex w-full max-w-sm flex-col gap-4 p-6">
-        <h1 className="text-xl font-semibold">Check your email</h1>
-        <p className="text-sm text-zinc-500">
+      <AuthCard
+        title="Check your email"
+        footer={
+          <a href="/login" className={cn("text-accent hover:underline", FOCUS_RING)}>
+            Back to sign in
+          </a>
+        }
+      >
+        <p className="text-xs text-ink-muted">
           If {email} has an account, we sent a link to choose a new password. It expires in 1 hour.
         </p>
-        <a href="/login" className="text-sm text-zinc-500 underline">Back to sign in</a>
-      </div>
+      </AuthCard>
     );
   }
 
   return (
-    <form onSubmit={onSubmit} className="mx-auto mt-24 flex w-full max-w-sm flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold">Reset your password</h1>
-      {error && (
-        <p role="alert" className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
-          {error}
-        </p>
-      )}
-      <label className="flex flex-col gap-1 text-sm">
-        Email
-        <input
-          type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-          className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
-        />
-      </label>
-      <button type="submit" disabled={pending} className="rounded-md bg-zinc-900 px-3 py-2 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900">
-        Send reset link
-      </button>
-      <a href="/login" className="text-sm text-zinc-500 underline">Back to sign in</a>
-    </form>
+    <AuthCard
+      title="Reset your password"
+      footer={
+        <a href="/login" className={cn("text-accent hover:underline", FOCUS_RING)}>
+          Back to sign in
+        </a>
+      }
+    >
+      <form onSubmit={onSubmit} className="flex flex-col gap-3">
+        {error && <Alert tone="danger">{error}</Alert>}
+        <Field label="Email" required>
+          {(control) => <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} {...control} />}
+        </Field>
+        <Button type="submit" loading={pending}>
+          Send reset link
+        </Button>
+      </form>
+    </AuthCard>
   );
 }

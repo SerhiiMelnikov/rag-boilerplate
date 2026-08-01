@@ -1,4 +1,10 @@
 import { isPasswordResetTokenValid } from "@/lib/auth/password-reset";
+import { AuthCard } from "@/components/auth/auth-card";
+import { Button, FOCUS_RING } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
+import { Alert } from "@/components/ui/alert";
+import { cn } from "@/lib/cn";
 
 // Never cache: this must re-check the token on every request, and a cached
 // "valid" render for one token must never be served for a different one.
@@ -19,39 +25,33 @@ export default async function ResetPage({
 
   if (!token || !(await isPasswordResetTokenValid(token))) {
     return (
-      <div className="mx-auto mt-24 flex w-full max-w-sm flex-col gap-4 p-6">
-        <h1 className="text-xl font-semibold">Link expired</h1>
-        <p className="text-sm text-zinc-500">
+      <AuthCard
+        title="Link expired"
+        footer={
+          <a href="/forgot" className={cn("text-accent hover:underline", FOCUS_RING)}>
+            Request a new link
+          </a>
+        }
+      >
+        <p className="text-xs text-ink-muted">
           This password reset link is invalid or has expired. Request a new one.
         </p>
-        <a href="/forgot" className="text-sm text-zinc-500 underline">Request a new link</a>
-      </div>
+      </AuthCard>
     );
   }
 
   return (
-    <form
-      method="POST"
-      action="/api/auth/reset-password"
-      className="mx-auto mt-24 flex w-full max-w-sm flex-col gap-4 p-6"
-    >
-      <h1 className="text-xl font-semibold">Choose a new password</h1>
-      {error && (
-        <p role="alert" className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
-          Password must be at least 8 characters, and the link must still be valid. Try again.
-        </p>
-      )}
-      <input type="hidden" name="token" value={token} />
-      <label className="flex flex-col gap-1 text-sm">
-        New password
-        <input
-          type="password" name="password" required minLength={8}
-          className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
-        />
-      </label>
-      <button type="submit" className="rounded-md bg-zinc-900 px-3 py-2 text-white dark:bg-zinc-100 dark:text-zinc-900">
-        Set password
-      </button>
-    </form>
+    <AuthCard title="Choose a new password">
+      <form method="POST" action="/api/auth/reset-password" className="flex flex-col gap-3">
+        {error && (
+          <Alert tone="danger">Password must be at least 8 characters, and the link must still be valid. Try again.</Alert>
+        )}
+        <input type="hidden" name="token" value={token} />
+        <Field label="New password" required>
+          {(control) => <Input type="password" name="password" minLength={8} {...control} />}
+        </Field>
+        <Button type="submit">Set password</Button>
+      </form>
+    </AuthCard>
   );
 }

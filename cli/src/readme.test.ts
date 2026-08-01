@@ -114,6 +114,35 @@ describe("generateReadme guidance", () => {
   });
 });
 
+describe("generateReadme navigation", () => {
+  // The rail (src/components/shell/nav-config.ts) replaced eight admin
+  // destinations hardcoded inside a profile dropdown. This generator is the
+  // only README a scaffolded project gets, so it must describe the rail, not
+  // the navigation it replaced.
+  it("describes the rail, not the old profile dropdown", () => {
+    const readme = generateReadme(opts({ appKind: "full" }));
+    expect(readme).toContain("left rail");
+    expect(readme).toContain("Settings → Provider keys");
+    expect(readme).not.toContain("Admin → Evaluation");
+    expect(readme).not.toMatch(/profile (menu|dropdown)/i);
+  });
+
+  it("still describes no screens at all for an api-only build", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).not.toContain("left rail");
+    expect(readme).not.toContain("bottom bar");
+  });
+
+  // The rail — and with it the account menu holding Sign out — is hidden below
+  // md; on a phone Sign out lives in the bottom bar's More sheet instead. This
+  // generator is the only documentation a scaffolded project gets, so a phone
+  // user has to be told where to find it.
+  it("tells a phone user that Sign out lives behind More", () => {
+    const readme = generateReadme(opts({ appKind: "full" }));
+    expect(readme).toMatch(/Sign out.*behind.*More/);
+  });
+});
+
 describe("generateReadme deploying", () => {
   it("documents the Docker deployment path and that migrations stay on the host", () => {
     const out = generateReadme(opts());
@@ -257,8 +286,8 @@ describe("generateReadme secrets", () => {
   // The repo's own README.md is in build-template.ts's EXCLUDE list, so it never
   // reaches a generated project — this generator is the only documentation those
   // users get. Without these, the eval runner ships invisible.
-  // The Admin section enumerates the profile menu's entries, so a new admin page
-  // that never gets listed here is invisible to everyone who scaffolds a project —
+  // The Admin section enumerates the rail's entries, so a new admin page that
+  // never gets listed here is invisible to everyone who scaffolds a project —
   // the repo's own README is in build-template.ts's EXCLUDE and never ships.
   it("lists the usage dashboard among the admin pages", () => {
     const readme = generateReadme(opts({ appKind: "full" }));
@@ -271,7 +300,7 @@ describe("generateReadme secrets", () => {
     const readme = generateReadme(opts({ appKind: "full" }));
     expect(readme).toContain("npm run eval");
     expect(readme).toContain("--min-judge");
-    expect(readme).toContain("Admin → Evaluation");
+    expect(readme).toContain("Insights → Evaluation");
   });
 
   it("documents the eval runner in api-only, where it is the only way to run one", () => {
@@ -281,7 +310,7 @@ describe("generateReadme secrets", () => {
     // No admin panel exists in this build, so the questions must be described
     // as an API surface rather than a page.
     expect(readme).toContain("/api/admin/evaluation/questions");
-    expect(readme).not.toContain("Admin → Evaluation");
+    expect(readme).not.toContain("Insights → Evaluation");
   });
 });
 

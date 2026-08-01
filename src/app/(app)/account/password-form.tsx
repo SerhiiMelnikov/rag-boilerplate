@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { signOut } from "next-auth/react";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 
 // The endpoint answers 401 for two quite different reasons, and they must not
 // share a message. "Invalid credentials" means the current password was wrong;
@@ -23,7 +27,7 @@ function messageFor(status: number, error: string | undefined): string {
 // Changing the password retires every session, this browser's included — see
 // sessions_valid_from in requireUser. So a success here MUST end with a sign-out;
 // staying on the page would leave a cookie every API call now refuses.
-export default function ChangePasswordPage() {
+export function PasswordForm() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -51,33 +55,32 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="mx-auto mt-24 flex w-full max-w-sm flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold">Change password</h1>
-      <p className="text-sm text-zinc-500">
-        This signs you out everywhere, including on this device.
-      </p>
-      {error && (
-        <p role="alert" className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
-          {error}
-        </p>
-      )}
-      <label className="flex flex-col gap-1 text-sm">
-        Current password
-        <input
-          type="password" required value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)}
-          className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        New password
-        <input
-          type="password" required minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-          className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
-        />
-      </label>
-      <button type="submit" disabled={pending} className="rounded-md bg-zinc-900 px-3 py-2 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900">
+    <form onSubmit={onSubmit} className="flex flex-col gap-3">
+      {error && <Alert tone="danger">{error}</Alert>}
+      <Field label="Current password" required>
+        {(control) => (
+          <Input
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            {...control}
+          />
+        )}
+      </Field>
+      <Field label="New password" required>
+        {(control) => (
+          <Input
+            type="password"
+            minLength={8}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            {...control}
+          />
+        )}
+      </Field>
+      <Button type="submit" loading={pending}>
         Change password
-      </button>
+      </Button>
     </form>
   );
 }

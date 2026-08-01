@@ -1,11 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, type SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import {
   createConversation, listConversations, getConversationWithMessages,
   deleteConversation, addMessage, setRating, setConversationTitleIfDefault,
   type ImageResultRef,
 } from "@/lib/chat/conversations";
-import { conversations, messages } from "@/lib/db/schema";
+import { conversations } from "@/lib/db/schema";
 
 describe("createConversation", () => {
   it("inserts and returns the new id", async () => {
@@ -194,34 +195,24 @@ describe("getConversationWithMessages", () => {
   });
 });
 
-// Extract the literal SQL text from a drizzle `sql`...`` expression, ignoring the
-// bound column(s) interpolated into it. Drizzle's sql tag builds a `queryChunks`
-// array; string-literal pieces are wrapped in an object exposing `value: string[]`,
-// while a column chunk (e.g. `messages.sources`) does not have that shape. We
-// deliberately avoid JSON.stringify here: a drizzle Column chunk holds a circular
-// reference back to its table and would throw.
-function sqlLiteralText(expr: unknown): string {
-  const chunks = (expr as { queryChunks?: unknown[] } | undefined)?.queryChunks ?? [];
-  return chunks
-    .filter((chunk): chunk is { value: string[] } => {
-      const value = (chunk as { value?: unknown } | null)?.value;
-      return Array.isArray(value) && value.every((v) => typeof v === "string");
-    })
-    .map((chunk) => chunk.value.join(""))
-    .join("");
-}
-
-// Does this select value reach the raw sources column, however it is spelled and
-// however deeply it is wrapped in a sql`` expression? A direct alias
-// (`{ rawSources: messages.sources }`) matches at the top; a column interpolated
-// into a template (`sql`jsonb_array_length(${messages.sources})``) matches by
-// walking that expression's queryChunks. This is deliberately not an enumeration of
-// known-bad spellings ("sources", "rawSources", ...) — it finds the column no
-// matter what key it ends up under.
-function referencesSources(value: unknown): boolean {
-  if (value === messages.sources) return true;
-  const chunks = (value as { queryChunks?: unknown[] } | null)?.queryChunks;
-  return Array.isArray(chunks) && chunks.some(referencesSources);
+// Compile a select field value to the exact SQL text Postgres would receive for it.
+// A plain column reference (e.g. `messages.rating`) isn't itself a compilable `sql``
+// fragment — it's just named via `.name` — so we read that directly; anything else
+// (a `sql`` template, however it names the column: interpolated object, raw
+// identifier text, or wrapped in a function call) is compiled through PgDialect,
+// the same public compiler drizzle itself uses to build the real query. This
+// replaced two earlier attempts (round 1: matching a literal `"sources"` key name;
+// round 2: walking `queryChunks` for object identity against `messages.sources`)
+// that each missed a different way to reach the column — a raw-SQL identifier
+// (`sql`sources``) doesn't appear as the Column object anywhere in its chunks.
+// Compiling to text instead of inspecting drizzle's internal representation is
+// exhaustive: whatever channel is used, the compiled SQL string is what Postgres
+// actually runs.
+const dialect = new PgDialect();
+function fieldSql(value: unknown): string {
+  const columnName = (value as { name?: unknown } | null)?.name;
+  if (typeof columnName === "string") return columnName;
+  return dialect.sqlToQuery(value as SQL).sql;
 }
 
 describe("getConversationWithMessages projection", () => {
@@ -248,18 +239,20 @@ describe("getConversationWithMessages projection", () => {
 
     const messageFields = captured[1];
     expect(messageFields).toBeDefined();
-    // Don't enumerate known-bad spellings (a key literally named "sources", a
-    // wrapper dropped from `sourceCount`) — invert it. Find every field in the
-    // select that reaches the raw sources column, however it's spelled, and
-    // require there to be exactly one: bound to `sourceCount`, wrapped in
-    // jsonb_array_length. The length check is load-bearing — without it, a
-    // projection that stopped selecting the count at all would pass a `.every`/`.map`
-    // that simply never runs.
-    const touching = Object.entries(messageFields).filter(([, value]) => referencesSources(value));
+    expect(Object.keys(messageFields)).toContain("sourceCount");
+    expect(Object.keys(messageFields)).not.toContain("sources");
+    // The keys-only checks above are not what carries this guard (see fieldSql's
+    // comment for why). Compile every field to the SQL text Postgres would
+    // actually receive and find whichever ones mention the sources column at all —
+    // as a bare identifier, a quoted "messages"."sources", or wrapped in a call —
+    // no matter what key they're filed under. Exactly one field may touch it: the
+    // length check is load-bearing, because without it a projection that stopped
+    // selecting the count entirely would pass a filter that matches nothing.
+    const touching = Object.entries(messageFields).filter(([, value]) => /\bsources\b/.test(fieldSql(value)));
     expect(touching).toHaveLength(1);
     const [key, value] = touching[0];
     expect(key).toBe("sourceCount");
-    expect(sqlLiteralText(value)).toContain("jsonb_array_length");
+    expect(fieldSql(value)).toContain("jsonb_array_length");
   });
 
   it("returns the count on each message", async () => {

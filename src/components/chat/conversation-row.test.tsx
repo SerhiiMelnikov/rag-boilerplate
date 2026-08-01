@@ -112,6 +112,17 @@ describe("ConversationRow", () => {
     const [first, second] = screen.getAllByRole("button", { name: /^Rename Refund policy/ });
     expect(first.getAttribute("aria-label")).not.toBe(second.getAttribute("aria-label"));
   });
+
+  it("renders a conversation whose createdAt cannot be parsed", () => {
+    // groupConversations deliberately keeps such a conversation (it lands in
+    // "Earlier") rather than dropping it from the list, so this row has to survive
+    // the same value: toISOString() throws RangeError on an Invalid Date, and one bad
+    // row taking down the whole list is worse than a row with no date in its label.
+    setup({ conversation: { id: "c1", title: "Refund policy", createdAt: "not a date" } });
+    expect(screen.getByRole("button", { name: "Refund policy" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rename Refund policy" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete Refund policy" })).toBeInTheDocument();
+  });
 });
 
 // jsdom does not fire blur when a focused element is removed from the DOM, so the

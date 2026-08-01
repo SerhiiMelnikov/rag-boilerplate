@@ -23,6 +23,20 @@ export function renameIntent(draft: string, current: string, cancelled: boolean)
   return title;
 }
 
+// The day the conversation started, as YYYY-MM-DD, or null when createdAt cannot be
+// read. Not localized: this string disambiguates two rows that share a title, it is
+// not read as prose, and a locale-formatted date would differ between server and
+// client rendering and trigger a hydration mismatch.
+//
+// The null case is the contract groupConversations already keeps: it buckets an
+// unparseable createdAt under "Earlier" rather than dropping the conversation, so
+// the row it renders has to survive that same value. toISOString() throws RangeError
+// on an Invalid Date, and one such row would take the entire list down with it.
+function startedOn(createdAt: string): string | null {
+  const date = new Date(createdAt);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+}
+
 export function ConversationRow({
   conversation,
   active,
@@ -104,12 +118,9 @@ export function ConversationRow({
     );
   }
 
-  // A title alone cannot disambiguate two rows that share it; the row's other known
-  // fact — when the conversation started — makes the accessible name unique. Not
-  // localized: this string disambiguates, it isn't read as prose, and a locale-formatted
-  // date would differ between server and client rendering and trigger a hydration
-  // mismatch.
-  const started = new Date(conversation.createdAt).toISOString().slice(0, 10);
+  const started = startedOn(conversation.createdAt);
+  const label = (verb: string) =>
+    started ? `${verb} ${conversation.title}, started ${started}` : `${verb} ${conversation.title}`;
 
   return (
     <li
@@ -129,17 +140,8 @@ export function ConversationRow({
       >
         {conversation.title}
       </button>
-      <RowAction
-        label={`Rename ${conversation.title}, started ${started}`}
-        icon={Pencil}
-        onClick={startEditing}
-      />
-      <RowAction
-        label={`Delete ${conversation.title}, started ${started}`}
-        icon={Trash2}
-        onClick={onDelete}
-        danger
-      />
+      <RowAction label={label("Rename")} icon={Pencil} onClick={startEditing} />
+      <RowAction label={label("Delete")} icon={Trash2} onClick={onDelete} danger />
     </li>
   );
 }

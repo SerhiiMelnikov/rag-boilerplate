@@ -30,14 +30,16 @@ export const Conversation = registry.register("Conversation", z.object({
   createdAt: z.string().datetime(),
 }).openapi("Conversation"));
 
-// Mirrors MessageRecord. Note: unlike `addMessage()`'s input, the read path
-// (getConversationWithMessages) never selects the `sources` column, so a returned
-// message carries no `sources` field.
+// Mirrors MessageRecord. The read path (getConversationWithMessages) never selects
+// the `sources` column — only `jsonb_array_length` of it — so a returned message
+// carries a count and no source identity. That is the 0.4.1 P1 decision, and the
+// projection test in conversations.test.ts is what keeps it true.
 export const Message = registry.register("Message", z.object({
   id: z.string().uuid(),
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   images: z.array(ImageResult),
+  sourceCount: z.number().int().min(0),
   rating: z.number().nullable(),
   usage: z.object({ promptTokens: z.number(), completionTokens: z.number() }).nullable(),
   createdAt: z.string().datetime(),

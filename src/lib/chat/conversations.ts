@@ -1,4 +1,4 @@
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, sql } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { conversations, messages } from "@/lib/db/schema";
 
@@ -20,6 +20,10 @@ export interface MessageRecord {
   content: string;
   images: ImageResultRef[];
   rating: number | null;
+  // The only provenance that crosses the wire. The 0.4.1 P1 fix keeps
+  // documentId/filename/chunkId server-side; a count says an answer is grounded
+  // without saying in what.
+  sourceCount: number;
   usage: { promptTokens: number; completionTokens: number } | null;
   createdAt: Date;
 }
@@ -54,6 +58,8 @@ export async function getConversationWithMessages(userId: string, id: string, da
       content: messages.content,
       images: messages.images,
       rating: messages.rating,
+      // Counted in Postgres, so the source rows never enter this process at all.
+      sourceCount: sql<number>`jsonb_array_length(${messages.sources})`,
       usage: messages.usage,
       createdAt: messages.createdAt,
     })

@@ -191,3 +191,51 @@ describe("getConversationWithMessages", () => {
     expect(result).toEqual({ id: "c1", title: "Hello", messages: [msg] });
   });
 });
+
+describe("getConversationWithMessages projection", () => {
+  it("selects a source count and never the source rows themselves", async () => {
+    // Capture what the message SELECT asks Postgres for. The 0.4.1 P1 fix took
+    // documentId/filename/chunkId off the wire; a future 'simplification' back to
+    // select().from(messages) would restore the leak silently. This is the tripwire.
+    const captured: Array<Record<string, unknown>> = [];
+    const db = {
+      select: (fields: Record<string, unknown>) => {
+        captured.push(fields);
+        return {
+          from: () => ({
+            where: () => ({
+              limit: async () => [{ id: "c1", title: "t" }],
+              orderBy: async () => [],
+            }),
+          }),
+        };
+      },
+    } as never;
+
+    await getConversationWithMessages("u1", "c1", db);
+
+    const messageFields = captured[1];
+    expect(messageFields).toBeDefined();
+    expect(Object.keys(messageFields)).toContain("sourceCount");
+    expect(Object.keys(messageFields)).not.toContain("sources");
+  });
+
+  it("returns the count on each message", async () => {
+    const rows = [
+      { id: "m1", role: "assistant", content: "a", images: [], rating: null, usage: null, createdAt: new Date(0), sourceCount: 3 },
+    ];
+    const db = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => [{ id: "c1", title: "t" }],
+            orderBy: async () => rows,
+          }),
+        }),
+      }),
+    } as never;
+
+    const result = await getConversationWithMessages("u1", "c1", db);
+    expect(result?.messages[0].sourceCount).toBe(3);
+  });
+});

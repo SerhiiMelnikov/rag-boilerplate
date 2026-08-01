@@ -31,6 +31,10 @@ export function groupConversations<T extends { createdAt: string }>(
   const buckets = new Map<ConversationGroupKey, T[]>();
   for (const item of items) {
     const created = new Date(item.createdAt);
+    // Unparseable createdAt values (malformed ISO strings) become Invalid Date and fall through
+    // to "earlier" because all >= comparisons return false; this is by design to avoid silently
+    // losing conversations from the list. Also note: previous7 spans six calendar days (−7 to −2),
+    // since yesterday (−1) is already carved out above.
     const key: ConversationGroupKey =
       created >= startOfToday ? "today"
       : created >= startOfYesterday ? "yesterday"

@@ -5,7 +5,7 @@ import {
   deleteConversation, addMessage, setRating, setConversationTitleIfDefault,
   type ImageResultRef,
 } from "@/lib/chat/conversations";
-import { conversations } from "@/lib/db/schema";
+import { conversations, messages } from "@/lib/db/schema";
 
 describe("createConversation", () => {
   it("inserts and returns the new id", async () => {
@@ -211,6 +211,19 @@ function sqlLiteralText(expr: unknown): string {
     .join("");
 }
 
+// Does this select value reach the raw sources column, however it is spelled and
+// however deeply it is wrapped in a sql`` expression? A direct alias
+// (`{ rawSources: messages.sources }`) matches at the top; a column interpolated
+// into a template (`sql`jsonb_array_length(${messages.sources})``) matches by
+// walking that expression's queryChunks. This is deliberately not an enumeration of
+// known-bad spellings ("sources", "rawSources", ...) — it finds the column no
+// matter what key it ends up under.
+function referencesSources(value: unknown): boolean {
+  if (value === messages.sources) return true;
+  const chunks = (value as { queryChunks?: unknown[] } | null)?.queryChunks;
+  return Array.isArray(chunks) && chunks.some(referencesSources);
+}
+
 describe("getConversationWithMessages projection", () => {
   it("selects a source count and never the source rows themselves", async () => {
     // Capture what the message SELECT asks Postgres for. The 0.4.1 P1 fix took
@@ -235,14 +248,18 @@ describe("getConversationWithMessages projection", () => {
 
     const messageFields = captured[1];
     expect(messageFields).toBeDefined();
-    expect(Object.keys(messageFields)).toContain("sourceCount");
-    expect(Object.keys(messageFields)).not.toContain("sources");
-    // Constrain the expression bound to the key, not just the key's name: a
-    // mislabeled raw-column select (`sourceCount: sql`${messages.sources}``) would
-    // keep both assertions above green while reopening the 0.4.1 leak, because it
-    // still returns a `sourceCount` key and never a `sources` key. Only the SQL
-    // text itself distinguishes "count" from "the whole array".
-    expect(sqlLiteralText(messageFields.sourceCount)).toContain("jsonb_array_length");
+    // Don't enumerate known-bad spellings (a key literally named "sources", a
+    // wrapper dropped from `sourceCount`) — invert it. Find every field in the
+    // select that reaches the raw sources column, however it's spelled, and
+    // require there to be exactly one: bound to `sourceCount`, wrapped in
+    // jsonb_array_length. The length check is load-bearing — without it, a
+    // projection that stopped selecting the count at all would pass a `.every`/`.map`
+    // that simply never runs.
+    const touching = Object.entries(messageFields).filter(([, value]) => referencesSources(value));
+    expect(touching).toHaveLength(1);
+    const [key, value] = touching[0];
+    expect(key).toBe("sourceCount");
+    expect(sqlLiteralText(value)).toContain("jsonb_array_length");
   });
 
   it("returns the count on each message", async () => {

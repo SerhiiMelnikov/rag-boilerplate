@@ -7,7 +7,7 @@ import {
   renameConversation,
   type ImageResultRef,
 } from "@/lib/chat/conversations";
-import { conversations } from "@/lib/db/schema";
+import { conversations, messages } from "@/lib/db/schema";
 
 describe("createConversation", () => {
   it("inserts and returns the new id", async () => {
@@ -248,15 +248,19 @@ describe("getConversationWithMessages projection", () => {
     // documentId/filename/chunkId off the wire; a future 'simplification' back to
     // select().from(messages) would restore the leak silently. This is the tripwire.
     const captured: Array<Record<string, unknown>> = [];
+    const capturedWheres: unknown[] = [];
     const db = {
       select: (fields: Record<string, unknown>) => {
         captured.push(fields);
         return {
           from: () => ({
-            where: () => ({
-              limit: async () => [{ id: "c1", title: "t" }],
-              orderBy: async () => [],
-            }),
+            where: (condition: unknown) => {
+              capturedWheres.push(condition);
+              return {
+                limit: async () => [{ id: "c1", title: "t" }],
+                orderBy: async () => [],
+              };
+            },
           }),
         };
       },
@@ -268,6 +272,25 @@ describe("getConversationWithMessages projection", () => {
     // them means a third select added to this function has to be accounted for, rather
     // than sitting outside a guard that only ever reads captured[1].
     expect(captured).toHaveLength(2);
+
+    // The ownership select is pinned just as tightly as the message one, and for the
+    // same reason: it is the other place a source-bearing expression can be smuggled
+    // into this function. A `citedSources` subquery added here, with the result
+    // spread into the returned object, ships every source row while every other
+    // assertion in this file stays green.
+    const ownershipFields = captured[0];
+    expect(ownershipFields).toBeDefined();
+    expect(Object.keys(ownershipFields).slice().sort()).toEqual(["id", "title"]);
+    for (const [key, value] of Object.entries(ownershipFields)) {
+      expect(is(value, Column), `${key} must be bound to a plain column`).toBe(true);
+    }
+
+    // Both queries' predicates. The message query is scoped by conversation id and
+    // nothing else — drop that `where` and every message in the table comes back to
+    // every caller, with no other assertion here noticing.
+    expect(capturedWheres).toHaveLength(2);
+    expect(capturedWheres[0]).toEqual(and(eq(conversations.id, "c1"), eq(conversations.userId, "u1")));
+    expect(capturedWheres[1]).toEqual(eq(messages.conversationId, "c1"));
 
     const messageFields = captured[1];
     expect(messageFields).toBeDefined();

@@ -43,6 +43,18 @@ export function Composer({
     textareaRef.current?.focus();
   }, [focusSignal]);
 
+  // Textarea's autoGrow measures on the element's own input event, and clearing the
+  // value through React fires none — so a sent multi-line message left the box tall
+  // and empty until the next keystroke. Dropping the inline height hands the size
+  // back to the stylesheet (rows=1 plus the touch minimum); typing takes over again
+  // from there, with autoGrow's uncontrolled contract untouched.
+  useEffect(() => {
+    if (value === "") {
+      const textarea = textareaRef.current;
+      if (textarea) textarea.style.height = "";
+    }
+  }, [value]);
+
   function send() {
     if (canSend) onSubmit();
   }

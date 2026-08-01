@@ -58,6 +58,21 @@ describe("Composer", () => {
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   });
 
+  it("collapses the grown box once the value is cleared", () => {
+    // Growth is driven by the textarea's own input event; clearing the value through
+    // React fires none, so after sending a multi-line message the box stayed tall and
+    // empty until the next keystroke.
+    const props = { onChange: () => {}, onSubmit: () => {}, busy: false };
+    const { rerender } = render(<Composer {...props} value={"first line\nsecond line"} />);
+    const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement;
+    // What autoGrow leaves behind after a few lines have been typed.
+    textarea.style.height = "120px";
+
+    rerender(<Composer {...props} value="" />);
+
+    expect(textarea.style.height).toBe("");
+  });
+
   describe("focus signal", () => {
     const props = { value: "", onChange: () => {}, onSubmit: () => {}, busy: false };
 

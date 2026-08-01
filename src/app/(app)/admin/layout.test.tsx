@@ -5,11 +5,13 @@ import { render, screen } from "@testing-library/react";
 import AdminLayout from "@/app/(app)/admin/layout";
 import { PanelProvider } from "@/components/shell/panel-context";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/admin/files" }));
+const pathname = vi.hoisted(() => ({ current: "/admin/files" }));
+vi.mock("next/navigation", () => ({ usePathname: () => pathname.current }));
 vi.mock("@/components/workspace-switcher", () => ({ WorkspaceSwitcher: () => <div /> }));
 
 describe("AdminLayout", () => {
   it("gives every admin page the same panel and renders the page inside it", () => {
+    pathname.current = "/admin/files";
     render(
       <PanelProvider>
         <AdminLayout>
@@ -19,6 +21,22 @@ describe("AdminLayout", () => {
     );
     expect(screen.getByRole("complementary", { name: "Admin sections" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Files" })).toBeInTheDocument();
+    expect(screen.getByText("page content")).toBeInTheDocument();
+  });
+
+  // People has neither the switcher (not workspace-scoped) nor a sub-nav (one
+  // entry): a panel there would be a blank bordered column on desktop, or an
+  // empty drawer on touch. The spec says main takes the width instead.
+  it("renders no panel for /admin/users, which has nothing to show in it", () => {
+    pathname.current = "/admin/users";
+    render(
+      <PanelProvider>
+        <AdminLayout>
+          <p>page content</p>
+        </AdminLayout>
+      </PanelProvider>,
+    );
+    expect(screen.queryByRole("complementary", { name: "Admin sections" })).not.toBeInTheDocument();
     expect(screen.getByText("page content")).toBeInTheDocument();
   });
 });

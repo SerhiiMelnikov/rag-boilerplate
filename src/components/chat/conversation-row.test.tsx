@@ -33,7 +33,7 @@ describe("ConversationRow", () => {
 
   it("renames on Enter, trimmed", async () => {
     const { onRename } = setup();
-    await userEvent.click(screen.getByRole("button", { name: "Rename Refund policy" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Rename Refund policy/ }));
     const field = screen.getByLabelText("Conversation title");
     await userEvent.clear(field);
     await userEvent.type(field, "  Returns  {Enter}");
@@ -44,7 +44,7 @@ describe("ConversationRow", () => {
     // Escape unmounts the input, which fires blur. Without a guard the blur handler
     // would commit the very edit the user just cancelled.
     const { onRename } = setup();
-    await userEvent.click(screen.getByRole("button", { name: "Rename Refund policy" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Rename Refund policy/ }));
     const field = screen.getByLabelText("Conversation title");
     await userEvent.clear(field);
     await userEvent.type(field, "Returns{Escape}");
@@ -54,7 +54,7 @@ describe("ConversationRow", () => {
 
   it("commits on blur", async () => {
     const { onRename } = setup();
-    await userEvent.click(screen.getByRole("button", { name: "Rename Refund policy" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Rename Refund policy/ }));
     const field = screen.getByLabelText("Conversation title");
     await userEvent.clear(field);
     await userEvent.type(field, "Returns");
@@ -64,15 +64,40 @@ describe("ConversationRow", () => {
 
   it("stays quiet when the title did not change", async () => {
     const { onRename } = setup();
-    await userEvent.click(screen.getByRole("button", { name: "Rename Refund policy" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Rename Refund policy/ }));
     await userEvent.type(screen.getByLabelText("Conversation title"), "{Enter}");
     expect(onRename).not.toHaveBeenCalled();
   });
 
   it("asks the parent to delete", async () => {
     const { onDelete } = setup();
-    await userEvent.click(screen.getByRole("button", { name: "Delete Refund policy" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Delete Refund policy/ }));
     expect(onDelete).toHaveBeenCalled();
+  });
+
+  it("disambiguates same-titled rows by when they started", () => {
+    // A title alone cannot tell two rows apart for a screen-reader user; the
+    // start date folded into the accessible name is what makes them distinct.
+    render(
+      <ul>
+        <ConversationRow
+          conversation={{ id: "a", title: "Refund policy", createdAt: new Date(0).toISOString() }}
+          active={false}
+          onSelect={vi.fn()}
+          onRename={vi.fn()}
+          onDelete={vi.fn()}
+        />
+        <ConversationRow
+          conversation={{ id: "b", title: "Refund policy", createdAt: new Date(864e5).toISOString() }}
+          active={false}
+          onSelect={vi.fn()}
+          onRename={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </ul>,
+    );
+    const [first, second] = screen.getAllByRole("button", { name: /^Rename Refund policy/ });
+    expect(first.getAttribute("aria-label")).not.toBe(second.getAttribute("aria-label"));
   });
 });
 

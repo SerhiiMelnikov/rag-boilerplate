@@ -179,12 +179,16 @@ export function FilesManager() {
           <label
             className={cn(
               "inline-flex cursor-pointer items-center gap-2 rounded border border-border-strong px-3 py-2 text-sm transition-colors hover:bg-surface-2",
-              FOCUS_RING,
+              // The input itself carries the ring, not this label: a `hidden` input
+              // is unfocusable and not in the tab order, so a ring drawn on it would
+              // never be visible to the keyboard user it exists for. `focus-within`
+              // makes the label draw the ring when its `sr-only` input takes focus.
+              "outline-none focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent",
             )}
           >
             {busy ? <Spinner label="Uploading" /> : <Upload className="h-4 w-4" />}
             {busy ? "Uploading..." : "Upload file"}
-            <input ref={fileInputRef} type="file" accept={ACCEPT} aria-label="Upload file" onChange={upload} className="hidden" disabled={busy} />
+            <input ref={fileInputRef} type="file" accept={ACCEPT} aria-label="Upload file" onChange={upload} className="sr-only" disabled={busy} />
           </label>
           {/* noValidate: bad input is reported by our own error state (from the
               server's validation), not the browser's native url-constraint popup —

@@ -28,6 +28,12 @@ export function Textarea({
     [autoGrow, onInput],
   );
 
+  // Field emits aria-invalid on the control it hands back, not a separate
+  // `invalid` prop — so a caller that only wires up Field's control (the common
+  // path) got correct ARIA and no visual state. aria-invalid is a source of
+  // truth alongside the explicit prop, not just the prop.
+  const isInvalid = invalid || props["aria-invalid"] === true;
+
   return (
     <textarea
       {...props}
@@ -37,7 +43,7 @@ export function Textarea({
         // A rows={1} textarea is shorter than a finger; the touch minimum is not
         // optional here just because the control is usually tall.
         "min-h-11 md:min-h-0",
-        invalid ? "border-danger" : "border-border-strong",
+        isInvalid ? "border-danger" : "border-border-strong",
         FOCUS_RING,
         "disabled:cursor-not-allowed disabled:opacity-60",
         className,

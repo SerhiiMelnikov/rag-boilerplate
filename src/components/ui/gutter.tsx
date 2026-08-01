@@ -37,8 +37,12 @@ export function Gutter({
         <span
           key={index}
           data-tick
-          style={{ top: `${4 + index * 12}px` }}
-          className="absolute -left-px h-[5px] w-[5px] rounded-full bg-accent"
+          // Proportional, not fixed pixels: tick i of n sits at (i+1)/(n+1) of
+          // whatever height the rule stretches to, so four ticks always fit —
+          // in a `size="sm"` table row exactly as much as a taller one — instead
+          // of spilling past a rule whose height `size` never actually set.
+          style={{ top: `${((index + 1) * 100) / (ticks + 1)}%` }}
+          className="absolute -left-px h-[5px] w-[5px] -translate-y-1/2 rounded-full bg-accent"
         />
       ))}
     </span>

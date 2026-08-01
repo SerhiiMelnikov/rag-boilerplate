@@ -39,4 +39,17 @@ describe("Field", () => {
     render(<Field label="Email" required>{(c) => <Input {...c} />}</Field>);
     expect(screen.getByLabelText(/Email/)).toBeRequired();
   });
+
+  // Field only ever hands the control aria-invalid, never a separate `invalid`
+  // prop — so Input/Textarea must treat aria-invalid as a source of truth for the
+  // visual state too, or the very first form wired up through Field gets correct
+  // ARIA and a control that never shows the red border.
+  it("gives the control the danger border when Field has an error", () => {
+    render(
+      <Field label="Email" error="Required">
+        {(c) => <Input {...c} />}
+      </Field>,
+    );
+    expect(screen.getByLabelText("Email").className).toContain("border-danger");
+  });
 });

@@ -17,7 +17,7 @@ export function Card({
 }) {
   return (
     <section className={cn("rounded-lg border border-border bg-surface p-4", className)}>
-      {(title || actions) && (
+      {(title || description || actions) && (
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             {title && <h2 className="text-md font-semibold text-ink">{title}</h2>}

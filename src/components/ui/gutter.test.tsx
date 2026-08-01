@@ -17,6 +17,17 @@ describe("Gutter", () => {
     expect(container.querySelectorAll("[data-tick]").length).toBeLessThanOrEqual(4);
   });
 
+  // The cap must still hold after switching to proportional placement: ticks are
+  // spaced by how many are actually drawn (4), not by the raw, uncapped source
+  // count (40) — otherwise a 40-source answer would bunch its four dots into the
+  // rule's first 10%.
+  it("spaces the capped ticks by the capped count, not the raw source count", () => {
+    const { container } = render(<Gutter sources={40} />);
+    const ticks = Array.from(container.querySelectorAll<HTMLElement>("[data-tick]"));
+    expect(ticks).toHaveLength(4);
+    expect(ticks.map((t) => t.style.top)).toEqual(["20%", "40%", "60%", "80%"]);
+  });
+
   it("goes dashed and tickless with no sources — the ungrounded answer", () => {
     const { container } = render(<Gutter sources={0} />);
     const rule = container.firstElementChild as HTMLElement;

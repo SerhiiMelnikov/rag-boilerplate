@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { and, eq, type SQL } from "drizzle-orm";
+import { and, eq, is, Column, type SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import {
   createConversation, listConversations, getConversationWithMessages,
@@ -195,23 +195,17 @@ describe("getConversationWithMessages", () => {
   });
 });
 
-// Compile a select field value to the exact SQL text Postgres would receive for it.
-// A plain column reference (e.g. `messages.rating`) isn't itself a compilable `sql``
-// fragment — it's just named via `.name` — so we read that directly; anything else
-// (a `sql`` template, however it names the column: interpolated object, raw
-// identifier text, or wrapped in a function call) is compiled through PgDialect,
-// the same public compiler drizzle itself uses to build the real query. This
-// replaced two earlier attempts (round 1: matching a literal `"sources"` key name;
-// round 2: walking `queryChunks` for object identity against `messages.sources`)
-// that each missed a different way to reach the column — a raw-SQL identifier
-// (`sql`sources``) doesn't appear as the Column object anywhere in its chunks.
-// Compiling to text instead of inspecting drizzle's internal representation is
-// exhaustive: whatever channel is used, the compiled SQL string is what Postgres
-// actually runs.
+// The message projection's allowlist: the exact key set the select may ask for.
+// Anything else — added, renamed, or reintroduced — fails the guard below.
+const EXPECTED_MESSAGE_FIELDS = ["id", "role", "content", "images", "rating", "sourceCount", "usage", "createdAt"];
+
+// Compile a select field to the SQL text Postgres would receive for it. A plain
+// drizzle `Column` isn't a compilable `sql`` fragment — it carries its identifier
+// in `.name` — so read that; anything else goes through `PgDialect`, the same
+// public compiler drizzle uses to build the real query.
 const dialect = new PgDialect();
 function fieldSql(value: unknown): string {
-  const columnName = (value as { name?: unknown } | null)?.name;
-  if (typeof columnName === "string") return columnName;
+  if (is(value, Column)) return value.name;
   return dialect.sqlToQuery(value as SQL).sql;
 }
 
@@ -239,20 +233,30 @@ describe("getConversationWithMessages projection", () => {
 
     const messageFields = captured[1];
     expect(messageFields).toBeDefined();
-    expect(Object.keys(messageFields)).toContain("sourceCount");
-    expect(Object.keys(messageFields)).not.toContain("sources");
-    // The keys-only checks above are not what carries this guard (see fieldSql's
-    // comment for why). Compile every field to the SQL text Postgres would
-    // actually receive and find whichever ones mention the sources column at all —
-    // as a bare identifier, a quoted "messages"."sources", or wrapped in a call —
-    // no matter what key they're filed under. Exactly one field may touch it: the
-    // length check is load-bearing, because without it a projection that stopped
-    // selecting the count entirely would pass a filter that matches nothing.
-    const touching = Object.entries(messageFields).filter(([, value]) => /\bsources\b/.test(fieldSql(value)));
-    expect(touching).toHaveLength(1);
-    const [key, value] = touching[0];
-    expect(key).toBe("sourceCount");
-    expect(fieldSql(value)).toContain("jsonb_array_length");
+
+    // This guard allowlists the projection's shape; it does not scan for forbidden
+    // spellings of the sources column. Three earlier versions did scan, and each was
+    // defeated by a channel it hadn't anticipated — a mislabelled key, a raw
+    // `sql`sources`` identifier, and finally `to_jsonb(messages)`, which reaches the
+    // whole row while naming no column at all. Asking "does this field mention
+    // sources?" can't be made complete, so instead the key set is pinned exactly and
+    // every key is pinned to a shape: an unrecognised field fails by default, however
+    // it is written. What this protects is the select's shape — the wire contract
+    // still depends on the handler not adding fields of its own downstream.
+    expect(Object.keys(messageFields).slice().sort()).toEqual(EXPECTED_MESSAGE_FIELDS.slice().sort());
+
+    // `sourceCount` must be the count, never the array: the wrapper is the whole point.
+    expect(fieldSql(messageFields.sourceCount)).toContain("jsonb_array_length");
+
+    for (const [key, value] of Object.entries(messageFields)) {
+      if (key === "sourceCount") continue;
+      // Every other allowed key must be a plain column. Row-level expressions —
+      // `to_jsonb(messages)` and anything like it — are `SQL`, not `Column`, so they
+      // cannot hide under an allowed name.
+      expect(is(value, Column), `${key} must be bound to a plain column`).toBe(true);
+      // ...and none of them may be the sources column under a different name.
+      expect((value as Column).name, `${key} must not be bound to the sources column`).not.toBe("sources");
+    }
   });
 
   it("returns the count on each message", async () => {

@@ -1,63 +1,58 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import React from "react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ChatPage } from "@/components/chat/chat-page";
-import { PanelProvider } from "@/components/shell/panel-context";
+import { ChatPage } from "./chat-page";
+import { WORKSPACE_CHANGED_EVENT } from "@/lib/workspaces/cookie";
 
-beforeEach(() => vi.restoreAllMocks());
-
-// ChatView performs its own fetches (history load, useChat's /api/chat); stub it out
-// so this test stays focused on ChatPage's own activeId/event wiring.
-vi.mock("@/components/chat/chat-view", () => ({
-  ChatView: ({ initialConversationId }: { initialConversationId: string }) => (
-    <div>Chat view for {initialConversationId}</div>
+// ChatView is exercised by its own suite; here it is a probe that reports the id it
+// was mounted with, so the page's session logic is what is under test.
+vi.mock("./chat-view", () => ({
+  ChatView: ({ initialConversationId }: { initialConversationId: string | null }) => (
+    <div data-testid="chat-view">{initialConversationId ?? "none"}</div>
   ),
 }));
 
-// ChatPage now renders MobileHeader (inside its Panel composition), which reads the
-// pathname to label the drawer trigger. Outside a router provider the real
-// usePathname() returns null, which activeGroup() dereferences and throws on —
-// every sibling test that renders a shell component mocks it the same way.
-vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
+vi.mock("@/components/shell/panel", () => ({
+  Panel: ({ children }: { children: React.ReactNode }) => <aside>{children}</aside>,
+}));
+vi.mock("@/components/shell/mobile-header", () => ({ MobileHeader: () => null }));
+vi.mock("@/components/shell/panel-context", () => ({ usePanel: () => ({ setOpen: () => {} }) }));
 
-function mockFetchList(list: unknown[]) {
-  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === "/api/conversations" && (!init || init.method === undefined)) {
-      return { ok: true, json: async () => ({ conversations: list }) };
-    }
-    return { ok: true, json: async () => ({}) };
-  }));
-}
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      new Response(
+        JSON.stringify({ conversations: [{ id: "c1", title: "Refund policy", createdAt: new Date().toISOString() }] }),
+        { status: 200 },
+      ),
+    ),
+  );
+});
+afterEach(() => vi.unstubAllGlobals());
 
 describe("ChatPage", () => {
-  it("shows the empty state before any chat is selected", async () => {
-    mockFetchList([]);
-    render(
-      <PanelProvider>
-        <ChatPage />
-      </PanelProvider>,
-    );
-    expect(await screen.findByText(/start a new chat/i)).toBeInTheDocument();
+  it("starts with a blank composer, not a conversation", async () => {
+    render(<ChatPage />);
+    expect(await screen.findByTestId("chat-view")).toHaveTextContent("none");
   });
 
-  it("resets the open chat to the empty state when the workspace changes", async () => {
-    mockFetchList([{ id: "c1", title: "First", createdAt: new Date(0).toISOString() }]);
-    render(
-      <PanelProvider>
-        <ChatPage />
-      </PanelProvider>,
-    );
-    await userEvent.click(await screen.findByText("First"));
-    expect(await screen.findByText("Chat view for c1")).toBeInTheDocument();
+  it("mounts the selected conversation", async () => {
+    render(<ChatPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Refund policy" }));
+    await waitFor(() => expect(screen.getByTestId("chat-view")).toHaveTextContent("c1"));
+  });
 
-    act(() => {
-      window.dispatchEvent(new Event("workspace-changed"));
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByText("Chat view for c1")).not.toBeInTheDocument();
-    });
-    expect(await screen.findByText(/start a new chat/i)).toBeInTheDocument();
+  it("ejects to a blank slate when the workspace changes", async () => {
+    // A conversation belongs to exactly one workspace, so keeping it open across a
+    // switch would show a chat that is no longer in the visible list.
+    render(<ChatPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Refund policy" }));
+    await waitFor(() => expect(screen.getByTestId("chat-view")).toHaveTextContent("c1"));
+    window.dispatchEvent(new Event(WORKSPACE_CHANGED_EVENT));
+    await waitFor(() => expect(screen.getByTestId("chat-view")).toHaveTextContent("none"));
   });
 });

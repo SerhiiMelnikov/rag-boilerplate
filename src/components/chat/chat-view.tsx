@@ -2,46 +2,50 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
-import { Send } from "lucide-react";
-import { Spinner } from "@/components/ui/spinner";
-import { MessageContent } from "./message-content";
-import { Rating } from "./rating";
-import { ImageResults } from "./image-results";
+import { EmptyState } from "@/components/ui/empty-state";
+import { MessageList } from "./message-list";
+import { Composer } from "./composer";
 import { humanizeChatError } from "./chat-error";
+import type { PersistedMessage } from "./types";
 
-interface PersistedMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  images: { imageId: string; caption: string }[];
-  rating: number | null;
-}
-
-export function ChatView({ conversationId, onTurnComplete }: { conversationId: string; onTurnComplete?: () => void }) {
+export function ChatView({
+  initialConversationId,
+  onStarted,
+  onTurnComplete,
+}: {
+  initialConversationId: string | null;
+  onStarted?: (id: string) => void;
+  onTurnComplete?: () => void;
+}) {
+  // A ref, not state: loadHistory is a useCallback the mount effect depends on, so
+  // making the id stateful would re-run that effect the moment a conversation is
+  // created mid-submit — clearing the messages of the answer streaming into it.
+  const conversationRef = useRef<string | null>(initialConversationId);
   const [persisted, setPersisted] = useState<PersistedMessage[]>([]);
   const { messages, input, handleInputChange, handleSubmit, status, setMessages, error } = useChat({
     api: "/api/chat",
-    body: { conversationId },
   });
   const prevStatus = useRef(status);
 
   const loadHistory = useCallback(async () => {
-    const res = await fetch(`/api/conversations/${conversationId}`);
+    const id = conversationRef.current;
+    if (!id) return;
+    const res = await fetch(`/api/conversations/${id}`);
     if (!res.ok) return;
     const data = await res.json();
-    const msgs = data.messages ?? [];
+    const msgs: PersistedMessage[] = data.messages ?? [];
     setPersisted(msgs);
-    setMessages(msgs.map((m: PersistedMessage) => ({ id: m.id, role: m.role, content: m.content })));
-  }, [conversationId, setMessages]);
+    setMessages(msgs.map((m) => ({ id: m.id, role: m.role, content: m.content })));
+  }, [setMessages]);
 
-  // Load existing history when the conversation changes.
+  // Load an existing conversation once. ChatPage remounts this component when the
+  // user picks a different one, so there is no second load to schedule here.
   useEffect(() => {
-    setPersisted([]);
     void loadHistory();
   }, [loadHistory]);
 
-  // When a streamed turn finishes (status returns to "ready"), refetch persisted data
-  // and notify parent so the sidebar title can refresh.
+  // A streamed turn finishing (status back to "ready") is when images, ratings and
+  // the source count exist in the database, so that is when history is refetched.
   useEffect(() => {
     if (prevStatus.current !== "ready" && status === "ready") {
       void loadHistory().then(() => onTurnComplete?.());
@@ -49,56 +53,48 @@ export function ChatView({ conversationId, onTurnComplete }: { conversationId: s
     prevStatus.current = status;
   }, [status, loadHistory, onTurnComplete]);
 
+  async function submit() {
+    let id = conversationRef.current;
+    if (!id) {
+      // The conversation is born from the first question rather than from a button,
+      // so an abandoned "New chat" never leaves an empty row behind.
+      const res = await fetch("/api/conversations", { method: "POST" });
+      if (!res.ok) return;
+      id = (await res.json()).id as string;
+      conversationRef.current = id;
+      onStarted?.(id);
+    }
+    handleSubmit(undefined, { body: { conversationId: id } });
+  }
+
   const persistedById = new Map(persisted.map((m) => [m.id, m]));
+  const stream = messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-        {messages.map((m) => {
-          const saved = persistedById.get(m.id);
-          return (
-            <div key={m.id} className={m.role === "user" ? "text-right" : ""}>
-              <div className={`inline-block max-w-[80ch] rounded-lg px-3 py-2 ${m.role === "user" ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-zinc-100 dark:bg-zinc-800"}`}>
-                {/* While the assistant message exists but no token has arrived yet
-                    (high time-to-first-token on the model), keep showing a
-                    generating indicator instead of an empty bubble. */}
-                {m.role === "assistant" && m.content.length === 0 ? (
-                  <span className="flex items-center gap-2 text-sm text-zinc-500">
-                    <Spinner label="Generating" /> Generating…
-                  </span>
-                ) : (
-                  <MessageContent content={m.content} />
-                )}
-                {m.role === "assistant" && saved && (
-                  <>
-                    <ImageResults images={saved.images ?? []} />
-                    <Rating messageId={saved.id} initial={saved.rating} />
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        {status === "submitted" && (
-          <div className="flex items-center gap-2 text-sm text-zinc-500">
-            <Spinner label="Thinking" /> Thinking...
-          </div>
-        )}
-      </div>
-      {error && (
-        <div role="alert" className="mx-4 mb-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-          {humanizeChatError(error)}
+    <>
+      {stream.length === 0 && status === "ready" && !error ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
+          <EmptyState
+            title="Ask your documents a question"
+            description="Type below. Answers cite how many passages they stand on."
+          />
         </div>
-      )}
-      <form onSubmit={handleSubmit} className="flex gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800">
-        <input
-          value={input} onChange={handleInputChange} placeholder="Ask something..." aria-label="Message"
-          className="flex-1 rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
+      ) : (
+        <MessageList
+          messages={stream}
+          persistedById={persistedById}
+          pending={status === "submitted"}
+          error={error ? humanizeChatError(error) : undefined}
         />
-        <button type="submit" aria-label="Send" disabled={status !== "ready"} className="flex items-center justify-center rounded-md bg-zinc-900 px-4 py-2 text-white transition-opacity disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900">
-          <Send className="h-4 w-4" />
-        </button>
-      </form>
-    </div>
+      )}
+      <Composer
+        value={input}
+        onChange={handleInputChange}
+        onSubmit={() => void submit()}
+        busy={status !== "ready"}
+      />
+    </>
   );
 }

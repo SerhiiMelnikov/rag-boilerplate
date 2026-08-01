@@ -21,6 +21,15 @@ export function ChatView({
   // making the id stateful would re-run that effect the moment a conversation is
   // created mid-submit — clearing the messages of the answer streaming into it.
   const conversationRef = useRef<string | null>(initialConversationId);
+  // The lock for submit()'s creation branch. It must be a ref, not just the
+  // `starting` state below: a second submit can land in the same tick as the
+  // first, before React has re-rendered the (now-disabled) Send button, and a
+  // state update is not visible to that second call — only a ref, read and
+  // written synchronously, is.
+  const creating = useRef(false);
+  // Re-render-only companion to `creating`: what makes the Send button (and any
+  // other affordance) reflect that creation is underway.
+  const [starting, setStarting] = useState(false);
   const [persisted, setPersisted] = useState<PersistedMessage[]>([]);
   const { messages, input, handleInputChange, handleSubmit, status, setMessages, error } = useChat({
     api: "/api/chat",
@@ -56,13 +65,24 @@ export function ChatView({
   async function submit() {
     let id = conversationRef.current;
     if (!id) {
-      // The conversation is born from the first question rather than from a button,
-      // so an abandoned "New chat" never leaves an empty row behind.
-      const res = await fetch("/api/conversations", { method: "POST" });
-      if (!res.ok) return;
-      id = (await res.json()).id as string;
-      conversationRef.current = id;
-      onStarted?.(id);
+      // The conversation is born from the first question rather than from a
+      // button. Creation happens once per conversation: a second submit that
+      // lands while the first is still creating one is ignored outright, not
+      // queued, so it can neither send into a conversation that doesn't exist
+      // yet nor create a duplicate.
+      if (creating.current) return;
+      creating.current = true;
+      setStarting(true);
+      try {
+        const res = await fetch("/api/conversations", { method: "POST" });
+        if (!res.ok) return;
+        id = (await res.json()).id as string;
+        conversationRef.current = id;
+        onStarted?.(id);
+      } finally {
+        creating.current = false;
+        setStarting(false);
+      }
     }
     handleSubmit(undefined, { body: { conversationId: id } });
   }
@@ -93,7 +113,7 @@ export function ChatView({
         value={input}
         onChange={handleInputChange}
         onSubmit={() => void submit()}
-        busy={status !== "ready"}
+        busy={status !== "ready" || starting}
       />
     </>
   );

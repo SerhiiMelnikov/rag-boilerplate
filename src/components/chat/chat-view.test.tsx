@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatView } from "./chat-view";
 
@@ -87,6 +87,64 @@ describe("ChatView", () => {
       expect(handleSubmitMock).toHaveBeenCalledWith(undefined, { body: { conversationId: "c1" } }),
     );
     expect(fetchSpy).not.toHaveBeenCalledWith("/api/conversations", { method: "POST" });
+  });
+
+  it("does not create a second conversation when two submits race the same creation request", async () => {
+    chatState.input = "why?";
+    const onStarted = vi.fn();
+    // A gate the test controls, not a canned response: every call to
+    // /api/conversations awaits it and only then builds its own Response, so two
+    // concurrent POSTs stay concurrent (and each other's fresh Response, not a
+    // shared one whose body can only be read once) until the test releases them.
+    let releaseCreate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseCreate = resolve;
+    });
+    const fetchSpy = stubFetch(async (url) => {
+      if (url === "/api/conversations") {
+        await gate;
+        return new Response(JSON.stringify({ id: "new-1" }), { status: 201 });
+      }
+      return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+    });
+
+    render(<ChatView initialConversationId={null} onStarted={onStarted} />);
+    const sendButton = screen.getByRole("button", { name: "Send" });
+
+    // Both clicks land while the first creation POST is still pending — the exact
+    // window in which only a synchronously-read-and-written ref, not a state flag
+    // that re-renders asynchronously, can stop a second conversation from being born.
+    fireEvent.click(sendButton);
+    fireEvent.click(sendButton);
+    releaseCreate();
+
+    await waitFor(() => expect(onStarted).toHaveBeenCalledTimes(1));
+    expect(fetchSpy.mock.calls.filter(([url]) => url === "/api/conversations")).toHaveLength(1);
+  });
+
+  it("disables Send while the creation request is in flight", async () => {
+    chatState.input = "why?";
+    let releaseCreate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseCreate = resolve;
+    });
+    stubFetch(async (url) => {
+      if (url === "/api/conversations") {
+        await gate;
+        return new Response(JSON.stringify({ id: "new-1" }), { status: 201 });
+      }
+      return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+    });
+
+    render(<ChatView initialConversationId={null} />);
+    const sendButton = screen.getByRole("button", { name: "Send" });
+    fireEvent.click(sendButton);
+
+    await waitFor(() => expect(sendButton).toBeDisabled());
+    releaseCreate();
+    // Let the finally block's setStarting(false) settle inside act() rather than
+    // leaving it to fire after the test has already moved on.
+    await waitFor(() => expect(sendButton).not.toBeDisabled());
   });
 
   it("invites the first question when there is nothing to show", async () => {

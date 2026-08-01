@@ -8,6 +8,8 @@ import { Composer } from "./composer";
 import { humanizeChatError } from "./chat-error";
 import type { PersistedMessage } from "./types";
 
+const CREATE_FAILED = "Could not start a new conversation. Please try again.";
+
 export function ChatView({
   initialConversationId,
   onStarted,
@@ -35,6 +37,9 @@ export function ChatView({
   // other affordance) reflect that creation is underway.
   const [starting, setStarting] = useState(false);
   const [persisted, setPersisted] = useState<PersistedMessage[]>([]);
+  // Failures that happen before useChat is ever involved, and which its own `error`
+  // therefore cannot report: creating the conversation the first message needs.
+  const [startError, setStartError] = useState<string | null>(null);
   const { messages, input, handleInputChange, handleSubmit, status, setMessages, error } = useChat({
     api: "/api/chat",
   });
@@ -67,6 +72,9 @@ export function ChatView({
   }, [status, loadHistory, onTurnComplete]);
 
   async function submit() {
+    // A new attempt is under way, so the last one's message no longer describes
+    // anything. useChat clears its own `error` the same way, inside triggerRequest.
+    setStartError(null);
     let id = conversationRef.current;
     if (!id) {
       // The conversation is born from the first question rather than from a
@@ -79,10 +87,20 @@ export function ChatView({
       setStarting(true);
       try {
         const res = await fetch("/api/conversations", { method: "POST" });
-        if (!res.ok) return;
+        if (!res.ok) {
+          setStartError(CREATE_FAILED);
+          return;
+        }
         id = (await res.json()).id as string;
         conversationRef.current = id;
         onStarted?.(id);
+      } catch {
+        // A dropped connection rejects the fetch. Caught here for two reasons: the
+        // failure has to reach the transcript like any other, and submit() is called
+        // from an event handler that cannot await it — anything thrown past this
+        // point is an unhandled rejection.
+        setStartError(CREATE_FAILED);
+        return;
       } finally {
         creating.current = false;
         setStarting(false);
@@ -91,6 +109,9 @@ export function ChatView({
     handleSubmit(undefined, { body: { conversationId: id } });
   }
 
+  // One error slot for the transcript, fed by both sources: a conversation that could
+  // not be created, and a turn that failed once one exists.
+  const shownError = startError ?? (error ? humanizeChatError(error) : undefined);
   const persistedById = new Map(persisted.map((m) => [m.id, m]));
   const stream = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
@@ -98,7 +119,7 @@ export function ChatView({
 
   return (
     <>
-      {stream.length === 0 && status === "ready" && !error ? (
+      {stream.length === 0 && status === "ready" && !shownError ? (
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
           <EmptyState
             title="Ask your documents a question"
@@ -110,7 +131,7 @@ export function ChatView({
           messages={stream}
           persistedById={persistedById}
           pending={status === "submitted"}
-          error={error ? humanizeChatError(error) : undefined}
+          error={shownError}
         />
       )}
       <Composer

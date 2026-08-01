@@ -169,6 +169,63 @@ describe("ChatView", () => {
     );
   });
 
+  it("says so when the conversation could not be created", async () => {
+    // Before: `if (!res.ok) return;` — the user pressed Send on their first message
+    // and absolutely nothing happened, on screen or in the transcript's error slot.
+    chatState.input = "why?";
+    stubFetch(async (url) =>
+      url === "/api/conversations"
+        ? new Response(JSON.stringify({ error: "nope" }), { status: 500 })
+        : new Response(JSON.stringify({ messages: [] }), { status: 200 }),
+    );
+
+    render(<ChatView initialConversationId={null} />);
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not start a new conversation.");
+    expect(handleSubmitMock).not.toHaveBeenCalled();
+  });
+
+  it("says so when the creation request throws", async () => {
+    // A dropped connection rejects the fetch. Unhandled, that was an unhandled
+    // rejection and a silent failure at the same time.
+    chatState.input = "why?";
+    stubFetch(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+
+    render(<ChatView initialConversationId={null} />);
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not start a new conversation.");
+    expect(handleSubmitMock).not.toHaveBeenCalled();
+  });
+
+  it("clears a creation failure when the next attempt starts", async () => {
+    chatState.input = "why?";
+    let failCreate = true;
+    stubFetch(async (url) => {
+      if (url === "/api/conversations") {
+        return failCreate
+          ? new Response(JSON.stringify({ error: "nope" }), { status: 500 })
+          : new Response(JSON.stringify({ id: "new-1" }), { status: 201 });
+      }
+      return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+    });
+
+    render(<ChatView initialConversationId={null} />);
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    failCreate = false;
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(handleSubmitMock).toHaveBeenCalledWith(undefined, { body: { conversationId: "new-1" } }),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("passes a raised focus signal through to the composer", async () => {
     // The seam between ChatPage's "New chat" and the box the user types in.
     stubFetch(async () => new Response(JSON.stringify({ messages: [] }), { status: 200 }));

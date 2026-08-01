@@ -3,6 +3,12 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Play, ChevronDown, ChevronRight } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { Card } from "@/components/ui/card";
+import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { Button, FOCUS_RING } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert } from "@/components/ui/alert";
+import { cn } from "@/lib/cn";
 import type { EvalAggregate, EvalSettingsSnapshot, RetrievedDoc } from "@/lib/eval/types";
 
 interface RunRow {
@@ -34,8 +40,6 @@ interface RunDetail {
   results: ResultRow[];
 }
 
-const buttonClass = "inline-flex items-center gap-1 rounded-md border border-zinc-300 px-2 py-1 text-sm transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800";
-
 // Same cadence as FilesManager's processing-status poll (src/components/admin/files-manager.tsx).
 const POLL_INTERVAL_MS = 2500;
 
@@ -45,9 +49,9 @@ function pct(n: number): string {
 
 function Tile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-200 p-2 dark:border-zinc-800">
-      <div className="text-lg font-semibold">{value}</div>
-      <div className="text-xs text-zinc-500">{label}</div>
+    <div className="rounded-lg border border-border p-2">
+      <div className="font-mono text-lg font-semibold tabular-nums">{value}</div>
+      <div className="text-xs text-ink-muted">{label}</div>
     </div>
   );
 }
@@ -81,10 +85,20 @@ function SettingsSnapshotSummary({ snapshot }: { snapshot: EvalSettingsSnapshot 
 
 function RunStatusBadge({ status, error }: { status: RunRow["status"]; error?: string | null }) {
   if (status === "pending" || status === "running") {
-    return <span className="flex items-center gap-1.5 text-zinc-500"><Spinner label={status} /> {status}</span>;
+    return (
+      <Badge tone="warning">
+        <Spinner label={status} className="h-3 w-3" /> {status}
+      </Badge>
+    );
   }
-  if (status === "error") return <span className="text-red-600" title={error ?? undefined}>error</span>;
-  return <span className="text-green-600 dark:text-green-500">done</span>;
+  if (status === "error") {
+    return (
+      <span title={error ?? undefined}>
+        <Badge tone="danger">error</Badge>
+      </span>
+    );
+  }
+  return <Badge tone="success">done</Badge>;
 }
 
 export function RunsPanel() {
@@ -155,122 +169,131 @@ export function RunsPanel() {
     await loadDetail(id);
   }
 
-  if (!runs) return <div className="p-6 text-zinc-500">Loading...</div>;
+  if (!runs) return <div className="p-6 text-ink-muted">Loading...</div>;
 
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <div className="mb-1 flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Evaluation runs</h2>
-        <button type="button" onClick={triggerRun} disabled={busy} className={buttonClass}>
-          <Play className="h-4 w-4" /> Run evaluation
-        </button>
-      </div>
-      <p className="mb-4 text-sm text-zinc-500">Trigger a run against the current settings and golden questions.</p>
+      <Card
+        title="Evaluation runs"
+        description="Trigger a run against the current settings and golden questions."
+        actions={
+          <Button variant="secondary" onClick={triggerRun} disabled={busy}>
+            <Play className="h-4 w-4" /> Run evaluation
+          </Button>
+        }
+      >
+        {error && <Alert tone="danger" className="mb-3">{error}</Alert>}
 
-      {error && <p role="alert" className="mb-3 text-sm text-red-600">{error}</p>}
+        {runs.length === 0 && <p className="text-sm text-ink-muted">No runs yet.</p>}
 
-      {runs.length === 0 && <p className="text-sm text-zinc-500">No runs yet.</p>}
-
-      <ul className="mb-6 flex flex-col gap-2">
-        {runs.map((r) => (
-          <li key={r.id}>
-            <button
-              type="button"
-              onClick={() => selectRun(r.id)}
-              className={`w-full rounded-md border p-3 text-left text-sm transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900 ${
-                selectedId === r.id ? "border-zinc-400 dark:border-zinc-600" : "border-zinc-200 dark:border-zinc-800"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-500">{new Date(r.createdAt).toLocaleString()}</span>
-                <RunStatusBadge status={r.status} error={r.error} />
-              </div>
-              {r.aggregate && (
-                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
-                  <Tile label="Recall" value={pct(r.aggregate.avgRecall)} />
-                  <Tile label="Precision" value={pct(r.aggregate.avgPrecision)} />
-                  <Tile label="MRR" value={pct(r.aggregate.avgMrr)} />
-                  <Tile label="Judge" value={`${r.aggregate.avgJudgeScore.toFixed(1)}/5`} />
-                  <Tile label="Pass rate" value={pct(r.aggregate.passRate)} />
+        <ul className="mb-6 flex flex-col gap-2">
+          {runs.map((r) => (
+            <li key={r.id}>
+              <button
+                type="button"
+                onClick={() => selectRun(r.id)}
+                className={cn(
+                  "w-full rounded border p-3 text-left text-sm transition-colors hover:bg-surface-2",
+                  selectedId === r.id ? "border-border-strong" : "border-border",
+                  FOCUS_RING,
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-ink-muted">{new Date(r.createdAt).toLocaleString()}</span>
+                  <RunStatusBadge status={r.status} error={r.error} />
                 </div>
-              )}
-            </button>
-          </li>
-        ))}
-      </ul>
+                {r.aggregate && (
+                  <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                    <Tile label="Recall" value={pct(r.aggregate.avgRecall)} />
+                    <Tile label="Precision" value={pct(r.aggregate.avgPrecision)} />
+                    <Tile label="MRR" value={pct(r.aggregate.avgMrr)} />
+                    <Tile label="Judge" value={`${r.aggregate.avgJudgeScore.toFixed(1)}/5`} />
+                    <Tile label="Pass rate" value={pct(r.aggregate.passRate)} />
+                  </div>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
 
-      {selectedId && (
-        <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-          <h3 className="mb-2 text-sm font-medium">Run detail</h3>
-          {!detail ? (
-            <p className="text-sm text-zinc-500">Loading...</p>
-          ) : (
-            <>
-              <SettingsSnapshotSummary snapshot={detail.run.settingsSnapshot} />
-              {detail.results.length === 0 ? (
-                <p className="text-sm text-zinc-500">No results yet.</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead className="text-left text-xs text-zinc-500">
-                    <tr>
-                      <th className="py-1">Question</th>
-                      <th>Hit</th>
-                      <th>Recall</th>
-                      <th>Precision</th>
-                      <th>MRR</th>
-                      <th>Judge</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.results.map((res) => {
-                      const isOpen = openResultId === res.id;
-                      return (
-                        <Fragment key={res.id}>
-                          <tr className="border-t border-zinc-200 dark:border-zinc-800">
-                            <td className="py-1">
-                              <button
-                                type="button"
-                                onClick={() => setOpenResultId(isOpen ? null : res.id)}
-                                className="flex items-center gap-1 text-left"
-                              >
-                                {isOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
-                                {res.questionText}
-                              </button>
-                            </td>
-                            <td>{res.hit ? "✓" : "✗"}</td>
-                            <td>{pct(res.recall)}</td>
-                            <td>{pct(res.precision)}</td>
-                            <td>{pct(res.mrr)}</td>
-                            <td>
-                              {res.judgeScore === null ? "—" : `${res.judgeScore}/5`}
-                              {/* Rationale stays visible without expanding the disclosure so an
-                                  admin can scan why a question scored low at a glance. */}
-                              {res.judgeRationale && (
-                                <div className="mt-0.5 text-xs font-normal text-zinc-500">{res.judgeRationale}</div>
-                              )}
-                            </td>
-                          </tr>
-                          {isOpen && (
-                            <tr className="border-t border-zinc-100 dark:border-zinc-900">
-                              <td colSpan={6} className="pb-2 text-xs text-zinc-500">
-                                {res.generatedAnswer && <p><span className="font-medium">Answer: </span>{res.generatedAnswer}</p>}
-                                {res.retrieved.length > 0 && (
-                                  <p className="mt-1">Sources: {res.retrieved.map((d) => d.filename).join(", ")}</p>
+        {selectedId && (
+          <div className="rounded border border-border p-3">
+            <h3 className="mb-2 text-sm font-medium">Run detail</h3>
+            {!detail ? (
+              <p className="text-sm text-ink-muted">Loading...</p>
+            ) : (
+              <>
+                <SettingsSnapshotSummary snapshot={detail.run.settingsSnapshot} />
+                {detail.results.length === 0 ? (
+                  <p className="text-sm text-ink-muted">No results yet.</p>
+                ) : (
+                  <Table>
+                    <THead>
+                      <TR>
+                        <TH>Question</TH>
+                        <TH>Hit</TH>
+                        <TH numeric>Recall</TH>
+                        <TH numeric>Precision</TH>
+                        <TH numeric>MRR</TH>
+                        <TH numeric>Judge</TH>
+                      </TR>
+                    </THead>
+                    <TBody>
+                      {detail.results.map((res) => {
+                        const isOpen = openResultId === res.id;
+                        return (
+                          <Fragment key={res.id}>
+                            <TR>
+                              <TD>
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenResultId(isOpen ? null : res.id)}
+                                  className={cn("flex items-center gap-1 text-left", FOCUS_RING)}
+                                >
+                                  {isOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                                  {res.questionText}
+                                </button>
+                              </TD>
+                              <TD>{res.hit ? "✓" : "✗"}</TD>
+                              <TD numeric>{pct(res.recall)}</TD>
+                              <TD numeric>{pct(res.precision)}</TD>
+                              <TD numeric>{pct(res.mrr)}</TD>
+                              <TD numeric>
+                                {res.judgeScore === null ? "—" : `${res.judgeScore}/5`}
+                                {/* Rationale stays visible without expanding the disclosure so an
+                                    admin can scan why a question scored low at a glance. Reset
+                                    back to the prose face here: this TD's numeric styling
+                                    (right-aligned, mono, tabular figures) would otherwise be
+                                    inherited by this sentence too. */}
+                                {res.judgeRationale && (
+                                  <div className="mt-0.5 text-left font-sans text-xs font-normal normal-nums text-ink-subtle">
+                                    {res.judgeRationale}
+                                  </div>
                                 )}
-                                {res.error && <p className="mt-1 text-red-600">{res.error}</p>}
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </>
-          )}
-        </div>
-      )}
+                              </TD>
+                            </TR>
+                            {isOpen && (
+                              <TR>
+                                <TD colSpan={6} className="text-xs text-ink-muted">
+                                  {res.generatedAnswer && <p><span className="font-medium">Answer: </span>{res.generatedAnswer}</p>}
+                                  {res.retrieved.length > 0 && (
+                                    <p className="mt-1">Sources: {res.retrieved.map((d) => d.filename).join(", ")}</p>
+                                  )}
+                                  {res.error && <p className="mt-1 text-danger">{res.error}</p>}
+                                </TD>
+                              </TR>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </TBody>
+                  </Table>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

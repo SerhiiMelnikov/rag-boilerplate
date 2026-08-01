@@ -231,30 +231,34 @@ describe("getConversationWithMessages projection", () => {
 
     await getConversationWithMessages("u1", "c1", db);
 
+    // Two selects run here: the ownership check, then the message projection. Counting
+    // them means a third select added to this function has to be accounted for, rather
+    // than sitting outside a guard that only ever reads captured[1].
+    expect(captured).toHaveLength(2);
+
     const messageFields = captured[1];
     expect(messageFields).toBeDefined();
 
-    // This guard allowlists the projection's shape; it does not scan for forbidden
-    // spellings of the sources column. Three earlier versions did scan, and each was
-    // defeated by a channel it hadn't anticipated — a mislabelled key, a raw
-    // `sql`sources`` identifier, and finally `to_jsonb(messages)`, which reaches the
-    // whole row while naming no column at all. Asking "does this field mention
-    // sources?" can't be made complete, so instead the key set is pinned exactly and
-    // every key is pinned to a shape: an unrecognised field fails by default, however
-    // it is written. What this protects is the select's shape — the wire contract
-    // still depends on the handler not adding fields of its own downstream.
+    // This guard allowlists the projection rather than scanning each field for a
+    // forbidden spelling of the sources column. Three earlier versions scanned, and
+    // each was defeated by a channel it had not anticipated: a mislabelled key, a raw
+    // `sql`sources`` identifier, then `to_jsonb(messages)`, which reaches the whole row
+    // without naming a column. So instead of asking what a field mentions, this pins
+    // three things — the key set, compared exactly; the SQL `sourceCount` compiles to,
+    // compared exactly; and the shape of the other seven, each a plain Column that is
+    // not `sources`.
     expect(Object.keys(messageFields).slice().sort()).toEqual(EXPECTED_MESSAGE_FIELDS.slice().sort());
 
-    // `sourceCount` must be the count, never the array: the wrapper is the whole point.
-    expect(fieldSql(messageFields.sourceCount)).toContain("jsonb_array_length");
+    // The exact compiled text, not a substring: an expression can contain the
+    // jsonb_array_length call and still carry the raw array along beside it, e.g.
+    // json_build_object('count', jsonb_array_length(...), 'items', ...).
+    expect(fieldSql(messageFields.sourceCount)).toBe('jsonb_array_length("messages"."sources")');
 
     for (const [key, value] of Object.entries(messageFields)) {
       if (key === "sourceCount") continue;
-      // Every other allowed key must be a plain column. Row-level expressions —
-      // `to_jsonb(messages)` and anything like it — are `SQL`, not `Column`, so they
-      // cannot hide under an allowed name.
+      // Row-level expressions — `to_jsonb(messages)` and the like — are `SQL`, not
+      // `Column`, so requiring a Column here rejects them.
       expect(is(value, Column), `${key} must be bound to a plain column`).toBe(true);
-      // ...and none of them may be the sources column under a different name.
       expect((value as Column).name, `${key} must not be bound to the sources column`).not.toBe("sources");
     }
   });

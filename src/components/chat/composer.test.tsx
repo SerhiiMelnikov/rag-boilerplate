@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Composer } from "./composer";
 
@@ -56,6 +56,17 @@ describe("Composer", () => {
   it("is disabled while a turn is in flight", () => {
     render(<Composer value="hello" onChange={() => {}} onSubmit={() => {}} busy />);
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
+  it("leaves Enter alone while a turn is in flight, so it still makes a newline", () => {
+    // Taking the key and then declining to send is the worst of both: no message goes
+    // out and no paragraph is started either.
+    const onSubmit = vi.fn();
+    render(<Composer value="hello" onChange={() => {}} onSubmit={onSubmit} busy />);
+    // fireEvent returns false when the handler called preventDefault.
+    const notPrevented = fireEvent.keyDown(screen.getByLabelText("Message"), { key: "Enter" });
+    expect(notPrevented).toBe(true);
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("collapses the grown box once the value is cleared", () => {

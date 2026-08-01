@@ -61,8 +61,12 @@ export function Composer({
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Enter" || event.shiftKey || !finePointer) return;
+    // Take the key only when it is going to send. While a turn is in flight — or on
+    // an empty box — swallowing Enter without sending would leave the user unable to
+    // start a new paragraph and with no feedback for the keystroke either.
+    if (!canSend) return;
     event.preventDefault();
-    send();
+    onSubmit();
   }
 
   return (

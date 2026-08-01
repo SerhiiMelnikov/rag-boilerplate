@@ -1,15 +1,18 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from "@headlessui/react";
 import { cn } from "@/lib/cn";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { useMediaQuery } from "@/components/ui/use-media-query";
 import { activeGroup } from "./nav-config";
 import { usePanel } from "./panel-context";
 
 const DESKTOP = "(min-width: 1024px)";
 
+// One set of children, one mount: a static column from lg up, an overlay drawer
+// below it, never both.
+//
 // A media query, not `hidden lg:flex`. CSS only hides the aside — React still
 // mounts it and runs its children's effects, so below lg the panel's content
 // existed twice the moment the drawer opened: one invisible copy and one visible.
@@ -20,23 +23,10 @@ const DESKTOP = "(min-width: 1024px)";
 // corrects and unmounts it. That transient mount is a known residual: closing it
 // needs the panel's content to stop fetching on mount, which is where the
 // conversation list is headed in the next package.
-function useIsDesktop(): boolean {
-  return useSyncExternalStore(
-    (onChange) => {
-      const query = window.matchMedia(DESKTOP);
-      query.addEventListener("change", onChange);
-      return () => query.removeEventListener("change", onChange);
-    },
-    () => window.matchMedia(DESKTOP).matches,
-    () => true,
-  );
-}
-
-// One set of children, one mount: a static column from lg up, an overlay drawer
-// below it, never both.
 export function Panel({ label, children }: { label: string; children: React.ReactNode }) {
   const { open, setOpen } = usePanel();
-  const isDesktop = useIsDesktop();
+  // Desktop-first server snapshot, matching the layout's CSS.
+  const isDesktop = useMediaQuery(DESKTOP, true);
   const pathname = usePathname();
   // The switcher belongs to the panel itself, not to whatever sub-nav a section
   // happens to render inside it: the chat page has no sub-nav at all, and it is

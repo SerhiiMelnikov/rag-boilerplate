@@ -1,4 +1,4 @@
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, sql } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { conversations, messages } from "@/lib/db/schema";
 
@@ -20,6 +20,10 @@ export interface MessageRecord {
   content: string;
   images: ImageResultRef[];
   rating: number | null;
+  // The only provenance that crosses the wire. The 0.4.1 P1 fix keeps
+  // documentId/filename/chunkId server-side; a count says an answer is grounded
+  // without saying in what.
+  sourceCount: number;
   usage: { promptTokens: number; completionTokens: number } | null;
   createdAt: Date;
 }
@@ -54,6 +58,8 @@ export async function getConversationWithMessages(userId: string, id: string, da
       content: messages.content,
       images: messages.images,
       rating: messages.rating,
+      // Counted in Postgres, so the source rows never enter this process at all.
+      sourceCount: sql<number>`jsonb_array_length(${messages.sources})`,
       usage: messages.usage,
       createdAt: messages.createdAt,
     })
@@ -114,6 +120,18 @@ export async function setConversationTitleIfDefault(userId: string, id: string, 
     .update(conversations)
     .set({ title })
     .where(and(eq(conversations.id, id), eq(conversations.userId, userId), eq(conversations.title, "New conversation")));
+}
+
+// Rename a conversation the caller owns. Note the interaction with
+// setConversationTitleIfDefault above: that one only writes while the title is
+// still "New conversation", so a user's rename survives every later message.
+export async function renameConversation(userId: string, id: string, title: string, database = defaultDb) {
+  const updated = await database
+    .update(conversations)
+    .set({ title })
+    .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+    .returning({ id: conversations.id });
+  return updated.length > 0;
 }
 
 // Update a message's rating only if it belongs to a conversation owned by userId.

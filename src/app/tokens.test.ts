@@ -54,6 +54,11 @@ const PAIRS: [string, string, number][] = [
   ["danger", "surface", 4.5],
   ["danger", "danger-soft", 4.5],
   ["danger-ink", "danger", 4.5],
+  // Syntax highlighting draws these on a `surface-2` code block (globals.css .hljs-*).
+  ["accent", "surface-2", 4.5],
+  ["success", "surface-2", 4.5],
+  ["warning", "surface-2", 4.5],
+  ["danger", "surface-2", 4.5],
 ];
 
 describe.each([

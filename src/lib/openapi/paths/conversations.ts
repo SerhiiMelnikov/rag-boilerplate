@@ -82,3 +82,40 @@ registry.registerPath({
     },
   },
 });
+
+// PATCH /api/conversations/{id} (src/app/api/conversations/[id]/route.ts): renames a
+// conversation the caller owns. 404 covers both "no such id" and "not yours", so
+// ownership cannot be probed. The response echoes the *trimmed* title actually stored.
+registry.registerPath({
+  method: "patch",
+  path: "/api/conversations/{id}",
+  tags: ["Conversations"],
+  summary: "Rename a conversation",
+  security: [{ sessionCookie: [] }],
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({ title: z.string().min(1).max(200) }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "The stored title",
+      content: {
+        "application/json": {
+          schema: z.object({ id: z.string().uuid(), title: z.string() }),
+        },
+      },
+    },
+    400: { description: "Invalid title", content: { "application/json": { schema: ErrorResponse } } },
+    401: { description: "Not signed in", content: { "application/json": { schema: ErrorResponse } } },
+    404: {
+      description: "Not found or not owned by the caller",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+  },
+});

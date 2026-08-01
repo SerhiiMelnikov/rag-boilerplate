@@ -2,14 +2,17 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { FOCUS_RING } from "@/components/ui/button";
+import type { ImageRef } from "./types";
 
-interface ImageResultRef {
-  imageId: string;
-  caption: string;
-}
-
+// Deliberately not on the design tokens: this chrome sits on a dimmed backdrop over
+// a photograph, where "ink" would be near-white in the dark theme and the controls
+// would vanish. Black and white here are the viewer's own, theme-independent palette.
+// The icons are 20-24px; the hit area is not, until a pointer exists — the same
+// min-h-11-until-md rule the rest of the chat controls follow.
 const iconButton =
-  "rounded-full bg-black/50 p-2 text-white transition-colors hover:bg-black/70";
+  "flex items-center justify-center rounded-full bg-black/50 p-2 text-white transition-colors hover:bg-black/70 " +
+  `min-h-11 min-w-11 md:min-h-0 md:min-w-0 ${FOCUS_RING}`;
 
 // Full-size viewer for the images returned in a chat answer. Opening a result used to
 // navigate away to the raw serving route in a new tab, which dropped the user out of
@@ -20,7 +23,7 @@ export function ImageLightbox({
   startIndex,
   onClose,
 }: {
-  images: ImageResultRef[];
+  images: ImageRef[];
   startIndex: number;
   onClose: () => void;
 }) {

@@ -1,16 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { FOCUS_RING } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
+import type { ImageRef } from "./types";
 import { ImageLightbox } from "./image-lightbox";
-
-interface ImageResultRef {
-  imageId: string;
-  caption: string;
-}
 
 // Retrieved images as thumbnails. Clicking one opens it in the lightbox on this page,
 // keeping the user in the conversation, and lets them page through the other results.
-export function ImageResults({ images }: { images: ImageResultRef[] }) {
+export function ImageResults({ images }: { images: ImageRef[] }) {
   const [openAt, setOpenAt] = useState<number | null>(null);
   if (!images.length) return null;
   const single = images.length === 1;
@@ -24,7 +22,7 @@ export function ImageResults({ images }: { images: ImageResultRef[] }) {
             type="button"
             aria-label={img.caption ? `Open image: ${img.caption}` : "Open image"}
             onClick={() => setOpenAt(i)}
-            className="rounded transition-opacity hover:opacity-80"
+            className={cn("rounded transition-opacity hover:opacity-80", FOCUS_RING)}
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- served bytes, not a static asset */}
             <img

@@ -18,7 +18,7 @@ import { oauthStart } from "@/api/auth/oauth/start/handler";
 import { registerUser } from "@/api/register/handler";
 import { handleChat } from "@/api/chat/handler";
 import { listConversationsResponse, createConversationResponse } from "@/api/conversations/handler";
-import { getConversationResponse, deleteConversationResponse } from "@/api/conversations/[id]/handler";
+import { getConversationResponse, deleteConversationResponse, patchConversationResponse } from "@/api/conversations/[id]/handler";
 import { rateMessageResponse } from "@/api/messages/[id]/rating/handler";
 import { listVisibleWorkspacesResponse } from "@/api/workspaces/handler";
 import { serveImage } from "@/api/images/[id]/handler";
@@ -121,6 +121,7 @@ export function createServer(): Hono {
   app.post("/api/conversations", (c) => createConversationResponse(c.req.raw));
   app.get("/api/conversations/:id", (c) => getConversationResponse(c.req.raw, c.req.param("id")));
   app.delete("/api/conversations/:id", (c) => deleteConversationResponse(c.req.raw, c.req.param("id")));
+  app.patch("/api/conversations/:id", (c) => patchConversationResponse(c.req.raw, c.req.param("id")));
 
   // --- Messages ---------------------------------------------------------------
   app.post("/api/messages/:id/rating", (c) => rateMessageResponse(c.req.param("id"), c.req.raw));

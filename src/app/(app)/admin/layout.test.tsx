@@ -37,6 +37,10 @@ describe("AdminLayout", () => {
       </PanelProvider>,
     );
     expect(screen.queryByRole("complementary", { name: "Admin sections" })).not.toBeInTheDocument();
+    // MobileHeader is the panel's trigger, not a title bar: with no panel to open,
+    // it must not render either, or the button taps dead and leaves `open` set for
+    // whatever route mounts a Panel next.
+    expect(screen.queryByRole("button", { name: /^Open/ })).not.toBeInTheDocument();
     expect(screen.getByText("page content")).toBeInTheDocument();
   });
 });

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PanelProvider } from "@/components/shell/panel-context";
 import { Panel } from "@/components/shell/panel";
@@ -108,5 +108,31 @@ describe("Panel workspace switcher", () => {
     render(<Harness />);
     await userEvent.click(screen.getByRole("button", { name: "Open Settings" }));
     expect(screen.queryByTestId("switcher")).not.toBeInTheDocument();
+  });
+
+  // Every other case in this file stubs matchMedia to not-desktop, so they only
+  // ever exercise the drawer branch — the static aside, the one every desktop
+  // user actually sees, was never rendered by this suite at all. Override the
+  // stub locally, the same way the file's own beforeEach does it, rather than
+  // touching what the other cases get by default.
+  it("shows the workspace switcher in the static aside on desktop", () => {
+    pathname.current = "/"; // chat: workspaceScoped
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      })),
+    );
+    render(<Harness />);
+    const aside = screen.getByRole("complementary", { name: "Conversations" });
+    expect(within(aside).getByTestId("switcher")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

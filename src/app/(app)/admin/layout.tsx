@@ -28,7 +28,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </Panel>
       )}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <MobileHeader />
+        {/* MobileHeader is the panel's drawer trigger, not a title bar: with no Panel
+            mounted, tapping it would flip aria-expanded on nothing to open, and leave
+            `open` set for whatever route mounts a Panel next. Keep this gated on the
+            same condition as Panel above — never one without the other. */}
+        {hasPanelContent && <MobileHeader />}
         {children}
       </div>
     </>

@@ -26,16 +26,21 @@ export function MessageList({
   const endRef = useRef<HTMLDivElement>(null);
   const turnCount = messages.length;
 
-  // Follow a new turn, not every token: scrolling on content would fight anyone
-  // reading back through the conversation while an answer streams in.
+  // Follow a new turn or a new error, not every token: scrolling on content would
+  // fight anyone reading back through the conversation while an answer streams in.
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [turnCount]);
+  }, [turnCount, error]);
 
-  // useChat appends the assistant message before its first token arrives. Rendering
-  // that would put an empty answer block on screen, so it becomes the pending state.
-  const visible = messages.filter((m) => !(m.role === "assistant" && m.content.length === 0));
-  const waiting = pending || visible.length < messages.length;
+  // useChat appends the assistant message before its first token arrives, so an
+  // empty *trailing* assistant message is a stream that has not started. An empty
+  // message anywhere else is a persisted answer that genuinely came back empty:
+  // render it, because deleting a turn from someone's history is worse than showing
+  // an empty one, and never mistake it for something still in flight.
+  const last = messages.at(-1);
+  const streaming = last?.role === "assistant" && last.content.length === 0;
+  const visible = streaming ? messages.slice(0, -1) : messages;
+  const waiting = pending || streaming;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">

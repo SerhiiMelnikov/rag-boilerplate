@@ -46,13 +46,22 @@ export function ConversationList({
   }, []);
 
   useEffect(() => {
+    // A reload triggered from here (mount, or a refreshKey bump such as a
+    // completed chat turn) has nothing to do with any earlier failed
+    // rename/delete, so that failure's message no longer describes anything
+    // on screen. Deliberately not done inside `load()` itself: rename() sets
+    // the error and then calls `load()` directly, and clearing it there would
+    // wipe the message before the user ever saw it.
+    setError(null);
     void load();
   }, [load, refreshKey]);
 
   useEffect(() => {
     const onSwitch = () => {
-      // A filter typed for one workspace has no meaning in another.
+      // A filter typed for one workspace has no meaning in another, and
+      // neither does an error raised while browsing it.
       setQuery("");
+      setError(null);
       void load();
     };
     window.addEventListener(WORKSPACE_CHANGED_EVENT, onSwitch);

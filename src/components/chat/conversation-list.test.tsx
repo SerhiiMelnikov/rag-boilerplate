@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ConversationList } from "./conversation-list";
+import { WORKSPACE_CHANGED_EVENT } from "@/lib/workspaces/cookie";
 
 const iso = (daysAgo: number) => {
   const d = new Date();
@@ -171,6 +172,54 @@ describe("ConversationList", () => {
     for (let i = 0; i < 7; i++) {
       expect(screen.getByText(`Conversation ${i}`)).toBeInTheDocument();
     }
+  });
+
+  it("clears a stale error once the list reloads for an unrelated reason", async () => {
+    // The alert must not outlive the failure it describes: a refreshKey bump
+    // (e.g. a completed chat turn in chat-page.tsx) reloads the list for a
+    // reason that has nothing to do with the earlier failed delete.
+    const spy = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") return new Response(null, { status: 500 });
+      return new Response(
+        JSON.stringify({ conversations: [{ id: "c1", title: "Refund policy", createdAt: iso(0) }] }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", spy);
+    const { rerender } = render(
+      <ConversationList activeId={null} onSelect={noop} onNew={noop} onDeleted={noop} refreshKey={0} />,
+    );
+    await screen.findByText("Refund policy");
+    await userEvent.click(screen.getByRole("button", { name: /^Delete Refund policy/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete", hidden: true }));
+    await screen.findByText("Could not delete that conversation.");
+
+    rerender(
+      <ConversationList activeId={null} onSelect={noop} onNew={noop} onDeleted={noop} refreshKey={1} />,
+    );
+    await waitFor(() => expect(screen.queryByText("Could not delete that conversation.")).toBeNull());
+  });
+
+  it("clears a stale error on a workspace switch", async () => {
+    // The banner from workspace A must not persist while browsing workspace B.
+    const spy = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") return new Response(null, { status: 500 });
+      return new Response(
+        JSON.stringify({ conversations: [{ id: "c1", title: "Refund policy", createdAt: iso(0) }] }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", spy);
+    render(<ConversationList activeId={null} onSelect={noop} onNew={noop} onDeleted={noop} />);
+    await screen.findByText("Refund policy");
+    await userEvent.click(screen.getByRole("button", { name: /^Delete Refund policy/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete", hidden: true }));
+    await screen.findByText("Could not delete that conversation.");
+
+    act(() => {
+      window.dispatchEvent(new Event(WORKSPACE_CHANGED_EVENT));
+    });
+    await waitFor(() => expect(screen.queryByText("Could not delete that conversation.")).toBeNull());
   });
 
   it("asks the parent for a blank slate rather than creating a row", async () => {

@@ -17,12 +17,16 @@ export function Select({ value, onChange, options, ariaLabel, className = "", co
   options: string[];
   ariaLabel: string;
   className?: string;
-  // Compact drops the touch minimum and tightens the metrics: the only compact
-  // instance is the workspace switcher at the top of the panel, where it sits in a
-  // fixed-height row.
+  // Compact tightens the metrics, not the touch minimum: the only compact instance
+  // is the workspace switcher at the top of the panel, which is the primary
+  // workspace control inside the mobile drawer and needs the same 44px target
+  // every other touch control gets. It only shrinks below that on desktop, same
+  // as the default size.
   compact?: boolean;
 }) {
-  const buttonSize = compact ? "h-[30px] px-2 text-sm" : "h-[34px] min-h-11 px-3 text-md md:min-h-0";
+  const buttonSize = compact
+    ? "h-[30px] min-h-11 px-2 text-sm md:min-h-0"
+    : "h-[34px] min-h-11 px-3 text-md md:min-h-0";
   return (
     <Listbox value={value} onChange={onChange} as="div" className={`relative ${className}`}>
       <ListboxButton

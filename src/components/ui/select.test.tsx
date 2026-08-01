@@ -24,11 +24,14 @@ describe("Select", () => {
     expect(screen.getByLabelText("Chat provider").className).toContain("min-h-11"); // roomy: the touch minimum applies
   });
 
-  // Compact drops the touch minimum and tightens the metrics for the workspace
-  // switcher, which sits in a fixed-height row; admin forms keep the roomier default.
-  it("compact drops the touch minimum and tightens the metrics", () => {
+  // Compact tightens the metrics for the workspace switcher, but it is the
+  // primary workspace control inside the mobile drawer, so it keeps the same
+  // touch minimum as the roomier default and only drops it on desktop.
+  it("compact tightens the metrics but keeps the touch minimum", () => {
     render(<Select compact ariaLabel="Active workspace" value="General" onChange={() => {}} options={["General"]} />);
     const cls = screen.getByLabelText("Active workspace").className;
-    expect(cls).not.toContain("min-h-11"); // compact: fixed-height row, no touch minimum
+    expect(cls).toContain("min-h-11");
+    expect(cls).toContain("md:min-h-0");
+    expect(cls).toContain("h-[30px]"); // still tighter than the default h-[34px]
   });
 });

@@ -1,8 +1,11 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from "@headlessui/react";
 import { cn } from "@/lib/cn";
+import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { activeGroup } from "./nav-config";
 import { usePanel } from "./panel-context";
 
 const DESKTOP = "(min-width: 1024px)";
@@ -34,10 +37,20 @@ function useIsDesktop(): boolean {
 export function Panel({ label, children }: { label: string; children: React.ReactNode }) {
   const { open, setOpen } = usePanel();
   const isDesktop = useIsDesktop();
+  const pathname = usePathname();
+  // The switcher belongs to the panel itself, not to whatever sub-nav a section
+  // happens to render inside it: the chat page has no sub-nav at all, and it is
+  // still a workspace-scoped route that needs the control.
+  const showSwitcher = activeGroup(pathname)?.workspaceScoped === true;
 
   if (isDesktop) {
     return (
       <aside aria-label={label} className="flex w-panel flex-none flex-col border-r border-border bg-bg">
+        {showSwitcher && (
+          <div className="border-b border-border p-2">
+            <WorkspaceSwitcher />
+          </div>
+        )}
         {children}
       </aside>
     );
@@ -59,6 +72,11 @@ export function Panel({ label, children }: { label: string; children: React.Reac
             )}
           >
             <DialogTitle className="sr-only">{label}</DialogTitle>
+            {showSwitcher && (
+              <div className="border-b border-border p-2">
+                <WorkspaceSwitcher />
+              </div>
+            )}
             {children}
           </DialogPanel>
         </div>

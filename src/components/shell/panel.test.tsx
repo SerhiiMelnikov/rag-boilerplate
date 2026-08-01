@@ -7,11 +7,18 @@ import { PanelProvider } from "@/components/shell/panel-context";
 import { Panel } from "@/components/shell/panel";
 import { MobileHeader } from "@/components/shell/mobile-header";
 
-// MobileHeader reads the pathname to label its trigger. Outside a router provider
-// the real usePathname() returns null, which activeGroup() — typed for a string —
-// dereferences and throws on. Every sibling test in this directory mocks it the
-// same way.
-vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
+// MobileHeader and Panel both read the pathname — MobileHeader to label its
+// trigger, Panel to decide whether the active group is workspace-scoped. Outside a
+// router provider the real usePathname() returns null, which activeGroup() —
+// typed for a string — dereferences and throws on. Every sibling test in this
+// directory mocks it the same way. Defaults to "/" (chat, workspace-scoped), which
+// keeps the pre-existing "Open Conversations" tests below unaffected.
+const pathname = vi.hoisted(() => ({ current: "/" }));
+vi.mock("next/navigation", () => ({ usePathname: () => pathname.current }));
+
+vi.mock("@/components/workspace-switcher", () => ({
+  WorkspaceSwitcher: () => <div data-testid="switcher" />,
+}));
 
 // Panel picks the aside or the drawer based on window.matchMedia. The shared jsdom
 // stub in vitest.setup.ts defaults to desktop (matches: true) so tests elsewhere see
@@ -19,6 +26,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 // This file exercises the drawer specifically, so it overrides the stub per-file to
 // report not-desktop, rather than changing what every other test gets by default.
 beforeEach(() => {
+  pathname.current = "/";
   vi.stubGlobal(
     "matchMedia",
     vi.fn((query: string) => ({
@@ -79,5 +87,26 @@ describe("Panel drawer", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(trigger).toHaveFocus();
     });
+  });
+});
+
+describe("Panel workspace switcher", () => {
+  // The switcher used to live inside PanelSubnav, which only the admin layout
+  // rendered — so a plain user, who never sees an admin route, had no way to
+  // switch workspace at all. It now lives in Panel itself, which every
+  // workspace-scoped route mounts, chat included. Headless UI's Dialog does not
+  // render its content until open, so these open the drawer first.
+  it("shows the workspace switcher when the active group is workspace-scoped", async () => {
+    pathname.current = "/"; // chat: workspaceScoped
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "Open Conversations" }));
+    expect(screen.getByTestId("switcher")).toBeInTheDocument();
+  });
+
+  it("hides the switcher where it would be a lie — nothing under Settings is scoped", async () => {
+    pathname.current = "/admin/settings";
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+    expect(screen.queryByTestId("switcher")).not.toBeInTheDocument();
   });
 });

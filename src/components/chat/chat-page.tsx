@@ -23,6 +23,14 @@ export function ChatPage() {
   const { setOpen: setPanelOpen } = usePanel();
 
   function open(id: string | null) {
+    // Re-selecting the row that is already open must not remount ChatView. The
+    // previous composition keyed on activeId, so this was naturally a no-op; a
+    // counter that always increments turns "tap the highlighted row to dismiss the
+    // drawer" into "discard the answer currently streaming".
+    if (id === activeId) {
+      setPanelOpen(false);
+      return;
+    }
     setSession((s) => ({ key: s.key + 1, id }));
     setActiveId(id);
     setPanelOpen(false);

@@ -49,5 +49,6 @@ describe("ChatMessage", () => {
     const { container } = render(<ChatMessage role="assistant" content="partial" isFirst={false} />);
     expect(container.querySelector("[data-grounded]")).toBeNull();
     expect(container.textContent).not.toContain("Answered without");
+    expect(container.querySelector('span[aria-hidden="true"]')).toBeTruthy();
   });
 });

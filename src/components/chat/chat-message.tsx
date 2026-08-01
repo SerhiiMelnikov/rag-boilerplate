@@ -7,6 +7,20 @@ import { ImageResults } from "./image-results";
 import { AnswerMeta, provenance } from "./answer-meta";
 import type { PersistedMessage } from "./types";
 
+// The gutter's footprint without the gutter's claim. An answer that has not
+// finished arriving is neither grounded nor ungrounded, so `<Gutter sources={0} />`
+// — which renders the dashed "ungrounded" rule — would state something false for as
+// long as the answer takes. Matching Gutter's box classes keeps the column width
+// steady so the prose does not shift when the real rule replaces this one.
+export function GutterPlaceholder() {
+  return (
+    <span
+      aria-hidden="true"
+      className="relative inline-block w-[3px] min-h-6 flex-none self-stretch rounded-sm bg-border"
+    />
+  );
+}
+
 // One turn of the transcript. A question is a heading; an answer is prose with the
 // provenance gutter beside it. No bubbles — the design reads as a document, and the
 // gutter is a vertical rule, which needs an edge to sit on.
@@ -39,9 +53,7 @@ export function ChatMessage({
       {saved ? (
         <Gutter sources={ticks} />
       ) : (
-        // A neutral rule while the answer streams: it holds the column steady so the
-        // text does not jump when the gutter arrives, and it asserts nothing.
-        <span aria-hidden="true" className="w-[3px] flex-none self-stretch rounded-sm bg-border" />
+        <GutterPlaceholder />
       )}
       <div className="min-w-0 flex-1">
         <MessageContent content={content} />

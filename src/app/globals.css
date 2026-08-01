@@ -73,7 +73,12 @@ body {
    hardcoded colours, and github-dark was imported unconditionally — a dark block on
    warm paper in the light theme. These rules read the tokens, so highlighting
    follows whichever theme is active. Comments use ink-muted, not ink-subtle:
-   ink-subtle on surface-2 is 3.97:1, below AA for body-sized text. */
+   ink-subtle on surface-2 is 3.97:1, below AA for body-sized text. This covers a
+   chosen subset of highlight.js's scope vocabulary, not all of it: identifiers
+   (`variable`, `template-variable`, `params`) deliberately fall back to the base
+   ink colour, because this palette has four hues on purpose and spending one on
+   identifiers would flatten the distinction that actually carries meaning —
+   keyword versus string versus number. */
 .hljs {
   color: rgb(var(--c-ink));
   background: transparent;
@@ -85,6 +90,11 @@ body {
 }
 .hljs-keyword,
 .hljs-selector-tag,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-selector-pseudo,
+.hljs-selector-attr,
+.hljs-attribute,
 .hljs-literal,
 .hljs-type,
 .hljs-built_in {

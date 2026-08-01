@@ -113,7 +113,12 @@ export function ChatView({
         value={input}
         onChange={handleInputChange}
         onSubmit={() => void submit()}
-        busy={status !== "ready" || starting}
+        // Only the two in-flight states, never "error": useChat parks status at
+        // "error" until the *next* request starts, so treating anything that is not
+        // "ready" as busy left Send disabled forever after one failed turn. Retrying
+        // from here is safe — triggerRequest clears the error and moves to
+        // "submitted" itself.
+        busy={status === "submitted" || status === "streaming" || starting}
       />
     </>
   );

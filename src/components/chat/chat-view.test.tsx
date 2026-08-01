@@ -147,6 +147,28 @@ describe("ChatView", () => {
     await waitFor(() => expect(sendButton).not.toBeDisabled());
   });
 
+  it("lets the user retry after a failed turn", async () => {
+    // @ai-sdk/react 1.2.12 parks `status` at "error" after a failed request and only
+    // leaves it when the next request starts (triggerRequest sets "submitted" and
+    // clears `error` itself). Gating the composer on `status !== "ready"` therefore
+    // disabled Send for good: the user read "try again" and could not.
+    stubFetch(async () => new Response(JSON.stringify({ messages: [] }), { status: 200 }));
+    chatState.input = "why?";
+    chatState.status = "error";
+    chatState.error = new Error(
+      JSON.stringify({ error: "You have reached the message limit. Try again in 42 seconds." }),
+    );
+
+    render(<ChatView initialConversationId="c1" />);
+    const send = await screen.findByRole("button", { name: "Send" });
+    expect(send).not.toBeDisabled();
+
+    await userEvent.click(send);
+    await waitFor(() =>
+      expect(handleSubmitMock).toHaveBeenCalledWith(undefined, { body: { conversationId: "c1" } }),
+    );
+  });
+
   it("invites the first question when there is nothing to show", async () => {
     stubFetch(async () => new Response(JSON.stringify({ messages: [] }), { status: 200 }));
     render(<ChatView initialConversationId={null} />);

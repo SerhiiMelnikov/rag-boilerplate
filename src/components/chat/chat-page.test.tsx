@@ -10,7 +10,9 @@ beforeEach(() => vi.restoreAllMocks());
 // ChatView performs its own fetches (history load, useChat's /api/chat); stub it out
 // so this test stays focused on ChatPage's own activeId/event wiring.
 vi.mock("@/components/chat/chat-view", () => ({
-  ChatView: ({ conversationId }: { conversationId: string }) => <div>Chat view for {conversationId}</div>,
+  ChatView: ({ initialConversationId }: { initialConversationId: string }) => (
+    <div>Chat view for {initialConversationId}</div>
+  ),
 }));
 
 // ChatPage now renders MobileHeader (inside its Panel composition), which reads the

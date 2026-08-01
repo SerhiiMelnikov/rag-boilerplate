@@ -50,7 +50,7 @@ export function ChatPage() {
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <MobileHeader />
         {activeId ? (
-          <ChatView key={activeId} conversationId={activeId} onTurnComplete={() => setRefreshKey((k) => k + 1)} />
+          <ChatView key={activeId} initialConversationId={activeId} onTurnComplete={() => setRefreshKey((k) => k + 1)} />
         ) : (
           <EmptyState
             title="Ask your documents a question"

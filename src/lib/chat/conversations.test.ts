@@ -172,7 +172,9 @@ describe("getConversationWithMessages", () => {
   });
   it("returns conversation with messages when owned", async () => {
     const conv = { id: "c1", title: "Hello" };
-    const msg = { id: "m1", role: "assistant", content: "hi", sources: [], rating: null, usage: null, createdAt: new Date(0) };
+    // No `sources` field: the real projection has never selected the raw jsonb
+    // column since the 0.4.1 P1 fix, only `sourceCount` (see the describe block below).
+    const msg = { id: "m1", role: "assistant", content: "hi", rating: null, usage: null, createdAt: new Date(0) };
     let callCount = 0;
     const db = {
       select: () => ({
@@ -191,6 +193,23 @@ describe("getConversationWithMessages", () => {
     expect(result).toEqual({ id: "c1", title: "Hello", messages: [msg] });
   });
 });
+
+// Extract the literal SQL text from a drizzle `sql`...`` expression, ignoring the
+// bound column(s) interpolated into it. Drizzle's sql tag builds a `queryChunks`
+// array; string-literal pieces are wrapped in an object exposing `value: string[]`,
+// while a column chunk (e.g. `messages.sources`) does not have that shape. We
+// deliberately avoid JSON.stringify here: a drizzle Column chunk holds a circular
+// reference back to its table and would throw.
+function sqlLiteralText(expr: unknown): string {
+  const chunks = (expr as { queryChunks?: unknown[] } | undefined)?.queryChunks ?? [];
+  return chunks
+    .filter((chunk): chunk is { value: string[] } => {
+      const value = (chunk as { value?: unknown } | null)?.value;
+      return Array.isArray(value) && value.every((v) => typeof v === "string");
+    })
+    .map((chunk) => chunk.value.join(""))
+    .join("");
+}
 
 describe("getConversationWithMessages projection", () => {
   it("selects a source count and never the source rows themselves", async () => {
@@ -218,6 +237,12 @@ describe("getConversationWithMessages projection", () => {
     expect(messageFields).toBeDefined();
     expect(Object.keys(messageFields)).toContain("sourceCount");
     expect(Object.keys(messageFields)).not.toContain("sources");
+    // Constrain the expression bound to the key, not just the key's name: a
+    // mislabeled raw-column select (`sourceCount: sql`${messages.sources}``) would
+    // keep both assertions above green while reopening the 0.4.1 leak, because it
+    // still returns a `sourceCount` key and never a `sources` key. Only the SQL
+    // text itself distinguishes "count" from "the whole array".
+    expect(sqlLiteralText(messageFields.sourceCount)).toContain("jsonb_array_length");
   });
 
   it("returns the count on each message", async () => {

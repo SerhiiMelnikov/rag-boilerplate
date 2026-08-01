@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { ArrowUp } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -11,12 +12,16 @@ export function Composer({
   onChange,
   onSubmit,
   busy,
+  focusSignal = 0,
   placeholder = "Ask your documents a question…",
 }: {
   value: string;
   onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
   onSubmit: () => void;
   busy: boolean;
+  // Bumped by whoever wants the box focused ("New chat"). A counter rather than a
+  // boolean, so a second request focuses again.
+  focusSignal?: number;
   placeholder?: string;
 }) {
   // Enter sends only where a real keyboard and a pointer exist. On a touch keyboard
@@ -24,6 +29,19 @@ export function Composer({
   // hold — so taking it would make this a single-line box in practice.
   const finePointer = useMediaQuery("(pointer: fine)", true);
   const canSend = value.trim().length > 0 && !busy;
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Seeded at 0 — the value nobody has asked for anything at — rather than at the
+  // incoming prop: "New chat" while a conversation is open clears the selection,
+  // which remounts this component, and a request that arrives with the remount has
+  // to land on the new box too. An ordinary page load carries 0 and so is silent;
+  // stealing focus there would open the keyboard on a phone.
+  const focused = useRef(0);
+
+  useEffect(() => {
+    if (focusSignal === focused.current) return;
+    focused.current = focusSignal;
+    textareaRef.current?.focus();
+  }, [focusSignal]);
 
   function send() {
     if (canSend) onSubmit();
@@ -46,6 +64,7 @@ export function Composer({
       {/* Same measure as the transcript, so the field lines up under the answers. */}
       <div className="mx-auto flex w-full max-w-[68ch] items-end gap-2 px-4 py-3 md:px-6">
         <Textarea
+          ref={textareaRef}
           autoGrow
           rows={1}
           value={value}

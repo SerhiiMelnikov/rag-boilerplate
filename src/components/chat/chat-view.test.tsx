@@ -169,6 +169,18 @@ describe("ChatView", () => {
     );
   });
 
+  it("passes a raised focus signal through to the composer", async () => {
+    // The seam between ChatPage's "New chat" and the box the user types in.
+    stubFetch(async () => new Response(JSON.stringify({ messages: [] }), { status: 200 }));
+    const { rerender } = render(<ChatView initialConversationId="c1" focusSignal={0} />);
+    const box = await screen.findByLabelText("Message");
+    expect(box).not.toHaveFocus();
+
+    rerender(<ChatView initialConversationId="c1" focusSignal={1} />);
+
+    expect(box).toHaveFocus();
+  });
+
   it("invites the first question when there is nothing to show", async () => {
     stubFetch(async () => new Response(JSON.stringify({ messages: [] }), { status: 200 }));
     render(<ChatView initialConversationId={null} />);

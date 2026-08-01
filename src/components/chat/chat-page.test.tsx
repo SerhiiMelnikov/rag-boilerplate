@@ -31,7 +31,13 @@ const { getMountCount, resetMountCount, bumpMountCount, setPanelOpenMock } = vi.
 // ChatPage's session/activeId split, and a mock that only echoed props back could
 // not tell a remount from a rerender.
 vi.mock("./chat-view", () => ({
-  ChatView: ({ initialConversationId }: { initialConversationId: string | null }) => {
+  ChatView: ({
+    initialConversationId,
+    focusSignal,
+  }: {
+    initialConversationId: string | null;
+    focusSignal?: number;
+  }) => {
     const [count, setCount] = React.useState(() => getMountCount());
     React.useEffect(() => {
       bumpMountCount();
@@ -40,6 +46,7 @@ vi.mock("./chat-view", () => ({
     return (
       <div data-testid="chat-view">
         <span data-testid="mount-count">{count}</span>
+        <span data-testid="focus-signal">{focusSignal ?? "none"}</span>
         {initialConversationId ?? "none"}
       </div>
     );
@@ -106,6 +113,45 @@ describe("ChatPage", () => {
 
     expect(screen.getByTestId("mount-count").textContent).toBe(mountCountBefore);
     expect(setPanelOpenMock).toHaveBeenLastCalledWith(false);
+  });
+
+  it("asks the composer for focus when New chat is pressed with nothing selected", async () => {
+    // The whole point of the finding: with nothing selected, open(null) hits its
+    // id === activeId early return, so without a signal of its own the button does
+    // literally nothing.
+    render(<ChatPage />);
+    await screen.findByTestId("chat-view");
+    const mountCountBefore = screen.getByTestId("mount-count").textContent;
+
+    await userEvent.click(screen.getByRole("button", { name: /New chat/ }));
+
+    await waitFor(() => expect(screen.getByTestId("focus-signal")).toHaveTextContent("1"));
+    // Nothing remounted: a remount here would discard a draft already typed.
+    expect(screen.getByTestId("mount-count").textContent).toBe(mountCountBefore);
+  });
+
+  it("carries the focus signal across the remount that clearing a conversation causes", async () => {
+    render(<ChatPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Refund policy" }));
+    await waitFor(() => expect(screen.getByTestId("chat-view")).toHaveTextContent("c1"));
+
+    await userEvent.click(screen.getByRole("button", { name: /New chat/ }));
+
+    await waitFor(() => expect(screen.getByTestId("chat-view")).toHaveTextContent("none"));
+    expect(Number(screen.getByTestId("focus-signal").textContent)).toBeGreaterThan(0);
+  });
+
+  it("leaves the composer alone when a conversation is opened", async () => {
+    // Focusing a textarea opens the keyboard on a phone; picking a conversation out
+    // of the drawer must not do that, not even after an earlier New chat.
+    render(<ChatPage />);
+    await userEvent.click(screen.getByRole("button", { name: /New chat/ }));
+    await waitFor(() => expect(screen.getByTestId("focus-signal")).toHaveTextContent("1"));
+
+    await userEvent.click(await screen.findByRole("button", { name: "Refund policy" }));
+
+    await waitFor(() => expect(screen.getByTestId("chat-view")).toHaveTextContent("c1"));
+    expect(screen.getByTestId("focus-signal")).toHaveTextContent("0");
   });
 
   it("ejects to a blank slate when the active conversation is deleted", async () => {

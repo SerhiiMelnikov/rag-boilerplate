@@ -10,7 +10,14 @@ export function Textarea({
   className,
   onInput,
   ...props
-}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean; autoGrow?: boolean }) {
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  invalid?: boolean;
+  autoGrow?: boolean;
+  // Type-only: React 19 hands `ref` to a function component as an ordinary prop, so
+  // the spread below has always reached the DOM node — the props type just never
+  // admitted it. Behaviour, autoGrow included, is unchanged for every caller.
+  ref?: React.Ref<HTMLTextAreaElement>;
+}) {
   // React 19 types onInput on a textarea as InputEventHandler, not
   // FormEventHandler: the event carries `data`, and annotating it as a FormEvent
   // fails to typecheck when forwarded to the caller's own onInput.

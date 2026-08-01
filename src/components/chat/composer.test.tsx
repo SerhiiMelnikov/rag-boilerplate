@@ -57,4 +57,34 @@ describe("Composer", () => {
     render(<Composer value="hello" onChange={() => {}} onSubmit={() => {}} busy />);
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   });
+
+  describe("focus signal", () => {
+    const props = { value: "", onChange: () => {}, onSubmit: () => {}, busy: false };
+
+    it("does not steal focus on an ordinary page load", () => {
+      render(<Composer {...props} />);
+      expect(screen.getByLabelText("Message")).not.toHaveFocus();
+    });
+
+    it("focuses the box when the signal is raised", () => {
+      const { rerender } = render(<Composer {...props} focusSignal={0} />);
+      expect(screen.getByLabelText("Message")).not.toHaveFocus();
+      rerender(<Composer {...props} focusSignal={1} />);
+      expect(screen.getByLabelText("Message")).toHaveFocus();
+    });
+
+    it("focuses again on a second bump", () => {
+      const { rerender } = render(<Composer {...props} focusSignal={1} />);
+      screen.getByLabelText("Message").blur();
+      rerender(<Composer {...props} focusSignal={2} />);
+      expect(screen.getByLabelText("Message")).toHaveFocus();
+    });
+
+    it("focuses when it mounts under a signal that was already raised", () => {
+      // "New chat" while a conversation is open clears the selection, and clearing it
+      // remounts the view — so the composer taking the bump is a brand new one.
+      render(<Composer {...props} focusSignal={3} />);
+      expect(screen.getByLabelText("Message")).toHaveFocus();
+    });
+  });
 });

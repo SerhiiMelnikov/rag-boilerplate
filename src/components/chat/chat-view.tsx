@@ -12,10 +12,14 @@ export function ChatView({
   initialConversationId,
   onStarted,
   onTurnComplete,
+  focusSignal,
 }: {
   initialConversationId: string | null;
   onStarted?: (id: string) => void;
   onTurnComplete?: () => void;
+  // Passed straight through to the composer: "New chat" bumps it to put the cursor
+  // in the box. Nothing here reads it.
+  focusSignal?: number;
 }) {
   // A ref, not state: loadHistory is a useCallback the mount effect depends on, so
   // making the id stateful would re-run that effect the moment a conversation is
@@ -113,6 +117,7 @@ export function ChatView({
         value={input}
         onChange={handleInputChange}
         onSubmit={() => void submit()}
+        focusSignal={focusSignal}
         // Only the two in-flight states, never "error": useChat parks status at
         // "error" until the *next* request starts, so treating anything that is not
         // "ready" as busy left Send disabled forever after one failed turn. Retrying

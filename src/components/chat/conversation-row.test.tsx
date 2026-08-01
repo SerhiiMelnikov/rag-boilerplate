@@ -40,6 +40,19 @@ describe("ConversationRow", () => {
     expect(onRename).toHaveBeenCalledWith("Returns");
   });
 
+  it("commits once on Enter", async () => {
+    // Smoke test of the wiring, not proof of the settled guard: a real browser's
+    // unmount-blur would call commit() a second time after Enter, and jsdom cannot
+    // fire that second blur, so this passes whether or not the guard is present. The
+    // guard's necessity isn't provable here for the same reason the Escape case isn't.
+    const { onRename } = setup();
+    await userEvent.click(screen.getByRole("button", { name: /^Rename Refund policy/ }));
+    const field = screen.getByLabelText("Conversation title");
+    await userEvent.clear(field);
+    await userEvent.type(field, "Returns{Enter}");
+    expect(onRename).toHaveBeenCalledTimes(1);
+  });
+
   it("abandons the edit on Escape", async () => {
     // Escape unmounts the input, which fires blur. Without a guard the blur handler
     // would commit the very edit the user just cancelled.

@@ -41,6 +41,10 @@ export function ConversationRow({
   // Escape unmounts the input, and unmounting fires blur. Without this flag the blur
   // handler would commit the edit the user just abandoned.
   const cancelled = useRef(false);
+  // Whether this edit session has already produced its one commit. Enter calls
+  // commit() directly and then unmount-blur calls it again with the same draft; this
+  // flag makes the second call a no-op instead of a duplicate onRename.
+  const settled = useRef(false);
   const selectButtonRef = useRef<HTMLButtonElement>(null);
   // Set only by the Enter and Escape keydown paths, never by blur (tab-away and
   // click-away already move focus somewhere the user chose; refocusing here would
@@ -60,10 +64,13 @@ export function ConversationRow({
   function startEditing() {
     setDraft(conversation.title);
     cancelled.current = false;
+    settled.current = false;
     setEditing(true);
   }
 
   function commit() {
+    if (settled.current) return;
+    settled.current = true;
     const title = renameIntent(draft, conversation.title, cancelled.current);
     setEditing(false);
     if (title) onRename(title);
@@ -98,8 +105,11 @@ export function ConversationRow({
   }
 
   // A title alone cannot disambiguate two rows that share it; the row's other known
-  // fact — when the conversation started — makes the accessible name unique.
-  const started = new Date(conversation.createdAt).toLocaleDateString();
+  // fact — when the conversation started — makes the accessible name unique. Not
+  // localized: this string disambiguates, it isn't read as prose, and a locale-formatted
+  // date would differ between server and client rendering and trigger a hydration
+  // mismatch.
+  const started = new Date(conversation.createdAt).toISOString().slice(0, 10);
 
   return (
     <li

@@ -3,7 +3,7 @@ import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ConversationRow } from "./conversation-row";
+import { ConversationRow, renameIntent } from "./conversation-row";
 
 const conversation = { id: "c1", title: "Refund policy", createdAt: new Date(0).toISOString() };
 
@@ -73,5 +73,34 @@ describe("ConversationRow", () => {
     const { onDelete } = setup();
     await userEvent.click(screen.getByRole("button", { name: "Delete Refund policy" }));
     expect(onDelete).toHaveBeenCalled();
+  });
+});
+
+// jsdom does not fire blur when a focused element is removed from the DOM, so the
+// Escape-then-unmount path above cannot prove the cancelled guard matters. The rule
+// it guards is pure, so it is exercised directly here instead.
+describe("renameIntent", () => {
+  it("cancelled with a changed draft yields no rename", () => {
+    expect(renameIntent("Returns", "Refund policy", true)).toBeNull();
+  });
+
+  it("cancelled with an unchanged draft yields no rename", () => {
+    expect(renameIntent("Refund policy", "Refund policy", true)).toBeNull();
+  });
+
+  it("not cancelled, changed and untrimmed, yields the trimmed title", () => {
+    expect(renameIntent("  Returns  ", "Refund policy", false)).toBe("Returns");
+  });
+
+  it("not cancelled, unchanged, yields no rename", () => {
+    expect(renameIntent("Refund policy", "Refund policy", false)).toBeNull();
+  });
+
+  it("not cancelled, whitespace-only, yields no rename", () => {
+    expect(renameIntent("   ", "Refund policy", false)).toBeNull();
+  });
+
+  it("not cancelled, empty, yields no rename", () => {
+    expect(renameIntent("", "Refund policy", false)).toBeNull();
   });
 });

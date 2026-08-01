@@ -12,6 +12,17 @@ export interface ConversationRowData {
   createdAt: string;
 }
 
+// Whether a finished edit is a rename, and what to rename to. Pure, because the
+// wiring around it cannot be tested here: jsdom does not fire blur when a focused
+// element is removed, so the Escape-then-unmount path this guards is only
+// observable in a real browser. The rule itself is testable, so it is tested.
+export function renameIntent(draft: string, current: string, cancelled: boolean): string | null {
+  if (cancelled) return null;
+  const title = draft.trim();
+  if (!title || title === current) return null;
+  return title;
+}
+
 export function ConversationRow({
   conversation,
   active,
@@ -38,12 +49,9 @@ export function ConversationRow({
   }
 
   function commit() {
-    if (cancelled.current) return;
-    const title = draft.trim();
+    const title = renameIntent(draft, conversation.title, cancelled.current);
     setEditing(false);
-    // An unchanged or emptied title is not a rename; the server would reject the
-    // second case anyway, and the first is a wasted round trip.
-    if (title && title !== conversation.title) onRename(title);
+    if (title) onRename(title);
   }
 
   if (editing) {
@@ -61,6 +69,8 @@ export function ConversationRow({
               commit();
             }
             if (event.key === "Escape") {
+              // jsdom cannot exercise this path (no blur on unmount); the abandon
+              // rule itself is covered by renameIntent's own tests below.
               cancelled.current = true;
               setEditing(false);
             }

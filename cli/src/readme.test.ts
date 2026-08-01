@@ -132,6 +132,15 @@ describe("generateReadme navigation", () => {
     expect(readme).not.toContain("left rail");
     expect(readme).not.toContain("bottom bar");
   });
+
+  // The rail — and with it the account menu holding Sign out — is hidden below
+  // md; on a phone Sign out lives in the bottom bar's More sheet instead. This
+  // generator is the only documentation a scaffolded project gets, so a phone
+  // user has to be told where to find it.
+  it("tells a phone user that Sign out lives behind More", () => {
+    const readme = generateReadme(opts({ appKind: "full" }));
+    expect(readme).toMatch(/Sign out.*behind.*More/);
+  });
 });
 
 describe("generateReadme deploying", () => {
@@ -277,8 +286,8 @@ describe("generateReadme secrets", () => {
   // The repo's own README.md is in build-template.ts's EXCLUDE list, so it never
   // reaches a generated project — this generator is the only documentation those
   // users get. Without these, the eval runner ships invisible.
-  // The Admin section enumerates the profile menu's entries, so a new admin page
-  // that never gets listed here is invisible to everyone who scaffolds a project —
+  // The Admin section enumerates the rail's entries, so a new admin page that
+  // never gets listed here is invisible to everyone who scaffolds a project —
   // the repo's own README is in build-template.ts's EXCLUDE and never ships.
   it("lists the usage dashboard among the admin pages", () => {
     const readme = generateReadme(opts({ appKind: "full" }));

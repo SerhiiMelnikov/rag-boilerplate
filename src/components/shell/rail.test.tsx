@@ -52,8 +52,8 @@ describe("Rail", () => {
     expect(screen.getByText("anna@acme.com")).toBeInTheDocument();
 
     // Headless UI stamps role="menuitem" onto whatever a MenuItem wraps, which
-    // overrides an anchor's native link role. Every row is therefore queried as a
-    // menuitem — the convention app-bar.test.tsx already established.
+    // overrides an anchor's native link role. Every row is therefore queried as
+    // a menuitem.
     expect(screen.getByRole("menuitem", { name: /Account settings/ })).toHaveAttribute("href", "/account");
 
     // This one is a regression guard for a real defect found while building the

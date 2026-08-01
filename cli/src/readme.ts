@@ -231,7 +231,8 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push(
     "Everything lives in the left rail: **Chat**, **Knowledge** (files and workspaces), " +
       "**Insights** (feedback, token usage, evaluation), **Settings** (models and provider keys) " +
-      "and **People** (users, super-admin only). The rail collapses to a bottom bar on a phone.",
+      "and **People** (users, super-admin only). The rail collapses to a bottom bar on a phone, " +
+      "and **Sign out** lives behind **More** there.",
     "",
   );
   lines.push("### Knowledge", "");

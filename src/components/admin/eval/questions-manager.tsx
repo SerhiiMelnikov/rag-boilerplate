@@ -121,6 +121,7 @@ export function QuestionsManager() {
   return (
     <>
       <PageHeader
+        className="mx-auto max-w-3xl"
         title="Evaluation"
         description="Golden questions and the runs scored against them."
       />

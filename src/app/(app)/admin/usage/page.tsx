@@ -16,6 +16,7 @@ export default async function UsagePage() {
   return (
     <>
       <PageHeader
+        className="mx-auto max-w-4xl"
         title="Token usage"
         description="Prompt and completion tokens over the last 30 days. Tokens, not money — the model that produced them was never recorded."
       />

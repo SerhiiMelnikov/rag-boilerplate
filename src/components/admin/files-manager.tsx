@@ -171,6 +171,7 @@ export function FilesManager() {
   return (
     <>
       <PageHeader
+        className="mx-auto max-w-3xl"
         title="Files"
         description="Everything the assistant can read. A file answers questions only in the workspaces it belongs to."
       />

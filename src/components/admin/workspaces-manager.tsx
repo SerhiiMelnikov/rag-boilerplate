@@ -103,6 +103,7 @@ export function WorkspacesManager() {
   return (
     <>
       <PageHeader
+        className="mx-auto max-w-3xl"
         title="Workspaces"
         description="Groups of files. Each conversation asks questions of exactly one workspace."
       />

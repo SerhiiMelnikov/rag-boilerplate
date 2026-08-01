@@ -23,7 +23,11 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
   if (!rows) return <div className="p-6 text-ink-muted">Loading...</div>;
   return (
     <>
-      <PageHeader title="Users" description="Who can sign in, and what they are allowed to do." />
+      <PageHeader
+        className="mx-auto max-w-2xl"
+        title="Users"
+        description="Who can sign in, and what they are allowed to do."
+      />
       <PageBody className="mx-auto max-w-2xl">
         <Table>
           <THead>

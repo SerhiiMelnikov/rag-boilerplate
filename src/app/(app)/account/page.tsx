@@ -18,7 +18,7 @@ export default async function AccountPage() {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <PageHeader title="Account" description={session.user.email ?? undefined} />
+      <PageHeader className="max-w-xl" title="Account" description={session.user.email ?? undefined} />
       <PageBody className="max-w-xl">
         <Card title="Password" description="Changing it signs out every other session.">
           <PasswordForm />

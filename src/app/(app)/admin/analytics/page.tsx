@@ -25,6 +25,7 @@ export default async function AnalyticsPage() {
   return (
     <>
       <PageHeader
+        className="mx-auto max-w-4xl"
         title="Answer feedback"
         description="What people thought of the answers, and which documents produced them."
       />

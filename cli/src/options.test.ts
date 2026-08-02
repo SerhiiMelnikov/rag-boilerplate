@@ -1,5 +1,11 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { Project, SyntaxKind, Node } from "ts-morph";
 import { describe, it, expect } from "vitest";
 import { parseArgs, validateSelection, detectPackageManager, EMBEDDING_CAPABLE } from "./options.js";
+
+const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 describe("parseArgs", () => {
   it("parses the project name positional and flags", () => {
@@ -60,5 +66,38 @@ describe("EMBEDDING_CAPABLE", () => {
   it("is google/openai/ollama (not anthropic)", () => {
     expect(EMBEDDING_CAPABLE).toEqual(["google", "openai", "ollama"]);
     expect(EMBEDDING_CAPABLE).not.toContain("anthropic");
+  });
+});
+
+// The CLI ships as dist + template, so its runtime code cannot import the app's
+// catalog — it keeps its own copy of which providers can embed. Two lists that
+// must agree and cannot reference each other need a test, or they drift: a stale
+// EMBEDDING_CAPABLE lets validateSelection accept a selection with no embedder,
+// and resolveEmbeddingProvider's non-null assertion then returns undefined.
+describe("EMBEDDING_CAPABLE", () => {
+  it("matches the embedding-capable entries of the app's provider catalog", () => {
+    const project = new Project({ useInMemoryFileSystem: true });
+    const sf = project.createSourceFile(
+      "catalog.ts",
+      readFileSync(join(REPO, "src/lib/providers/catalog.ts"), "utf8"),
+    );
+    const arr = sf
+      .getVariableDeclarationOrThrow("PROVIDERS")
+      .getInitializerIfKindOrThrow(SyntaxKind.ArrayLiteralExpression);
+
+    const embedding: string[] = [];
+    for (const el of arr.getElements()) {
+      if (!Node.isObjectLiteralExpression(el)) continue;
+      const idProp = el.getProperty("id");
+      const embProp = el.getProperty("embedding");
+      if (!Node.isPropertyAssignment(idProp) || !Node.isPropertyAssignment(embProp)) continue;
+      const id = idProp.getInitializer();
+      if (Node.isStringLiteral(id) && embProp.getInitializer()?.getText() === "true") {
+        embedding.push(id.getLiteralValue());
+      }
+    }
+
+    expect(embedding.length, "parsed nothing — the catalog's shape changed").toBeGreaterThan(0);
+    expect([...embedding].sort()).toEqual([...EMBEDDING_CAPABLE].sort());
   });
 });

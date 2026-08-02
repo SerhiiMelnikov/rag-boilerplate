@@ -32,6 +32,10 @@ const combos: Array<{ name: string; o: Partial<InstallOptions> }> = [
   { name: "google+pgvector", o: { providers: ["google"], defaultProvider: "google", vectorStore: "pgvector" } },
   { name: "openai+qdrant", o: { providers: ["openai"], defaultProvider: "openai", vectorStore: "qdrant" } },
   { name: "anthropic+google+weaviate", o: { providers: ["anthropic", "google"], defaultProvider: "anthropic", vectorStore: "weaviate" } },
+  // Ollama alone: the only selection with no key-based provider at all, and the
+  // one the old transform needed two `never` guards to survive. CI's scaffold
+  // matrix covers it too; this puts it in reach before a push.
+  { name: "ollama+pgvector", o: { providers: ["ollama"], defaultProvider: "ollama", vectorStore: "pgvector" } },
 ];
 
 describe.runIf(RUN)("installer (integration)", () => {
@@ -49,6 +53,13 @@ describe.runIf(RUN)("installer (integration)", () => {
       if (full.vectorStore !== "chroma") expect(pkg.dependencies["chromadb"]).toBeUndefined();
       if (!full.providers.includes("anthropic")) expect(pkg.dependencies["@ai-sdk/anthropic"]).toBeUndefined();
       expect(existsSync(join(target, `src/lib/vectorstore/${full.vectorStore}`))).toBe(true);
+      // The catalog is what every provider-dependent surface reads, so assert the
+      // pruning actually reached it rather than trusting that tsc would notice.
+      const catalog = await readFile(join(target, "src/lib/providers/catalog.ts"), "utf8");
+      for (const p of ["google", "openai", "anthropic", "ollama"]) {
+        const present = full.providers.includes(p as (typeof full.providers)[number]);
+        expect(catalog.includes(`id: "${p}"`), `${p} in catalog (kept: ${present})`).toBe(present);
+      }
       // The template is a clean starting point: the boilerplate's own test files and
       // vitest configs must not ship (they'd import pruned provider/store modules).
       expect(existsSync(join(target, "src/lib/providers/adapters.test.ts"))).toBe(false);

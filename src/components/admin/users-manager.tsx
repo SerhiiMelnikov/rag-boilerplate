@@ -42,9 +42,12 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
   }
 
   const searchable = (rows?.length ?? 0) >= SEARCH_THRESHOLD;
-  // Invariant: a filter is never applied while its input is off screen. Clear the
-  // query whenever the list stops being searchable, or it filters invisibly —
-  // this exact bug was a Critical on the 6B branch.
+  // `visible` below already gates filtering behind `searchable &&`, so a box that
+  // has disappeared can never leave the list invisibly filtered. What this guards
+  // against is narrower: if the row count climbs back over the threshold later in
+  // the same mounted session, the box would otherwise reappear pre-filled with a
+  // query the admin typed and forgot, instantly re-filtering a list they can now
+  // see again.
   useEffect(() => {
     if (!searchable && query !== "") setQuery("");
   }, [searchable, query]);

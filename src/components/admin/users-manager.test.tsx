@@ -8,6 +8,7 @@ const USERS = [
   { id: "u1", email: "user@x", role: "user", isSuperAdmin: false, blockedAt: null },
   { id: "me", email: "me@corp.com", role: "user", isSuperAdmin: false, blockedAt: null },
   { id: "b1", email: "bob@corp.com", role: "user", isSuperAdmin: false, blockedAt: null },
+  { id: "b2", email: "carol@corp.com", role: "user", isSuperAdmin: false, blockedAt: "2024-01-01T00:00:00.000Z" },
 ];
 
 const MANY_USERS = Array.from({ length: 9 }, (_, i) => ({
@@ -49,6 +50,21 @@ describe("UsersManager", () => {
       const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
       const patch = calls.find((c) => (c[1] as { method?: string } | undefined)?.method === "PATCH");
       expect(JSON.parse((patch![1] as { body: string }).body)).toEqual({ blocked: true });
+    });
+  });
+
+  // Unblocking restores access rather than removing it, so — unlike blocking —
+  // it must never route through the confirmation dialog.
+  it("unblocks immediately, with no confirmation", async () => {
+    render(<UsersManager currentUserId="me" />);
+    fireEvent.click(await screen.findByLabelText("Unblock carol@corp.com"));
+    // The dialog's title is always "Block {email}?" (it only ever exists for the
+    // block flow), so its absence here proves unblock did not route through it.
+    expect(screen.queryByText(/Block carol@corp\.com\?/)).toBeNull();
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const patch = calls.find((c) => (c[1] as { method?: string } | undefined)?.method === "PATCH");
+      expect(JSON.parse((patch![1] as { body: string }).body)).toEqual({ blocked: false });
     });
   });
 
@@ -116,5 +132,38 @@ describe("UsersManager", () => {
     fireEvent.change(await screen.findByLabelText("Search accounts"), { target: { value: "nobody" } });
     expect(screen.getByText("No accounts match")).toBeInTheDocument();
     expect(screen.queryByText("No accounts yet")).toBeNull();
+  });
+
+  // `visible` already gates filtering behind `searchable &&`, so a box that has
+  // disappeared can never leave the list invisibly filtered — that hazard from
+  // conversation-list.tsx does not apply here. What the clearing effect actually
+  // guards against: a query typed while searchable, left behind when the list
+  // drops under the threshold, must not silently re-apply the moment the count
+  // climbs back over it in the same mounted session.
+  it("does not let a stale query silently re-apply once the list grows past the threshold again", async () => {
+    let getCalls = 0;
+    global.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") return { ok: true, json: async () => ({}) };
+      getCalls += 1;
+      if (getCalls === 1) return { ok: true, json: async () => ({ users: MANY_USERS }) }; // 9 rows: searchable
+      if (getCalls === 2) return { ok: true, json: async () => ({ users: MANY_USERS.slice(0, 5) }) }; // 5 rows: not searchable
+      return { ok: true, json: async () => ({ users: MANY_USERS }) }; // back to 9 rows: searchable again
+    }) as unknown as typeof fetch;
+
+    render(<UsersManager currentUserId="me" />);
+    fireEvent.change(await screen.findByLabelText("Search accounts"), { target: { value: "user3" } });
+    expect(screen.getByText("user3@corp.com")).toBeInTheDocument();
+
+    // Any change reaches load(); drive one so the next GET drops the list under
+    // the threshold and the search box disappears.
+    fireEvent.click(await screen.findByLabelText("Make user3@corp.com an admin"));
+    await waitFor(() => expect(screen.queryByLabelText("Search accounts")).toBeNull());
+
+    // Drive another change so the list climbs back over the threshold.
+    fireEvent.click(await screen.findByLabelText("Make user0@corp.com an admin"));
+
+    // If the effect were missing, the box would reappear pre-filled with "user3"
+    // and instantly re-filter a list the admin can now see again.
+    await waitFor(() => expect(screen.getByLabelText("Search accounts")).toHaveValue(""));
   });
 });

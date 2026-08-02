@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { AnsweringForm } from "./answering-form";
+import { EMBEDDING_PROVIDER_IDS } from "@/lib/providers/catalog";
 
 const MASKED = {
   chatProvider: "openai", chatModel: "gpt-4o",
@@ -58,6 +59,16 @@ describe("AnsweringForm", () => {
     global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ...MASKED, unifiedMode: true }) })) as unknown as typeof fetch;
     render(<AnsweringForm />);
     expect(await screen.findByLabelText("Embedding provider")).toBeInTheDocument();
+  });
+
+  // Anthropic cannot embed. Nothing before this asserted the Embedding row's
+  // actual option list, so swapping EMBEDDING_PROVIDER_IDS for CHAT_PROVIDER_IDS
+  // (re-admitting anthropic) passed every existing test.
+  it("offers only embedding-capable providers in the Embedding row", async () => {
+    render(<AnsweringForm />);
+    fireEvent.click(await screen.findByLabelText("Embedding provider"));
+    const options = await screen.findAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(EMBEDDING_PROVIDER_IDS);
   });
 
   // The whole point of three routes: this page's Save must not overwrite fields

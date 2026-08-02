@@ -68,7 +68,7 @@ export const NAV: NavGroup[] = [
     requires: "admin",
     workspaceScoped: false,
     items: [
-      { label: "Models", href: "/admin/settings" },
+      { label: "Answering", href: "/admin/settings" },
       // Its own route in 6A; package 6C merges it into Settings as a tab, together
       // with the CLI transforms that parse both provider forms.
       { label: "Provider keys", href: "/admin/keys" },

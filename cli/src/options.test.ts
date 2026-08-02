@@ -74,7 +74,7 @@ describe("EMBEDDING_CAPABLE", () => {
 // must agree and cannot reference each other need a test, or they drift: a stale
 // EMBEDDING_CAPABLE lets validateSelection accept a selection with no embedder,
 // and resolveEmbeddingProvider's non-null assertion then returns undefined.
-describe("EMBEDDING_CAPABLE", () => {
+describe("EMBEDDING_CAPABLE agrees with the app's provider catalog", () => {
   it("matches the embedding-capable entries of the app's provider catalog", () => {
     const project = new Project({ useInMemoryFileSystem: true });
     const sf = project.createSourceFile(

@@ -66,6 +66,19 @@ describe("AccessForm", () => {
     }
   });
 
+  // The bug this guards: `saved` comes from the hook, which never sees the
+  // typed SMTP password — that is local component state. Without gating on
+  // that local dirtiness, "Saved" from an earlier successful save would keep
+  // showing while an unconfirmed password sits in the input, over a secret
+  // that cannot be read back from anywhere.
+  it("hides Saved once the admin types an SMTP password, even though the hook still thinks it saved", async () => {
+    render(<AccessForm />);
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText("SMTP password"), { target: { value: "typed-secret" } });
+    expect(screen.queryByText("Saved")).toBeNull();
+  });
+
   it("surfaces a rejected save", async () => {
     global.fetch = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === "PUT"
       ? { ok: false, json: async () => ({}) }

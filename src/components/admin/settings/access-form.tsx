@@ -44,6 +44,10 @@ export function AccessForm() {
   const s = settings;
   const num = (key: keyof AdminSettings) => (e: React.ChangeEvent<HTMLInputElement>) =>
     patch({ [key]: Number(e.target.value) } as Partial<AdminSettings>);
+  // `saved` comes from the hook, which only knows about edits routed through `patch`.
+  // The typed SMTP password is local state it never sees, so an untouched "Saved"
+  // would sit over a secret the admin cannot read back from anywhere.
+  const dirty = smtpPasswordInput.trim() !== "";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -107,7 +111,7 @@ export function AccessForm() {
           {saveError && <Alert tone="danger">{saveError}</Alert>}
           <div className="flex items-center gap-3">
             <Button type="submit" loading={saving}>Save</Button>
-            {saved && <span className="text-sm text-success">Saved</span>}
+            {saved && !dirty && <span className="text-sm text-success">Saved</span>}
           </div>
         </form>
       </PageBody>

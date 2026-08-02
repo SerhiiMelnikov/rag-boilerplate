@@ -46,7 +46,12 @@ export const EMBEDDING_PROVIDER_IDS: string[] = PROVIDERS.filter((p) => p.embedd
 export const KEYED_PROVIDERS: KeyedProvider[] = PROVIDERS.filter(
   (p): p is KeyedProvider => p.keyName !== null,
 );
-export const HAS_OLLAMA: boolean = PROVIDERS.some((p) => p.id === "ollama");
+// Not `p.id === "ollama"`: the CLI narrows ProviderId to the providers a
+// generated project kept, so comparing a pruned id against a literal is a tsc
+// error there (TS2367, "no overlap") even though it compiles fine here. Ollama
+// is the only key-less provider, and being key-less is the property the keys
+// page actually needs — it is what decides whether to ask for a base URL.
+export const HAS_OLLAMA: boolean = PROVIDERS.some((p) => p.keyName === null);
 
 export function keyNameOf(providerId: string): KeyName | null {
   return PROVIDERS.find((p) => p.id === providerId)?.keyName ?? null;

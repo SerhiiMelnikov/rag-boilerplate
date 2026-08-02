@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Trash2, Plus, Save, Users } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Trash2, Plus, Save, Users, Pencil, FolderOpen } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader, PageBody } from "@/components/ui/page-header";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Button, FOCUS_RING } from "@/components/ui/button";
@@ -21,25 +22,77 @@ interface Row {
 
 const inputClass = "rounded border border-border-strong bg-transparent px-2 py-1 text-sm";
 
+export type EditIntent =
+  | { kind: "commit"; name: string | null; description: string | null }
+  | { kind: "abandon" };
+
+// The whole commit-or-abandon rule, as a pure function.
+//
+// It lives out here because the component's guard has to survive an unmount, and
+// jsdom NEVER fires `blur` when a focused element is removed from the DOM — it
+// moves activeElement to <body> and react-dom never calls .blur(). A test written
+// against the wiring therefore passes with or without the guard, which is exactly
+// how two bugs hid on the 6B branch. Test this exhaustively; the wiring gets a
+// smoke test and nothing more.
+//
+// `name: null` means "do not send a name at all" — the default workspace's name
+// is immutable and the API rejects an attempt to change it.
+export function editIntent(
+  draft: { name: string; description: string },
+  current: { name: string; description: string | null },
+  opts: { cancelled: boolean; nameLocked: boolean },
+): EditIntent {
+  if (opts.cancelled) return { kind: "abandon" };
+
+  const name = draft.name.trim();
+  const description = draft.description.trim() || null;
+  const currentDescription = (current.description ?? "").trim() || null;
+
+  if (!opts.nameLocked && name === "") return { kind: "abandon" };
+
+  const nameChanged = !opts.nameLocked && name !== current.name;
+  const descriptionChanged = description !== currentDescription;
+  if (!nameChanged && !descriptionChanged) return { kind: "abandon" };
+
+  return { kind: "commit", name: opts.nameLocked ? null : name, description };
+}
+
 export function WorkspacesManager() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [draft, setDraft] = useState<Record<string, { name: string; description: string }>>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Row | null>(null);
   const [busy, setBusy] = useState(false);
   const [accessFor, setAccessFor] = useState<Row | null>(null);
+  // One commit per edit, whichever path (Save, Enter, or the blur that follows
+  // Escape/unmount in a real browser) gets there first. A ref, not state: a blur
+  // handler closes over the render it was attached in, so state would hand it a
+  // stale copy. jsdom never fires that blur at all (see editIntent's comment
+  // above), which is exactly why this can only be exercised by hand, not by test.
+  const settled = useRef(false);
+  // Escape is a distinct signal from "lost focus", set before the unmount that
+  // follows it. Also a ref for the same reason: it has to be read from inside a
+  // blur handler attached during a now-stale render.
+  const cancelled = useRef(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/workspaces");
     if (res.ok) {
       const list: Row[] = (await res.json()).workspaces;
       setRows(list);
-      setDraft(Object.fromEntries(list.map((w) => [w.id, { name: w.name, description: w.description ?? "" }])));
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  function startEdit(w: Row) {
+    settled.current = false;
+    cancelled.current = false;
+    setDraft((p) => ({ ...p, [w.id]: { name: w.name, description: w.description ?? "" } }));
+    setEditingId(w.id);
+  }
 
   async function create() {
     if (!newName.trim()) return;
@@ -62,16 +115,22 @@ export function WorkspacesManager() {
     }
   }
 
-  async function save(w: Row) {
-    const d = draft[w.id];
-    if (!d) return;
+  async function commit(w: Row) {
+    if (settled.current) return;
+    settled.current = true;
+    const intent = editIntent(
+      draft[w.id] ?? { name: w.name, description: w.description ?? "" },
+      { name: w.name, description: w.description },
+      { cancelled: cancelled.current, nameLocked: w.isDefault },
+    );
+    setEditingId(null);
+    if (intent.kind === "abandon") return;
+    // intent.name === null means the name is locked (the default workspace) — omit
+    // it from the body entirely rather than send the unchanged value back.
+    const body = intent.name === null ? { description: intent.description } : { name: intent.name, description: intent.description };
     setBusy(true);
     setError(null);
     try {
-      // The default workspace's name is immutable — send only its description.
-      // An emptied description clears the column (null), never stores "".
-      const description = d.description.trim() || null;
-      const body = w.isDefault ? { description } : { name: d.name.trim(), description };
       const res = await fetch(`/api/admin/workspaces/${w.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -122,68 +181,114 @@ export function WorkspacesManager() {
           </Button>
         </div>
 
-        <Table>
-          <THead>
-            <TR>
-              <TH>Name</TH>
-              <TH>Description</TH>
-              <TH />
-            </TR>
-          </THead>
-          <TBody>
-            {rows.map((w) => {
-              const d = draft[w.id] ?? { name: w.name, description: "" };
-              return (
-                <TR key={w.id}>
-                  <TD>
-                    {w.isDefault ? (
-                      <span className="flex items-center gap-2 font-medium">
-                        {w.name}
-                        <Badge>default</Badge>
-                      </span>
-                    ) : (
-                      <input
-                        aria-label={`Name of ${w.name}`}
-                        value={d.name}
-                        onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, name: e.target.value } }))}
-                        className={cn(inputClass, "w-full", FOCUS_RING)}
-                      />
-                    )}
-                  </TD>
-                  <TD>
-                    <input
-                      aria-label={`Description of ${w.name}`}
-                      placeholder="Description"
-                      value={d.description}
-                      onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, description: e.target.value } }))}
-                      className={cn(inputClass, "w-full", FOCUS_RING)}
-                    />
-                  </TD>
-                  <TD className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button variant="secondary" size="sm" aria-label={`Save ${d.name}`} onClick={() => save(w)} disabled={busy}>
-                        <Save className="h-4 w-4" /> Save
-                      </Button>
-                      <Button variant="secondary" size="sm" aria-label={`Manage access to ${w.name}`} onClick={() => setAccessFor(w)}>
-                        <Users className="h-4 w-4" /> Access
-                      </Button>
-                      {!w.isDefault && (
-                        <button
-                          type="button"
-                          aria-label={`Delete ${w.name}`}
-                          onClick={() => setPendingDelete(w)}
-                          className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+        {rows.length === 0 ? (
+          // The default workspace always exists (it is seeded at install), so an
+          // empty list here means the fetch returned nothing, not "no matches" —
+          // there is no filter on this screen to have produced that instead.
+          <EmptyState
+            icon={FolderOpen}
+            title="No workspaces"
+            description="Every install has a default workspace. If this list is empty, the seed step has not run."
+          />
+        ) : (
+          <Table>
+            <THead>
+              <TR>
+                <TH>Name</TH>
+                <TH>Description</TH>
+                <TH />
+              </TR>
+            </THead>
+            <TBody>
+              {rows.map((w) => {
+                const isEditing = editingId === w.id;
+                const d = draft[w.id] ?? { name: w.name, description: w.description ?? "" };
+                // Escape sets cancelled.current before unmounting the input; Enter and
+                // blur both call commit() directly. settled/cancelled decide what
+                // actually happens — see their declarations and editIntent above.
+                const onFieldKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void commit(w);
+                  } else if (e.key === "Escape") {
+                    cancelled.current = true;
+                    setEditingId(null);
+                  }
+                };
+                return (
+                  <TR key={w.id}>
+                    <TD>
+                      {w.isDefault ? (
+                        <span className="flex items-center gap-2 font-medium">
+                          {w.name}
+                          <Badge>default</Badge>
+                        </span>
+                      ) : isEditing ? (
+                        <input
+                          aria-label={`Name of ${w.name}`}
+                          autoFocus
+                          value={d.name}
+                          onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, name: e.target.value } }))}
+                          onKeyDown={onFieldKeyDown}
+                          onBlur={() => void commit(w)}
+                          className={cn(inputClass, "w-full", FOCUS_RING)}
+                        />
+                      ) : (
+                        <span>{w.name}</span>
                       )}
-                    </div>
-                  </TD>
-                </TR>
-              );
-            })}
-          </TBody>
-        </Table>
+                    </TD>
+                    <TD>
+                      {isEditing ? (
+                        <input
+                          aria-label={`Description of ${w.name}`}
+                          placeholder="Description"
+                          value={d.description}
+                          onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, description: e.target.value } }))}
+                          onKeyDown={onFieldKeyDown}
+                          onBlur={() => void commit(w)}
+                          className={cn(inputClass, "w-full", FOCUS_RING)}
+                        />
+                      ) : (
+                        <span className={cn(!w.description && "text-ink-muted")}>{w.description || "—"}</span>
+                      )}
+                    </TD>
+                    <TD className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {isEditing ? (
+                          <Button variant="secondary" size="sm" aria-label={`Save ${d.name}`} onClick={() => void commit(w)} disabled={busy}>
+                            <Save className="h-4 w-4" /> Save
+                          </Button>
+                        ) : (
+                          <button
+                            type="button"
+                            aria-label={`Edit ${w.name}`}
+                            onClick={() => startEdit(w)}
+                            className={cn("text-ink-subtle transition-colors hover:text-ink", FOCUS_RING)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
+                        <Button variant="secondary" size="sm" aria-label={`Manage access to ${w.name}`} onClick={() => setAccessFor(w)}>
+                          <Users className="h-4 w-4" /> Access
+                        </Button>
+                        {!w.isDefault && (
+                          <button
+                            type="button"
+                            aria-label={`Delete ${w.name}`}
+                            onClick={() => setPendingDelete(w)}
+                            className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </TD>
+                  </TR>
+                );
+              })}
+            </TBody>
+          </Table>
+        )}
       </PageBody>
 
       <ConfirmDialog

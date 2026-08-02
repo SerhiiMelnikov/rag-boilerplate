@@ -73,6 +73,7 @@ describe("activeGroup", () => {
     // Longest match still matters here: /admin/settings/keys matches both its own
     // href and the group's, and the scan must not stop at the shorter one.
     ["/admin/settings/keys", "settings"],
+    ["/admin/settings/access", "settings"],
     ["/admin/users", "people"],
     ["/account", "account"],
     // A sub-route of a file, not a sub-item's own href — the longest-match scan

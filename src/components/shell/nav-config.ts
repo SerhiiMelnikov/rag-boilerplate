@@ -72,6 +72,7 @@ export const NAV: NavGroup[] = [
       // Its own top-level route until 6C. Nesting it under /admin/settings makes
       // the panel the navigation, the same way Knowledge and Insights already work.
       { label: "Provider keys", href: "/admin/settings/keys" },
+      { label: "Access & email", href: "/admin/settings/access" },
     ],
   },
   {

@@ -3,10 +3,18 @@ import { Project } from "ts-morph";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneAdminProviderLists, pruneOpenApiProviderLists, rewriteSettingsDefaults, pruneChunksFromSchema } from "./source.js";
+import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneProviderCatalog, pruneSettingsServiceProviders, pruneOpenApiProviderLists, rewriteSettingsDefaults, pruneChunksFromSchema } from "./source.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "test-fixtures");
 const read = (p: string) => readFileSync(join(FIX, p), "utf8");
+
+// The real files, not copies. cli/test-fixtures snapshots drifted silently once
+// already — settings-form.tsx sat at 130 lines against the real file's 203, so
+// the transform tests were green against a shape that no longer existed. Reading
+// the repository makes that impossible rather than merely discouraged. cli/ is a
+// subdirectory of the repo and its tests never ship (package.json files: dist, template).
+const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const readRepo = (p: string) => readFileSync(join(REPO, p), "utf8");
 
 // Load a fixture into an in-memory ts-morph project under a virtual path that
 // matches what each transform looks up.
@@ -68,59 +76,103 @@ describe("pruneVectorInitScript", () => {
   });
 });
 
-describe("pruneAdminProviderLists", () => {
-  it("removes pruned providers from the hardcoded arrays and key rows", () => {
-    const project = new Project({ useInMemoryFileSystem: true });
-    project.createSourceFile("src/components/admin/settings-form.tsx", read("settings-form.tsx"));
-    project.createSourceFile("src/components/admin/provider-keys-form.tsx", read("provider-keys-form.tsx"));
-    pruneAdminProviderLists(project, ["google", "ollama"]);
-    const sf = project.getSourceFileOrThrow("src/components/admin/settings-form.tsx").getFullText();
-    expect(sf).not.toContain('"anthropic"');
-    expect(sf).not.toContain('"openai"');
-    expect(sf).toContain('"google"');
-    const kf = project.getSourceFileOrThrow("src/components/admin/provider-keys-form.tsx").getFullText();
-    expect(kf).not.toMatch(/Anthropic API key/);
-    expect(kf).not.toMatch(/OpenAI API key/);
-    expect(kf).toMatch(/Google API key/);
+describe("pruneProviderCatalog", () => {
+  const CATALOG = "src/lib/providers/catalog.ts";
+  const load = () => projectWith(CATALOG, readRepo(CATALOG));
+  const textOf = (project: Project) => project.getSourceFileOrThrow(CATALOG).getFullText();
+
+  it("keeps only the selected provider", () => {
+    const project = load();
+    pruneProviderCatalog(project, ["google"]);
+    const text = textOf(project);
+    expect(text).toContain('id: "google"');
+    expect(text).not.toContain('id: "openai"');
+    expect(text).not.toContain('id: "anthropic"');
+    expect(text).not.toContain('id: "ollama"');
   });
 
-  it("prunes the Ollama input and dead provider refs when ollama is not kept", () => {
-    const project = new Project({ useInMemoryFileSystem: true });
-    project.createSourceFile("src/components/admin/settings-form.tsx", read("settings-form.tsx"));
-    project.createSourceFile("src/components/admin/provider-keys-form.tsx", read("provider-keys-form.tsx"));
-    pruneAdminProviderLists(project, ["google"]);
-    const kf = project.getSourceFileOrThrow("src/components/admin/provider-keys-form.tsx").getFullText();
-    expect(kf).not.toContain("Ollama base URL");
-    expect(kf).not.toContain('"openai"');
-    expect(kf).not.toContain('"anthropic"');
-    expect(kf).toContain('type KeyName = "google"');
-    expect(kf).toMatch(/Google API key/);
+  it("keeps two providers and drops the rest", () => {
+    const project = load();
+    pruneProviderCatalog(project, ["anthropic", "google"]);
+    const text = textOf(project);
+    expect(text).toContain('id: "google"');
+    expect(text).toContain('id: "anthropic"');
+    expect(text).not.toContain('id: "openai"');
+    expect(text).not.toContain('id: "ollama"');
   });
 
-  it("keeps the Ollama input when ollama is kept, but still narrows KeyName to key-based providers", () => {
-    const project = new Project({ useInMemoryFileSystem: true });
-    project.createSourceFile("src/components/admin/settings-form.tsx", read("settings-form.tsx"));
-    project.createSourceFile("src/components/admin/provider-keys-form.tsx", read("provider-keys-form.tsx"));
-    pruneAdminProviderLists(project, ["google", "ollama"]);
-    const kf = project.getSourceFileOrThrow("src/components/admin/provider-keys-form.tsx").getFullText();
-    expect(kf).toContain("Ollama base URL");
-    expect(kf).toContain('type KeyName = "google"');
-    expect(kf).not.toContain('"openai"');
-    expect(kf).not.toContain('"anthropic"');
+  // The configuration both of the old transform's `never` guards existed for.
+  // With a data array there is nothing to collapse: one element is a valid array.
+  it("keeps ollama alone without needing a guard", () => {
+    const project = load();
+    pruneProviderCatalog(project, ["ollama"]);
+    const text = textOf(project);
+    expect(text).toContain('id: "ollama"');
+    expect(text).toContain("keyName: null");
+    expect(text).not.toContain('id: "google"');
+    // KeyName is never narrowed — leaving it wide is what removes the collapse.
+    expect(text).toContain('export type KeyName = "google" | "openai" | "anthropic"');
   });
 
-  it("skips narrowing KeyName/keyInputs/the submit loop for an ollama-only selection (avoids `never`)", () => {
-    const project = new Project({ useInMemoryFileSystem: true });
-    project.createSourceFile("src/components/admin/settings-form.tsx", read("settings-form.tsx"));
-    project.createSourceFile("src/components/admin/provider-keys-form.tsx", read("provider-keys-form.tsx"));
-    pruneAdminProviderLists(project, ["ollama"]);
-    const kf = project.getSourceFileOrThrow("src/components/admin/provider-keys-form.tsx").getFullText();
-    // ollama is kept, so its base-URL input must remain.
-    expect(kf).toContain("Ollama base URL");
-    // No key-based provider survives: KeyName must NOT collapse to `never`.
-    // It's left un-narrowed (still the original three-provider union).
-    expect(kf).not.toContain("never");
-    expect(kf).toContain('type KeyName = "google"');
+  it("leaves the catalog untouched when every provider is kept", () => {
+    const project = load();
+    const before = textOf(project);
+    pruneProviderCatalog(project, ["google", "openai", "anthropic", "ollama"]);
+    expect(textOf(project)).toBe(before);
+  });
+
+  // The contract, enforced loudly. Its predecessor swept every literal in two
+  // files and had no way to notice the shape it depended on had changed.
+  it("throws when PROVIDERS is no longer an array literal", () => {
+    const project = projectWith(CATALOG, "export const PROVIDERS = buildProviders();");
+    expect(() => pruneProviderCatalog(project, ["google"])).toThrow(/array literal/);
+  });
+
+  it("throws when the PROVIDERS declaration is missing entirely", () => {
+    const project = projectWith(CATALOG, "export const SOMETHING_ELSE = [];");
+    expect(() => pruneProviderCatalog(project, ["google"])).toThrow(/PROVIDERS/);
+  });
+
+  it("throws when an entry has no string-literal id", () => {
+    const project = projectWith(CATALOG, "export const PROVIDERS = [{ id: GOOGLE, label: \"Google\" }];");
+    expect(() => pruneProviderCatalog(project, ["google"])).toThrow(/string literal/);
+  });
+});
+
+describe("pruneSettingsServiceProviders", () => {
+  const SVC = "src/lib/config/settings-service.ts";
+  const load = () => projectWith(SVC, readRepo(SVC));
+  const textOf = (project: Project) => project.getSourceFileOrThrow(SVC).getFullText();
+
+  it("narrows both zod provider enums to the kept set", () => {
+    const project = load();
+    pruneSettingsServiceProviders(project, ["google"]);
+    const text = textOf(project);
+    expect(text).toContain('const CHAT_PROVIDERS = ["google"] as const');
+    expect(text).toContain('const EMBEDDING_PROVIDERS = ["google"] as const');
+  });
+
+  it("keeps ollama in both lists when ollama is the only provider", () => {
+    const project = load();
+    pruneSettingsServiceProviders(project, ["ollama"]);
+    const text = textOf(project);
+    expect(text).toContain('const CHAT_PROVIDERS = ["ollama"] as const');
+    // Ollama embeds, so the embedding enum is non-empty — z.enum([]) would throw
+    // at module load, and validateSelection is what guarantees this can't happen.
+    expect(text).toContain('const EMBEDDING_PROVIDERS = ["ollama"] as const');
+  });
+
+  it("drops anthropic from chat but leaves the embedding list alone", () => {
+    const project = load();
+    pruneSettingsServiceProviders(project, ["google", "ollama"]);
+    const text = textOf(project);
+    expect(text).toContain('const CHAT_PROVIDERS = ["google", "ollama"] as const');
+    expect(text).toContain('const EMBEDDING_PROVIDERS = ["google", "ollama"] as const');
+  });
+
+  it("throws when a list stops being an array literal", () => {
+    const project = projectWith(SVC, "const CHAT_PROVIDERS = providerIds();\nconst EMBEDDING_PROVIDERS = [] as const;");
+    expect(() => pruneSettingsServiceProviders(project, ["google"])).toThrow(/array literal/);
   });
 });
 

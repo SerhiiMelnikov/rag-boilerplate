@@ -2,10 +2,21 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile, readFile, cp } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { scaffold, settingsDefaultsFor } from "./scaffold.js";
 import type { InstallOptions } from "./options.js";
+
+// The real catalog.ts and settings-service.ts, not fixture copies: both are the
+// single source of truth applySourceTransforms edits (see transforms/source.ts,
+// pruneProviderCatalog and pruneSettingsServiceProviders respectively), so a
+// stale hand-maintained copy here would go stale silently — as
+// cli/test-fixtures/settings-form.tsx once did, 73 lines out of date before
+// anyone noticed. Anyone adding a new file to applySourceTransforms's file list
+// should copy it into the synthetic template the same way, from here, rather
+// than hand-rolling a fixture.
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 let templateDir: string;
 let targetParent: string;
@@ -24,6 +35,7 @@ beforeEach(async () => {
   await mkdir(join(templateDir, "src/lib/vectorstore/chroma"), { recursive: true });
   await mkdir(join(templateDir, "src/lib/vectorstore/weaviate"), { recursive: true });
   await mkdir(join(templateDir, "src/lib/db"), { recursive: true });
+  await mkdir(join(templateDir, "src/lib/config"), { recursive: true });
   await mkdir(join(templateDir, "src/components/admin"), { recursive: true });
   await mkdir(join(templateDir, "scripts"), { recursive: true });
   await mkdir(join(templateDir, "src/lib/openapi/paths"), { recursive: true });
@@ -32,8 +44,8 @@ beforeEach(async () => {
   await cp(join(process.cwd(), "test-fixtures", "providers-types.ts"), join(templateDir, "src/lib/providers/types.ts"));
   await cp(join(process.cwd(), "test-fixtures", "vectorstore-index.ts"), join(templateDir, "src/lib/vectorstore/index.ts"));
   await cp(join(process.cwd(), "test-fixtures", "schema.ts"), join(templateDir, "src/lib/db/schema.ts"));
-  await cp(join(process.cwd(), "test-fixtures", "settings-form.tsx"), join(templateDir, "src/components/admin/settings-form.tsx"));
-  await cp(join(process.cwd(), "test-fixtures", "provider-keys-form.tsx"), join(templateDir, "src/components/admin/provider-keys-form.tsx"));
+  await cp(join(REPO_ROOT, "src/lib/providers/catalog.ts"), join(templateDir, "src/lib/providers/catalog.ts"));
+  await cp(join(REPO_ROOT, "src/lib/config/settings-service.ts"), join(templateDir, "src/lib/config/settings-service.ts"));
   await cp(join(process.cwd(), "test-fixtures", "vectorstore-init.ts"), join(templateDir, "scripts/vectorstore-init.ts"));
   await cp(join(process.cwd(), "test-fixtures", "admin-settings.ts"), join(templateDir, "src/lib/openapi/paths/admin-settings.ts"));
   await cp(join(process.cwd(), "test-fixtures", "schemas.ts"), join(templateDir, "src/lib/openapi/schemas.ts"));

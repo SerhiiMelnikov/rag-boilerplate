@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { AnsweringForm } from "@/components/admin/settings/answering-form";
+import { AccessForm } from "@/components/admin/settings/access-form";
 
-export default async function SettingsPage() {
+export default async function SettingsAccessPage() {
   const session = await auth();
   if (session?.user?.role !== "admin") redirect("/");
-  return <AnsweringForm />;
+  return <AccessForm />;
 }

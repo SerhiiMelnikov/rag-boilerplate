@@ -230,7 +230,7 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("Sign in with the `ADMIN_EMAIL` / `ADMIN_PASSWORD` from your `.env`.", "");
   lines.push(
     "Everything lives in the left rail: **Chat**, **Knowledge** (files and workspaces), " +
-      "**Insights** (feedback, token usage, evaluation), **Settings** (models and provider keys) " +
+      "**Insights** (feedback, token usage, evaluation), **Settings** (answering, provider keys, access) " +
       "and **People** (users, super-admin only). The rail collapses to a bottom bar on a phone, " +
       "and **Sign out** lives behind **More** there.",
     "",
@@ -254,12 +254,14 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("  **Evaluating retrieval quality** below.");
   lines.push("");
   lines.push("### Settings", "");
-  lines.push("- **Models** — pick the chat/embedding/image models, tune retrieval, set rate limits");
+  lines.push("- **Answering** — pick the chat/embedding/parser/image models, tune retrieval, set rate limits");
   lines.push("  (chat requests per minute and per day per user). `0` disables a limit — see");
-  lines.push("  **Rate limits** below. Also configure the allowed-domains list and SMTP for");
-  lines.push("  registration — see **Registration** below.");
+  lines.push("  **Rate limits** below.");
   lines.push("- **Provider keys** — set your API keys (encrypted at rest). Do this first:");
-  lines.push("  nothing can be ingested or answered without them.");
+  lines.push("  nothing can be ingested or answered without them. A key can also be cleared");
+  lines.push("  here, which stops every task using that provider.");
+  lines.push("- **Access & email** — the allowed-domains list and SMTP for registration; see");
+  lines.push("  **Registration** below.");
   lines.push("");
   lines.push("### People", "");
   lines.push("- **Users** — manage accounts and roles (super-admin only).");
@@ -292,7 +294,7 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("that mailbox clicks the confirmation link sent to it. Nobody can log in until");
   lines.push("they do — the login gate rejects any account whose email is not yet verified.", "");
   lines.push("**SMTP must be configured before anyone can register.** Until you fill in the SMTP");
-  lines.push("host/port/user/from and password under **Settings → Models**, registration returns 503");
+  lines.push("host/port/user/from and password under **Settings → Access & email**, registration returns 503");
   lines.push("— there is no mailer yet to send the verification link with. This is the first");
   lines.push("thing you will hit on a fresh install; it is expected, not a bug.", "");
   lines.push("The allowed-domains list (also in Settings) is comma-separated, e.g.");

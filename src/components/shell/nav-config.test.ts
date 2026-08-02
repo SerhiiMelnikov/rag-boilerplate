@@ -70,9 +70,10 @@ describe("activeGroup", () => {
     ["/admin/usage", "insights"],
     ["/admin/evaluation", "insights"],
     ["/admin/settings", "settings"],
-    // The reason resolution is longest-match: /admin/keys is a Settings sub-item,
-    // and a naive prefix scan would leave the rail highlighting nothing.
-    ["/admin/keys", "settings"],
+    // Longest match still matters here: /admin/settings/keys matches both its own
+    // href and the group's, and the scan must not stop at the shorter one.
+    ["/admin/settings/keys", "settings"],
+    ["/admin/settings/access", "settings"],
     ["/admin/users", "people"],
     ["/account", "account"],
     // A sub-route of a file, not a sub-item's own href — the longest-match scan

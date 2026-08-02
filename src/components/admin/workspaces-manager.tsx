@@ -216,7 +216,31 @@ export function WorkspacesManager() {
                   }
                 };
                 return (
-                  <TR key={w.id}>
+                  <TR
+                    key={w.id}
+                    // Only the row currently being edited gets this handler. Every row's
+                    // Edit/Access/Delete buttons are focusable regardless of edit state,
+                    // so an unconditional handler would also fire while tabbing out of a
+                    // row that isn't being edited (e.g. tabbing from this row's own
+                    // buttons into the next row while a different row is mid-edit) and
+                    // call commit() for the wrong row — poisoning the shared `settled`
+                    // ref for the edit that is actually in progress.
+                    onBlur={
+                      isEditing
+                        ? (e) => {
+                            // React's onBlur maps to the native focusout, which bubbles,
+                            // so one handler on the row sees focus leaving either field.
+                            // relatedTarget is where focus went: still inside this row
+                            // means the admin is moving from the name to the description,
+                            // which is not the end of the edit. A null relatedTarget —
+                            // clicking dead space, or the row unmounting — still commits:
+                            // contains(null) is false.
+                            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                            void commit(w);
+                          }
+                        : undefined
+                    }
+                  >
                     <TD>
                       {w.isDefault ? (
                         <span className="flex items-center gap-2 font-medium">
@@ -230,7 +254,6 @@ export function WorkspacesManager() {
                           value={d.name}
                           onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, name: e.target.value } }))}
                           onKeyDown={onFieldKeyDown}
-                          onBlur={() => void commit(w)}
                           className={cn(inputClass, "w-full", FOCUS_RING)}
                         />
                       ) : (
@@ -245,7 +268,6 @@ export function WorkspacesManager() {
                           value={d.description}
                           onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, description: e.target.value } }))}
                           onKeyDown={onFieldKeyDown}
-                          onBlur={() => void commit(w)}
                           className={cn(inputClass, "w-full", FOCUS_RING)}
                         />
                       ) : (

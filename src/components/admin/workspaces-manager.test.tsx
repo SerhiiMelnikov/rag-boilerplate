@@ -69,6 +69,43 @@ describe("WorkspacesManager", () => {
     expect(screen.getByLabelText("Name of Marketing")).toBeInTheDocument();
   });
 
+  // Regression: onBlur was originally wired per-field, so moving focus from the name
+  // input to the description input inside the SAME row committed prematurely — the
+  // new name went out with the untouched, still-open description, and the row
+  // collapsed before the admin could finish. One onBlur on the row (see the comment
+  // on TR's onBlur in the component) fixes this: relatedTarget still inside the row
+  // means the edit is not over.
+  it("does not commit when focus moves from the name field to the description field in the same row", async () => {
+    render(<WorkspacesManager />);
+    await screen.findByText("Marketing");
+    fireEvent.click(screen.getByLabelText("Edit Marketing"));
+
+    const name = screen.getByLabelText("Name of Marketing");
+    const description = screen.getByLabelText("Description of Marketing");
+    fireEvent.change(name, { target: { value: "Growth" } });
+
+    // Tabbing from the name field to the description field: focus lands inside the
+    // same row, so this must not be read as "the admin is done."
+    fireEvent.blur(name, { relatedTarget: description });
+    expect(
+      (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls.some(
+        (c) => (c[1] as { method?: string } | undefined)?.method === "PATCH",
+      ),
+    ).toBe(false);
+    expect(screen.getByLabelText("Name of Marketing")).toBeInTheDocument();
+
+    // Focus genuinely leaves the row: the commit fires exactly once, carrying the
+    // renamed name together with the description as it stands (untouched here).
+    fireEvent.blur(description, { relatedTarget: null });
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const patches = calls.filter((c) => (c[1] as { method?: string } | undefined)?.method === "PATCH");
+      expect(patches).toHaveLength(1);
+      expect(patches[0][0]).toBe("/api/admin/workspaces/w2");
+      expect(JSON.parse((patches[0][1] as { body: string }).body)).toEqual({ name: "Growth", description: "team space" });
+    });
+  });
+
   it("clears a stale error banner once a subsequent delete succeeds", async () => {
     vi.stubGlobal(
       "fetch",

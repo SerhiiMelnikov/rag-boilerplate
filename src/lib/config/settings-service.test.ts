@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { encryptSecret, decryptSecret } from "@/lib/config/crypto";
 import { getRuntimeSettings, getAdminSettings, updateSettings, settingsPatchSchema, getRegistrationSettings } from "@/lib/config/settings-service";
+import { PROVIDERS, CHAT_PROVIDER_IDS } from "@/lib/providers/catalog";
 
 // Real crypto module, but decryptSecret is wrapped in a spy (call-through to the
 // actual implementation) so tests can observe whether it was invoked. This keeps
@@ -122,5 +123,30 @@ describe("settings service", () => {
     expect(settingsPatchSchema.safeParse({ topP: 0.9 }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ embeddingProvider: "anthropic" }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ chatProvider: "openai" }).success).toBe(true);
+  });
+});
+
+// The zod enums in settings-service.ts are literal arrays, not derived from the
+// catalog: z.enum needs a literal tuple to produce a literal union, and deriving
+// would collapse the schema's types to plain `string`. That leaves two lists to
+// keep in step, so this asserts they agree — in both directions.
+describe("the settings schema agrees with the provider catalog", () => {
+  it("accepts every catalog provider as a chat provider", () => {
+    for (const id of CHAT_PROVIDER_IDS) {
+      expect(settingsPatchSchema.safeParse({ chatProvider: id }).success, id).toBe(true);
+    }
+  });
+
+  it("accepts every embedding-capable provider, and no others, as an embedding provider", () => {
+    for (const p of PROVIDERS) {
+      expect(
+        settingsPatchSchema.safeParse({ embeddingProvider: p.id }).success,
+        `${p.id} embedding=${p.embedding}`,
+      ).toBe(p.embedding);
+    }
+  });
+
+  it("rejects a provider that is not in the catalog", () => {
+    expect(settingsPatchSchema.safeParse({ chatProvider: "mistral" }).success).toBe(false);
   });
 });

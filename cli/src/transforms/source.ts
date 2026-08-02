@@ -176,6 +176,38 @@ export function pruneProviderCatalog(project: Project, kept: ProviderId[]): void
   cat.saveSync();
 }
 
+// settings-service.ts: the CHAT_PROVIDERS / EMBEDDING_PROVIDERS `as const` arrays
+// that feed z.enum(...) in settingsPatchSchema. Without this a generated project's
+// API accepts a provider the project no longer ships, stores it, and fails later
+// in the pruned factory — a runtime gap CI's type-check and build cannot see.
+//
+// The arrays stay literal rather than deriving from the catalog because z.enum
+// needs a literal tuple to produce a literal union; deriving would collapse the
+// schema's types to plain `string`. src/lib/providers/catalog.test.ts holds the
+// agreement test that stops the two drifting.
+//
+// Scoped to the two named declarations: a file-wide sweep would also reach
+// unrelated literals in a 300-line service.
+export function pruneSettingsServiceProviders(project: Project, kept: ProviderId[]): void {
+  const keptSet = new Set<string>(kept);
+  const sf = resolveSourceFile(project, "src/lib/config/settings-service.ts");
+  for (const name of ["CHAT_PROVIDERS", "EMBEDDING_PROVIDERS"]) {
+    const decl = sf.getVariableDeclarationOrThrow(name);
+    const init = decl.getInitializerOrThrow();
+    // `[...] as const` — the initializer is an AsExpression wrapping the array.
+    const expr = Node.isAsExpression(init) ? init.getExpression() : init;
+    if (!Node.isArrayLiteralExpression(expr)) {
+      throw new Error(`${name} in src/lib/config/settings-service.ts must be an array literal`);
+    }
+    const drop: number[] = [];
+    expr.getElements().forEach((el, i) => {
+      if (Node.isStringLiteral(el) && !keptSet.has(el.getLiteralValue())) drop.push(i);
+    });
+    for (const i of drop.reverse()) expr.removeElement(i);
+  }
+  sf.saveSync();
+}
+
 // src/lib/openapi/*: the OpenAPI document hardcodes the full provider set, so a
 // generated single-provider project would otherwise ship docs advertising
 // providers its own API rejects. Narrow the same way the admin forms are narrowed.
@@ -249,6 +281,7 @@ export async function applySourceTransforms(
     "src/lib/providers/index.ts", "src/lib/providers/types.ts", "src/lib/providers/catalog.ts",
     "src/lib/vectorstore/index.ts", "src/lib/db/schema.ts",
     "scripts/vectorstore-init.ts", "src/lib/openapi/paths/admin-settings.ts", "src/lib/openapi/schemas.ts",
+    "src/lib/config/settings-service.ts",
   ]) {
     project.addSourceFileAtPath(`${root}/${rel}`);
   }
@@ -257,6 +290,7 @@ export async function applySourceTransforms(
     pruneProviderFactory(project, removedProviders);
     narrowProviderUnions(project, o.keptProviders);
     pruneProviderCatalog(project, o.keptProviders);
+    pruneSettingsServiceProviders(project, o.keptProviders);
     pruneOpenApiProviderLists(project, o.keptProviders);
   }
   if (removedStores.length) {

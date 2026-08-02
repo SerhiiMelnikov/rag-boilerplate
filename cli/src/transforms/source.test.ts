@@ -3,7 +3,7 @@ import { Project } from "ts-morph";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneProviderCatalog, pruneOpenApiProviderLists, rewriteSettingsDefaults, pruneChunksFromSchema } from "./source.js";
+import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneProviderCatalog, pruneSettingsServiceProviders, pruneOpenApiProviderLists, rewriteSettingsDefaults, pruneChunksFromSchema } from "./source.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "test-fixtures");
 const read = (p: string) => readFileSync(join(FIX, p), "utf8");
@@ -131,6 +131,43 @@ describe("pruneProviderCatalog", () => {
   it("throws when an entry has no string-literal id", () => {
     const project = projectWith(CATALOG, "export const PROVIDERS = [{ id: GOOGLE, label: \"Google\" }];");
     expect(() => pruneProviderCatalog(project, ["google"])).toThrow(/string literal/);
+  });
+});
+
+describe("pruneSettingsServiceProviders", () => {
+  const SVC = "src/lib/config/settings-service.ts";
+  const load = () => projectWith(SVC, readRepo(SVC));
+  const textOf = (project: Project) => project.getSourceFileOrThrow(SVC).getFullText();
+
+  it("narrows both zod provider enums to the kept set", () => {
+    const project = load();
+    pruneSettingsServiceProviders(project, ["google"]);
+    const text = textOf(project);
+    expect(text).toContain('const CHAT_PROVIDERS = ["google"] as const');
+    expect(text).toContain('const EMBEDDING_PROVIDERS = ["google"] as const');
+  });
+
+  it("keeps ollama in both lists when ollama is the only provider", () => {
+    const project = load();
+    pruneSettingsServiceProviders(project, ["ollama"]);
+    const text = textOf(project);
+    expect(text).toContain('const CHAT_PROVIDERS = ["ollama"] as const');
+    // Ollama embeds, so the embedding enum is non-empty — z.enum([]) would throw
+    // at module load, and validateSelection is what guarantees this can't happen.
+    expect(text).toContain('const EMBEDDING_PROVIDERS = ["ollama"] as const');
+  });
+
+  it("drops anthropic from chat but leaves the embedding list alone", () => {
+    const project = load();
+    pruneSettingsServiceProviders(project, ["google", "ollama"]);
+    const text = textOf(project);
+    expect(text).toContain('const CHAT_PROVIDERS = ["google", "ollama"] as const');
+    expect(text).toContain('const EMBEDDING_PROVIDERS = ["google", "ollama"] as const');
+  });
+
+  it("throws when a list stops being an array literal", () => {
+    const project = projectWith(SVC, "const CHAT_PROVIDERS = providerIds();\nconst EMBEDDING_PROVIDERS = [] as const;");
+    expect(() => pruneSettingsServiceProviders(project, ["google"])).toThrow(/array literal/);
   });
 });
 

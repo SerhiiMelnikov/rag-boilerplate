@@ -80,4 +80,33 @@ describe("useAdminSettings", () => {
     act(() => result.current.patch({ temperature: 0.4 }));
     expect(result.current.saved).toBe(false);
   });
+
+  // Not the same path as `{ ok: false }`: a network failure, an aborted request or
+  // a body that is not JSON all reject rather than resolving, and the `catch` that
+  // handles them is otherwise untested — it could be deleted and every other test
+  // here would still pass.
+  it("reports a load that throws, not just one that returns !ok", async () => {
+    global.fetch = vi.fn(async () => { throw new Error("network down"); }) as unknown as typeof fetch;
+    const { result } = renderHook(() => useAdminSettings());
+    await waitFor(() => expect(result.current.loadError).toBeTruthy());
+    expect(result.current.settings).toBeNull();
+  });
+
+  it("reports a save that throws, returns false, and does not leave saving stuck", async () => {
+    mockFetch((_url, init) => {
+      if (init?.method === "PUT") throw new Error("network down");
+      return { ok: true, json: async () => LOADED };
+    });
+    const { result } = renderHook(() => useAdminSettings());
+    await waitFor(() => expect(result.current.settings).toBeTruthy());
+
+    let ok: boolean | undefined;
+    await act(async () => { ok = await result.current.save({ temperature: 0.9 }); });
+
+    expect(ok).toBe(false);
+    expect(result.current.saveError).toBeTruthy();
+    // The `finally` is what guarantees this. Without it the page's Save button
+    // stays disabled forever and only a reload recovers.
+    expect(result.current.saving).toBe(false);
+  });
 });

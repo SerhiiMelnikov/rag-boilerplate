@@ -21,7 +21,11 @@ describe("StatTiles", () => {
 describe("NegativeList", () => {
   it("shows an empty state when there are no items", () => {
     render(<NegativeList items={[]} />);
-    expect(screen.getByText(/no negative feedback yet/i)).toBeInTheDocument();
+    expect(screen.getByText("No negative ratings")).toBeInTheDocument();
+  });
+  it("says so when no answer has been rated down", () => {
+    render(<NegativeList items={[]} />);
+    expect(screen.getByText("No negative ratings")).toBeInTheDocument();
   });
   it("expands a row to reveal the full answer and sources", () => {
     render(
@@ -38,7 +42,11 @@ describe("NegativeList", () => {
 describe("DocumentQualityTable", () => {
   it("shows an empty state with no rows", () => {
     render(<DocumentQualityTable rows={[]} />);
-    expect(screen.getByText(/no document feedback yet/i)).toBeInTheDocument();
+    expect(screen.getByText("No documents retrieved yet")).toBeInTheDocument();
+  });
+  it("says so when no document has been retrieved yet", () => {
+    render(<DocumentQualityTable rows={[]} />);
+    expect(screen.getByText("No documents retrieved yet")).toBeInTheDocument();
   });
   it("renders a document row", () => {
     render(<DocumentQualityTable rows={[{ documentId: "d1", filename: "a.md", appearances: 4, up: 1, down: 3, satisfaction: 0.25 }]} />);

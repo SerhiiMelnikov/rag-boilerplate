@@ -22,6 +22,14 @@ describe("UsageTable", () => {
     expect(screen.getByText("No recorded usage in this period.")).toBeInTheDocument();
   });
 
+  it("renders the caller's empty message as a real empty state", () => {
+    render(<UsageTable rows={[]} emptyMessage="No recorded usage in this period." />);
+    expect(screen.getByText("No recorded usage in this period.")).toBeInTheDocument();
+    // Not a lone <td> spanning the table: an empty state is a block with room to
+    // explain itself, and the table head above it is noise when there is no data.
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
   it("preserves the given row order rather than sorting", () => {
     // Deliberately NOT in descending total-token order, proving the component
     // trusts the SQL's ordering instead of re-sorting.

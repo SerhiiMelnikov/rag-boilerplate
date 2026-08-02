@@ -53,6 +53,18 @@ describe("AccessForm", () => {
     expect(putBody().smtpPassword).toBe("new-secret-1234");
   });
 
+  it("keeps the typed SMTP password when the save is rejected", async () => {
+    global.fetch = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === "PUT"
+      ? { ok: false, json: async () => ({}) }
+      : { ok: true, json: async () => MASKED })) as unknown as typeof fetch;
+    render(<AccessForm />);
+    const input = (await screen.findByLabelText("SMTP password")) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "new-secret-1234" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not save/i);
+    expect(input.value).toBe("new-secret-1234");
+  });
+
   it("saves only the fields this page owns", async () => {
     render(<AccessForm />);
     fireEvent.click(await screen.findByRole("button", { name: "Save" }));

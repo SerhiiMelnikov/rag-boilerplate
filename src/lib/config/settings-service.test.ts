@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { encryptSecret, decryptSecret } from "@/lib/config/crypto";
 import { getRuntimeSettings, getAdminSettings, updateSettings, settingsPatchSchema, getRegistrationSettings } from "@/lib/config/settings-service";
-import { PROVIDERS, CHAT_PROVIDER_IDS } from "@/lib/providers/catalog";
+import { PROVIDERS, CHAT_PROVIDER_IDS, EMBEDDING_PROVIDER_IDS } from "@/lib/providers/catalog";
 
 // Real crypto module, but decryptSecret is wrapped in a spy (call-through to the
 // actual implementation) so tests can observe whether it was invoked. This keeps
@@ -126,10 +126,22 @@ describe("settings service", () => {
   });
 });
 
+// Pulls the literal values out of a `.partial()`-wrapped z.enum field (the shape
+// every field on settingsPatchSchema has), so the schema -> catalog direction
+// below walks what the schema actually accepts, rather than a hand-copied list
+// that could itself drift from CHAT_PROVIDERS/EMBEDDING_PROVIDERS.
+function enumOptions(field: unknown): string[] {
+  const unwrapped = (field as { unwrap?: () => unknown }).unwrap?.() ?? field;
+  return (unwrapped as { options: string[] }).options;
+}
+
 // The zod enums in settings-service.ts are literal arrays, not derived from the
 // catalog: z.enum needs a literal tuple to produce a literal union, and deriving
 // would collapse the schema's types to plain `string`. That leaves two lists to
-// keep in step, so this asserts they agree — in both directions.
+// keep in step, so this asserts they agree — in both directions: every catalog
+// provider is accepted (below), and every literal the schema accepts is really
+// in the catalog (further down) — the direction that would catch a stray extra
+// entry left in CHAT_PROVIDERS/EMBEDDING_PROVIDERS that the catalog no longer has.
 describe("the settings schema agrees with the provider catalog", () => {
   it("accepts every catalog provider as a chat provider", () => {
     for (const id of CHAT_PROVIDER_IDS) {
@@ -148,5 +160,26 @@ describe("the settings schema agrees with the provider catalog", () => {
 
   it("rejects a provider that is not in the catalog", () => {
     expect(settingsPatchSchema.safeParse({ chatProvider: "mistral" }).success).toBe(false);
+  });
+
+  // The other direction: every literal chatProvider/parserProvider/imageProvider/
+  // unifiedProvider accepts must itself be a real catalog provider. A stale extra
+  // entry left in CHAT_PROVIDERS (e.g. a provider removed from PROVIDERS but not
+  // from the schema's literal tuple) would pass every test above yet fail this one.
+  it("every chat-provider literal the schema accepts is a catalog provider", () => {
+    const shape = settingsPatchSchema.shape;
+    for (const field of ["chatProvider", "parserProvider", "imageProvider", "unifiedProvider"] as const) {
+      for (const id of enumOptions(shape[field])) {
+        expect(CHAT_PROVIDER_IDS, `${field} accepts "${id}", which is not in the catalog`).toContain(id);
+      }
+    }
+  });
+
+  // Same direction for embeddingProvider: every literal it accepts must be a
+  // catalog provider marked embedding-capable.
+  it("every embedding-provider literal the schema accepts is embedding-capable in the catalog", () => {
+    for (const id of enumOptions(settingsPatchSchema.shape.embeddingProvider)) {
+      expect(EMBEDDING_PROVIDER_IDS, `embeddingProvider accepts "${id}", which the catalog does not mark embedding-capable`).toContain(id);
+    }
   });
 });

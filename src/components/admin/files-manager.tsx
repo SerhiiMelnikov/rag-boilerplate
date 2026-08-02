@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Trash2, ArrowUpDown, Layers, Link2 } from "lucide-react";
+import { Upload, Trash2, ArrowUpDown, Layers, Link2, SearchX } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Input } from "@/components/ui/input";
@@ -172,6 +173,14 @@ export function FilesManager() {
     }
   }
 
+  // Every filter, not just the one the admin last touched: an empty result can be
+  // the product of all three at once, and clearing one still shows nothing.
+  function clearFilters() {
+    setQuery("");
+    setExtFilter("all");
+    setWorkspaceFilter("all");
+  }
+
   return (
     <>
       <PageHeader
@@ -253,86 +262,105 @@ export function FilesManager() {
           </span>
         </div>
         {urlError && <Alert tone="danger">{urlError}</Alert>}
-        <Table>
-          <THead>
-            <TR>
-              <TH>
-                <button type="button" onClick={() => toggleSort("name")} className={cn("inline-flex items-center gap-1", FOCUS_RING)}>
-                  Name <ArrowUpDown className="h-3 w-3" />
-                </button>
-              </TH>
-              <TH>Type</TH>
-              <TH>Status</TH>
-              <TH>
-                <button type="button" onClick={() => toggleSort("date")} className={cn("inline-flex items-center gap-1", FOCUS_RING)}>
-                  Date <ArrowUpDown className="h-3 w-3" />
-                </button>
-              </TH>
-              <TH>Workspaces</TH>
-              <TH />
-            </TR>
-          </THead>
-          <TBody>
-            {visible.map((f) => (
-              <TR key={f.id}>
-                <TD>
-                  <div className="flex items-center gap-2">
-                    {/* The name cell is where a file's grounding in the knowledge base
-                        shows up: one tick per workspace it belongs to, dashed when none.
-                        The workspaces cell below still carries the count as text. */}
-                    <Gutter sources={f.workspaces.length} size="sm" />
-                    {f.kind === "image" ? (
-                      <button type="button" onClick={() => setModalImage(f)} className={cn("text-left underline-offset-2 hover:underline", FOCUS_RING)}>
-                        {f.filename}
-                      </button>
-                    ) : (
-                      f.filename
-                    )}
-                  </div>
-                </TD>
-                <TD><Badge>{f.ext || "—"}</Badge></TD>
-                <TD><StatusBadge status={f.status} error={f.error} /></TD>
-                <TD className="text-xs text-ink-muted">{new Date(f.createdAt).toLocaleDateString()}</TD>
-                <TD>
-                  <button
-                    type="button"
-                    aria-label={`Edit workspaces of ${f.filename}`}
-                    onClick={() => setWsFor(f)}
-                    className={cn("flex flex-wrap items-center gap-1", FOCUS_RING)}
-                  >
-                    {f.workspaces.length === 0 ? (
-                      <Badge dashed>unassigned</Badge>
-                    ) : (
-                      f.workspaces.map((w) => <Badge key={w.id}>{w.name}</Badge>)
-                    )}
+        {visible.length === 0 ? (
+          files.length === 0 ? (
+            <EmptyState
+              icon={Upload}
+              title="No files yet"
+              description="Upload a document or an image, or paste a URL to ingest a page. Nothing can be answered until something is here."
+            />
+          ) : (
+            <EmptyState
+              icon={SearchX}
+              title="No files match"
+              description="No file matches every active filter."
+              action={
+                <Button variant="secondary" size="sm" onClick={clearFilters}>Clear filters</Button>
+              }
+            />
+          )
+        ) : (
+          <Table>
+            <THead>
+              <TR>
+                <TH>
+                  <button type="button" onClick={() => toggleSort("name")} className={cn("inline-flex items-center gap-1", FOCUS_RING)}>
+                    Name <ArrowUpDown className="h-3 w-3" />
                   </button>
-                </TD>
-                <TD className="text-right">
-                  <div className="flex items-center justify-end gap-3">
-                    {f.kind === "document" && (
-                      <button
-                        type="button"
-                        aria-label={`View chunks of ${f.filename}`}
-                        onClick={() => setChunksFor(f)}
-                        className={cn("text-ink-subtle transition-colors hover:text-ink", FOCUS_RING)}
-                      >
-                        <Layers className="h-4 w-4" />
-                      </button>
-                    )}
+                </TH>
+                <TH>Type</TH>
+                <TH>Status</TH>
+                <TH>
+                  <button type="button" onClick={() => toggleSort("date")} className={cn("inline-flex items-center gap-1", FOCUS_RING)}>
+                    Date <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </TH>
+                <TH>Workspaces</TH>
+                <TH />
+              </TR>
+            </THead>
+            <TBody>
+              {visible.map((f) => (
+                <TR key={f.id}>
+                  <TD>
+                    <div className="flex min-w-0 items-center gap-2">
+                      {/* The name cell is where a file's grounding in the knowledge base
+                          shows up: one tick per workspace it belongs to, dashed when none.
+                          The workspaces cell below still carries the count as text. */}
+                      <Gutter sources={f.workspaces.length} size="sm" />
+                      {f.kind === "image" ? (
+                        <button type="button" onClick={() => setModalImage(f)} className={cn("truncate text-left underline-offset-2 hover:underline", FOCUS_RING)}>
+                          {f.filename}
+                        </button>
+                      ) : (
+                        <span className="truncate">{f.filename}</span>
+                      )}
+                    </div>
+                  </TD>
+                  <TD><Badge>{f.ext || "—"}</Badge></TD>
+                  <TD><StatusBadge status={f.status} error={f.error} /></TD>
+                  <TD className="text-xs text-ink-muted">{new Date(f.createdAt).toLocaleDateString()}</TD>
+                  <TD>
                     <button
                       type="button"
-                      aria-label={`Delete ${f.filename}`}
-                      onClick={() => setPendingDelete(f)}
-                      className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
+                      aria-label={`Edit workspaces of ${f.filename}`}
+                      onClick={() => setWsFor(f)}
+                      className={cn("flex flex-wrap items-center gap-1", FOCUS_RING)}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      {f.workspaces.length === 0 ? (
+                        <Badge dashed>unassigned</Badge>
+                      ) : (
+                        f.workspaces.map((w) => <Badge key={w.id}>{w.name}</Badge>)
+                      )}
                     </button>
-                  </div>
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+                  </TD>
+                  <TD className="text-right">
+                    <div className="flex items-center justify-end gap-3">
+                      {f.kind === "document" && (
+                        <button
+                          type="button"
+                          aria-label={`View chunks of ${f.filename}`}
+                          onClick={() => setChunksFor(f)}
+                          className={cn("text-ink-subtle transition-colors hover:text-ink", FOCUS_RING)}
+                        >
+                          <Layers className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        aria-label={`Delete ${f.filename}`}
+                        onClick={() => setPendingDelete(f)}
+                        className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
       </PageBody>
       <ConfirmDialog
         open={pendingDelete !== null}

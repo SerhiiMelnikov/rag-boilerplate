@@ -177,4 +177,36 @@ describe("FilesManager", () => {
     await screen.findByText("report.pdf");
     expect(screen.getByText("2 files")).toBeInTheDocument();
   });
+
+  // The two cases mean different things and deserve different offers. Conflating
+  // them is the common bug: "upload your first file" is nonsense in front of an
+  // admin who has fifty files and a typo in the search box.
+  it("invites the first upload when nothing has been added", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => (String(url).includes("workspaces")
+        ? { ok: true, status: 200, json: async () => ({ workspaces: [] }) }
+        : { ok: true, status: 200, json: async () => ({ files: [] }) })) as never,
+    );
+    render(<FilesManager />);
+    expect(await screen.findByText("No files yet")).toBeInTheDocument();
+    expect(screen.queryByText("No files match")).toBeNull();
+  });
+
+  it("offers to clear the filters when they matched nothing", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "zzzz" } });
+    expect(screen.getByText("No files match")).toBeInTheDocument();
+    expect(screen.queryByText("No files yet")).toBeNull();
+  });
+
+  it("clears every filter from the empty state, not just the search", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "zzzz" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(await screen.findByText("report.pdf")).toBeInTheDocument();
+    expect((screen.getByLabelText("Search files") as HTMLInputElement).value).toBe("");
+  });
 });

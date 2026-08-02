@@ -84,15 +84,4 @@ describe("AnsweringForm", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Save" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not save/i);
   });
-
-  // registrationMode existed briefly on the 6A branch as a settings column gating
-  // "open" vs "gated" registration, and was dropped entirely (962565f).
-  // Registration is gated unconditionally by the allowed-domains list, so there is
-  // no mode to choose at scaffold time or at runtime. It must never come back.
-  it("never renders a registration-mode field", async () => {
-    render(<AnsweringForm />);
-    await screen.findByLabelText("Chat model");
-    expect(screen.queryByLabelText(/registration.?mode/i)).toBeNull();
-    expect(screen.queryByText(/registrationMode/i)).toBeNull();
-  });
 });

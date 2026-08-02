@@ -6,6 +6,7 @@ import {
   KEYED_PROVIDERS,
   HAS_OLLAMA,
   keyNameOf,
+  type KeyName,
 } from "@/lib/providers/catalog";
 
 describe("provider catalog", () => {
@@ -35,13 +36,22 @@ describe("provider catalog", () => {
     expect(KEYED_PROVIDERS.every((p) => p.keyName !== null)).toBe(true);
   });
 
-  // Not a redundant restatement of the line above: this one is a compile-time
-  // assertion. `${p.keyName}Key` and `keys[p.keyName]` are exactly what the keys
-  // page does, and both fail to typecheck if KEYED_PROVIDERS is ever widened back
-  // to ProviderInfo[]. A green run here means the narrowing predicate survived.
+  // A compile-time assertion, not a runtime one. Indexing a Record<KeyName, …>
+  // with `p.keyName` is what fails to compile (TS2538) when keyName is nullable;
+  // the template-literal form this test used before does NOT error, which is why
+  // it stayed green with the narrowing removed. If KEYED_PROVIDERS is ever widened
+  // back to ProviderInfo[], this line stops compiling.
   it("narrows keyName to non-null at the type level", () => {
-    const columns = KEYED_PROVIDERS.map((p) => `${p.keyName}Key`);
-    expect(columns).toEqual(["googleKey", "openaiKey", "anthropicKey"]);
+    const column: Record<KeyName, string> = {
+      google: "googleKey",
+      openai: "openaiKey",
+      anthropic: "anthropicKey",
+    };
+    expect(KEYED_PROVIDERS.map((p) => column[p.keyName])).toEqual([
+      "googleKey",
+      "openaiKey",
+      "anthropicKey",
+    ]);
   });
 
   it("reports whether ollama is present", () => {

@@ -40,7 +40,7 @@ describe("FilesManager", () => {
   it("renders workspace chips and an unassigned badge", async () => {
     render(<FilesManager />);
     await screen.findByText("report.pdf");
-    // Scoped to the table: the toolbar's "Upload to" control also legitimately
+    // Scoped to the table: the header's "Upload to" control also legitimately
     // shows "General" once the default workspace is preselected.
     const table = screen.getByRole("table");
     expect(await within(table).findByText("General")).toBeInTheDocument();
@@ -136,12 +136,16 @@ describe("FilesManager", () => {
 
   // Upload and Ingest are actions; type and workspace are filters; and
   // "Upload to" is a parameter of the upload, not a third filter.
+  //
+  // Two halves, because the first alone is not the claim the name makes. "Not in
+  // the filter bar" would still pass if the actions had been relocated to some
+  // third place; what matters is that they sit with the title.
   it("puts the actions in the page header, not the filter bar", async () => {
     render(<FilesManager />);
     const upload = await screen.findByLabelText("Upload file");
-    const typeFilter = screen.getByLabelText("Filter by type");
-    const bar = typeFilter.closest("[data-testid='files-filters']");
+    const bar = screen.getByLabelText("Filter by type").closest("[data-testid='files-filters']");
     expect(bar).not.toBeNull();
+    expect(screen.getByTestId("page-actions").contains(upload)).toBe(true);
     expect(bar!.contains(upload)).toBe(false);
   });
 

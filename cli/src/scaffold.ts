@@ -114,10 +114,12 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
   // 8b. appKind branch: api-only prunes the Next.js/React frontend down to a
   // standalone Hono server (src/server/, already shipped in the template);
   // full removes that standalone server instead, since it is the Next.js app
-  // that actually gets served. Runs LAST (after applySourceTransforms in step
-  // 7), because that step still needs src/components/admin/*.tsx to exist —
-  // deleting src/components/ any earlier would crash ts-morph trying to load
-  // a file that is no longer there.
+  // that actually gets served. This used to have to run after step 7's
+  // applySourceTransforms, which needed src/components/admin/*.tsx to still
+  // exist; that transform now edits src/lib/providers/catalog.ts and a handful
+  // of other src/lib files instead (verified: reordering the two does not
+  // break the scaffold or installer.integration tests). Left in this position
+  // to match the numbered steps above, not because of a live dependency.
   if (o.appKind === "api") {
     for (const rel of API_ONLY_DELETE_PATHS) {
       const p = join(opts.targetDir, rel);

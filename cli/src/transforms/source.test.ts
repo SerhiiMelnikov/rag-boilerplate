@@ -128,6 +128,11 @@ describe("pruneProviderCatalog", () => {
     expect(() => pruneProviderCatalog(project, ["google"])).toThrow(/array literal/);
   });
 
+  it("throws when the PROVIDERS declaration is missing entirely", () => {
+    const project = projectWith(CATALOG, "export const SOMETHING_ELSE = [];");
+    expect(() => pruneProviderCatalog(project, ["google"])).toThrow(/PROVIDERS/);
+  });
+
   it("throws when an entry has no string-literal id", () => {
     const project = projectWith(CATALOG, "export const PROVIDERS = [{ id: GOOGLE, label: \"Google\" }];");
     expect(() => pruneProviderCatalog(project, ["google"])).toThrow(/string literal/);

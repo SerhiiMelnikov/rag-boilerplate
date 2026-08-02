@@ -254,7 +254,7 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("  **Evaluating retrieval quality** below.");
   lines.push("");
   lines.push("### Settings", "");
-  lines.push("- **Answering** — pick the chat/embedding/image models, tune retrieval, set rate limits");
+  lines.push("- **Answering** — pick the chat/embedding/parser/image models, tune retrieval, set rate limits");
   lines.push("  (chat requests per minute and per day per user). `0` disables a limit — see");
   lines.push("  **Rate limits** below.");
   lines.push("- **Provider keys** — set your API keys (encrypted at rest). Do this first:");

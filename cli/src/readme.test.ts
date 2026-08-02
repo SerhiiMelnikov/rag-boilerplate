@@ -161,6 +161,15 @@ describe("the admin section describes the real navigation", () => {
     expect(text).not.toContain("Settings → Models");
   });
 
+  // Document parser is a real fourth independently-configurable row on the
+  // Answering page (answering-form.tsx), alongside chat/embedding/image. The
+  // bullet used to omit it, which is exactly the kind of thing a user reads
+  // this README to find out.
+  it("mentions the Document parser model in the Answering bullet", () => {
+    const answeringLine = readme().split("\n").find((l) => l.includes("**Answering**"));
+    expect(answeringLine).toMatch(/parser/i);
+  });
+
   // Not `not.toContain("/admin/keys")` — the README never printed URL paths, so
   // that assertion would pass whether or not this task did anything. Pin the
   // Settings section's real content instead: the three bullets, in order.

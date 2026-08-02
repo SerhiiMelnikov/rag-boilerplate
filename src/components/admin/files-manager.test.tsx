@@ -201,12 +201,31 @@ describe("FilesManager", () => {
     expect(screen.queryByText("No files yet")).toBeNull();
   });
 
+  // The first alone is not the claim the name makes (same discipline as the
+  // header-placement test above): a row can reappear because one filter cleared
+  // while another silently did not, if the remaining filter happens to match. So
+  // all three filters are driven off "all"/"" first, and all three are asserted
+  // back afterward — not just that rows came back.
   it("clears every filter from the empty state, not just the search", async () => {
     render(<FilesManager />);
     await screen.findByText("report.pdf");
+
     fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "zzzz" } });
+
+    fireEvent.click(screen.getByLabelText("Filter by type")); // open the styled listbox
+    fireEvent.click(await screen.findByRole("option", { name: "png" }));
+
+    fireEvent.click(screen.getByLabelText("Filter by workspace"));
+    fireEvent.click(await screen.findByRole("option", { name: "unassigned" }));
+
+    expect(await screen.findByText("No files match")).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+
     expect(await screen.findByText("report.pdf")).toBeInTheDocument();
+    expect(screen.getByText("bike.png")).toBeInTheDocument();
     expect((screen.getByLabelText("Search files") as HTMLInputElement).value).toBe("");
+    expect(screen.getByLabelText("Filter by type")).toHaveTextContent("all");
+    expect(screen.getByLabelText("Filter by workspace")).toHaveTextContent("all");
   });
 });

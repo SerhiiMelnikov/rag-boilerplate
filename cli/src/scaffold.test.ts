@@ -2,10 +2,16 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile, readFile, cp } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { scaffold, settingsDefaultsFor } from "./scaffold.js";
 import type { InstallOptions } from "./options.js";
+
+// The real catalog, not a fixture copy: it's the single source of truth
+// applySourceTransforms edits (see transforms/source.ts, pruneProviderCatalog),
+// so a stale hand-maintained copy here would go stale silently.
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 let templateDir: string;
 let targetParent: string;
@@ -32,8 +38,7 @@ beforeEach(async () => {
   await cp(join(process.cwd(), "test-fixtures", "providers-types.ts"), join(templateDir, "src/lib/providers/types.ts"));
   await cp(join(process.cwd(), "test-fixtures", "vectorstore-index.ts"), join(templateDir, "src/lib/vectorstore/index.ts"));
   await cp(join(process.cwd(), "test-fixtures", "schema.ts"), join(templateDir, "src/lib/db/schema.ts"));
-  await cp(join(process.cwd(), "test-fixtures", "settings-form.tsx"), join(templateDir, "src/components/admin/settings-form.tsx"));
-  await cp(join(process.cwd(), "test-fixtures", "provider-keys-form.tsx"), join(templateDir, "src/components/admin/provider-keys-form.tsx"));
+  await cp(join(REPO_ROOT, "src/lib/providers/catalog.ts"), join(templateDir, "src/lib/providers/catalog.ts"));
   await cp(join(process.cwd(), "test-fixtures", "vectorstore-init.ts"), join(templateDir, "scripts/vectorstore-init.ts"));
   await cp(join(process.cwd(), "test-fixtures", "admin-settings.ts"), join(templateDir, "src/lib/openapi/paths/admin-settings.ts"));
   await cp(join(process.cwd(), "test-fixtures", "schemas.ts"), join(templateDir, "src/lib/openapi/schemas.ts"));

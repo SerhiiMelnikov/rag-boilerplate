@@ -1,16 +1,47 @@
 // End-to-end: build the template, scaffold a few combinations into temp dirs,
 // and assert the generated app is pruned correctly AND type-checks.
-// Gated behind RUN_INTEGRATION=1 (installs no deps — runs tsc via the app's own
-// typescript once node_modules is linked; see note). Run:
+// Gated behind RUN_INTEGRATION=1 (installs no deps at the generated project —
+// it borrows the repo root's own node_modules/tsc instead; see typeCheck
+// below). Run:
 //   cd cli && npm run build:template && RUN_INTEGRATION=1 npx vitest run src/installer.integration.test.ts
 import { describe, it, expect, beforeAll } from "vitest";
-import { mkdtemp, rm, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, rm, readFile, readdir, symlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { scaffold } from "./scaffold.js";
 import type { InstallOptions } from "./options.js";
+
+// The generated project is scaffolded with install: false, so it has no
+// node_modules and no tsc of its own. Borrowing the boilerplate's is what makes
+// each test name's "type-checking app" claim real: the previous
+// `if (existsSync(tsc))` guard around the app's own (never-installed) tsc meant
+// the check never ran once, while every test name claimed it had. A pruned
+// project that no longer type-checks is exactly the failure this suite exists
+// to catch, and it reached CI because of that skip.
+const REPO_ROOT = resolve(import.meta.dirname, "..", "..");
+const REPO_TSC = join(REPO_ROOT, "node_modules/.bin/tsc");
+
+// Type-check `target` with the boilerplate's own tsc via a symlinked
+// node_modules, then remove the symlink again before the caller's
+// `rm(parent, { recursive: true, force: true })` cleanup runs. `fs.rm` already
+// treats a symlink as a leaf and does not follow it into the real directory it
+// points at (verified separately — see the report), so that cleanup alone is
+// safe; removing the link here first is belt-and-suspenders for the one
+// operation in this suite that could otherwise reach outside its own temp dir.
+async function typeCheck(target: string): Promise<void> {
+  if (!existsSync(REPO_TSC)) {
+    throw new Error("run `npm install` at the repo root — this suite type-checks the generated project with the boilerplate's own tsc");
+  }
+  const nodeModulesLink = join(target, "node_modules");
+  await symlink(join(REPO_ROOT, "node_modules"), nodeModulesLink, "dir");
+  try {
+    execFileSync(REPO_TSC, ["--noEmit"], { cwd: target, stdio: "inherit" });
+  } finally {
+    await rm(nodeModulesLink, { force: true });
+  }
+}
 
 // Recursively collect every file under `dir` (used below to confirm no
 // surviving api-only source file imports the pruned src/auth.ts).
@@ -64,10 +95,8 @@ describe.runIf(RUN)("installer (integration)", () => {
       // vitest configs must not ship (they'd import pruned provider/store modules).
       expect(existsSync(join(target, "src/lib/providers/adapters.test.ts"))).toBe(false);
       expect(existsSync(join(target, "vitest.config.ts"))).toBe(false);
-      // Type-check the generated app using its own installed typescript if present,
-      // else skip the tsc step (dep install is out of scope for CI speed).
-      const tsc = join(target, "node_modules/.bin/tsc");
-      if (existsSync(tsc)) execFileSync(tsc, ["--noEmit"], { cwd: target, stdio: "inherit" });
+      // Type-check the generated app for real (see typeCheck's comment above).
+      await typeCheck(target);
 
       await rm(parent, { recursive: true, force: true });
     }, 120000);
@@ -108,6 +137,9 @@ describe.runIf(RUN)("installer (integration): appKind", () => {
       const content = await readFile(f, "utf8");
       expect(content, `${f} must not import "@/auth"`).not.toMatch(/from ["']@\/auth["']/);
     }
+
+    // Type-check the api-only app too (see typeCheck's comment above).
+    await typeCheck(target);
 
     await rm(parent, { recursive: true, force: true });
   }, 120000);

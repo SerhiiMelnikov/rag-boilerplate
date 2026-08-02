@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { ProviderKeysForm } from "@/components/admin/provider-keys-form";
+import { KeysForm } from "@/components/admin/settings/keys-form";
 
-export default async function KeysPage() {
+export default async function SettingsKeysPage() {
   const session = await auth();
   if (session?.user?.role !== "admin") redirect("/");
-  return <ProviderKeysForm />;
+  return <KeysForm />;
 }

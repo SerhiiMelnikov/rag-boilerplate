@@ -69,9 +69,9 @@ export const NAV: NavGroup[] = [
     workspaceScoped: false,
     items: [
       { label: "Answering", href: "/admin/settings" },
-      // Its own route in 6A; package 6C merges it into Settings as a tab, together
-      // with the CLI transforms that parse both provider forms.
-      { label: "Provider keys", href: "/admin/keys" },
+      // Its own top-level route until 6C. Nesting it under /admin/settings makes
+      // the panel the navigation, the same way Knowledge and Insights already work.
+      { label: "Provider keys", href: "/admin/settings/keys" },
     ],
   },
   {
@@ -105,7 +105,8 @@ export function visibleGroups(role: "admin" | "user", isSuperAdmin: boolean): Na
 }
 
 // Longest match wins. A plain prefix scan would let the chat's "/" claim every
-// route, and would leave /admin/keys — a sub-item, not a group href — unmatched.
+// route, and would stop at /admin/settings for /admin/settings/keys — a
+// sub-item sharing its group's href as a prefix — instead of matching it.
 export function activeGroup(pathname: string): NavGroup | undefined {
   let best: NavGroup | undefined;
   let bestLength = -1;

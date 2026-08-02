@@ -14,8 +14,7 @@ export function DocumentQualityTable({ rows }: { rows: DocumentQuality[] }) {
       />
     );
   return (
-    <div className="overflow-x-auto">
-      <Table>
+    <Table>
       <THead>
         <TR>
           <TH>Document</TH>
@@ -37,6 +36,5 @@ export function DocumentQualityTable({ rows }: { rows: DocumentQuality[] }) {
         ))}
       </TBody>
     </Table>
-    </div>
   );
 }

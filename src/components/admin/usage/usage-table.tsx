@@ -9,8 +9,7 @@ import type { UsageRow } from "@/lib/analytics/usage";
 export function UsageTable({ rows, emptyMessage }: { rows: UsageRow[]; emptyMessage: string }) {
   if (rows.length === 0) return <EmptyState icon={Activity} title={emptyMessage} />;
   return (
-    <div className="overflow-x-auto">
-      <Table>
+    <Table>
       <THead>
         <TR>
           <TH>Label</TH>
@@ -32,6 +31,5 @@ export function UsageTable({ rows, emptyMessage }: { rows: UsageRow[]; emptyMess
         ))}
       </TBody>
     </Table>
-    </div>
   );
 }

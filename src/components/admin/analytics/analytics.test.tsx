@@ -23,10 +23,6 @@ describe("NegativeList", () => {
     render(<NegativeList items={[]} />);
     expect(screen.getByText("No negative ratings")).toBeInTheDocument();
   });
-  it("says so when no answer has been rated down", () => {
-    render(<NegativeList items={[]} />);
-    expect(screen.getByText("No negative ratings")).toBeInTheDocument();
-  });
   it("expands a row to reveal the full answer and sources", () => {
     render(
       <NegativeList
@@ -41,10 +37,6 @@ describe("NegativeList", () => {
 
 describe("DocumentQualityTable", () => {
   it("shows an empty state with no rows", () => {
-    render(<DocumentQualityTable rows={[]} />);
-    expect(screen.getByText("No documents retrieved yet")).toBeInTheDocument();
-  });
-  it("says so when no document has been retrieved yet", () => {
     render(<DocumentQualityTable rows={[]} />);
     expect(screen.getByText("No documents retrieved yet")).toBeInTheDocument();
   });

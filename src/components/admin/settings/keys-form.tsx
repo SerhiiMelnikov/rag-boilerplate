@@ -85,6 +85,10 @@ export function KeysForm() {
   }
 
   const s = settings;
+  // `saved` comes from the hook, which only knows about edits routed through `patch`.
+  // A typed key is local state it never sees, so an untouched "Saved" would sit over
+  // a secret the admin cannot read back from anywhere.
+  const dirty = Object.values(typed).some((v) => v.trim() !== "");
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -104,8 +108,10 @@ export function KeysForm() {
     if (!pendingClear) return;
     setClearing(true);
     // null is the schema's documented "clear this key". Nothing could send it
-    // before this page existed.
-    await save({ [`${pendingClear.keyName}Key`]: null });
+    // before this page existed. ollamaBaseUrl is included because it is this
+    // page's own field too — sending only the cleared key would silently
+    // discard an unsaved edit to the base URL sitting in `settings`.
+    await save({ ollamaBaseUrl: s.ollamaBaseUrl, [`${pendingClear.keyName}Key`]: null });
     setClearing(false);
     setPendingClear(null);
   }
@@ -155,7 +161,7 @@ export function KeysForm() {
           {saveError && <Alert tone="danger">{saveError}</Alert>}
           <div className="flex items-center gap-3">
             <Button type="submit" loading={saving}>Save</Button>
-            {saved && <span className="text-sm text-success">Saved</span>}
+            {saved && !dirty && <span className="text-sm text-success">Saved</span>}
           </div>
         </form>
       </PageBody>

@@ -99,18 +99,90 @@ describe("KeysForm", () => {
     expect(calls.some((c) => (c[1] as { method?: string } | undefined)?.method === "PUT")).toBe(false);
   });
 
-  it("sends null for the cleared key only, on confirm", async () => {
+  // confirmClear sends this page's own fields: the cleared key AND ollamaBaseUrl,
+  // which this page owns too. It must never send another provider's key or a
+  // field that belongs to another Settings page.
+  it("sends null for the cleared key plus this page's own ollamaBaseUrl, and nothing else", async () => {
+    global.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        // Echo the cleared key back as unset, the way the real API would, so
+        // the badge assertion below observes a real state transition rather
+        // than a mock that never changes.
+        return {
+          ok: true,
+          json: async () => ({ ...MASKED, keys: { ...MASKED.keys, google: { set: false, last4: null } } }),
+        };
+      }
+      return { ok: true, json: async () => MASKED };
+    }) as unknown as typeof fetch;
     render(<KeysForm />);
     fireEvent.click(await screen.findByLabelText("Clear Google API key"));
     fireEvent.click(await screen.findByRole("button", { name: "Clear key" }));
     await waitFor(() => expect(putBody()).toHaveProperty("googleKey"));
     const body = putBody();
     expect(body.googleKey).toBeNull();
-    expect(Object.keys(body)).toEqual(["googleKey"]);
+    expect(body.ollamaBaseUrl).toBe(MASKED.ollamaBaseUrl);
+    expect(Object.keys(body).sort()).toEqual(["googleKey", "ollamaBaseUrl"]);
+    // The row actually returns to "not set" once the PUT response comes back —
+    // previously nothing asserted this and a mock that never updated `keys`
+    // would have hidden a badge that never flips.
+    expect(screen.queryByLabelText("Clear Google API key")).toBeNull();
+    expect(await screen.findAllByText("not set")).toHaveLength(3);
+  });
+
+  // The bug this guards: confirmClear used to send only `{ [keyName]: null }`.
+  // The hook adopts the full PUT response into `settings`, so an unsaved edit
+  // to a field this page also owns (the Ollama base URL) would be silently
+  // reverted to its last-saved value the moment any key was cleared.
+  it("keeps an unsaved Ollama base URL edit through a key clear", async () => {
+    global.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        const sent = JSON.parse((init.body as string)) as Record<string, unknown>;
+        return { ok: true, json: async () => ({ ...MASKED, ...sent, keys: MASKED.keys }) };
+      }
+      return { ok: true, json: async () => MASKED };
+    }) as unknown as typeof fetch;
+    render(<KeysForm />);
+    const urlInput = (await screen.findByLabelText("Ollama base URL")) as HTMLInputElement;
+    fireEvent.change(urlInput, { target: { value: "http://gpu-box:11434" } });
+    fireEvent.click(await screen.findByLabelText("Clear Google API key"));
+    fireEvent.click(await screen.findByRole("button", { name: "Clear key" }));
+    await waitFor(() => expect(putBody()).toHaveProperty("googleKey"));
+    expect(putBody().ollamaBaseUrl).toBe("http://gpu-box:11434");
+    await waitFor(() => expect(urlInput.value).toBe("http://gpu-box:11434"));
+  });
+
+  // The bug this guards: `saved` comes from the hook, which never sees a typed
+  // key — that is local component state. Without gating on that local
+  // dirtiness, "Saved" from an earlier successful save would keep showing
+  // while an unconfirmed OpenAI key sits in the input, over a secret that
+  // cannot be read back from anywhere.
+  it("hides Saved once the admin types a key, even though the hook still thinks it saved", async () => {
+    render(<KeysForm />);
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText("OpenAI API key"), { target: { value: "sk-typed" } });
+    expect(screen.queryByText("Saved")).toBeNull();
   });
 
   it("shows the Ollama base URL because ollama is in the catalog", async () => {
     render(<KeysForm />);
     expect(await screen.findByLabelText("Ollama base URL")).toBeInTheDocument();
+  });
+
+  // A generated project that kept only ollama has no keyed providers at all. Nothing
+  // else on the branch renders a form against a pruned catalog — that gap is exactly
+  // how an empty bordered card shipped past tsc, lint, and the scaffold matrix.
+  it("renders no API keys card when the catalog has no keyed providers", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/providers/catalog", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/providers/catalog")>()),
+      KEYED_PROVIDERS: [],
+    }));
+    const { KeysForm: Pruned } = await import("./keys-form");
+    render(<Pruned />);
+    await screen.findByLabelText("Ollama base URL");
+    expect(screen.queryByText("API keys")).toBeNull();
+    vi.doUnmock("@/lib/providers/catalog");
   });
 });

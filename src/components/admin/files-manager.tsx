@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
+import { Input } from "@/components/ui/input";
 import { PageHeader, PageBody } from "@/components/ui/page-header";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Button, FOCUS_RING } from "@/components/ui/button";
@@ -41,6 +42,7 @@ export function FilesManager() {
   const [files, setFiles] = useState<FileRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [extFilter, setExtFilter] = useState("all");
+  const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortAsc, setSortAsc] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<FileRow | null>(null);
@@ -82,7 +84,9 @@ export function FilesManager() {
 
   const exts = useMemo(() => [...new Set(files.map((f) => f.ext).filter(Boolean))].sort(), [files]);
   const visible = useMemo(() => {
-    const filtered = extFilter === "all" ? files : files.filter((f) => f.ext === extFilter);
+    const q = query.trim().toLowerCase();
+    const byName = q === "" ? files : files.filter((f) => f.filename.toLowerCase().includes(q));
+    const filtered = extFilter === "all" ? byName : byName.filter((f) => f.ext === extFilter);
     const byWorkspace = workspaceFilter === "all"
       ? filtered
       : workspaceFilter === "unassigned"
@@ -94,7 +98,7 @@ export function FilesManager() {
         : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
     return sortAsc ? sorted : sorted.reverse();
-  }, [files, extFilter, workspaceFilter, sortKey, sortAsc]);
+  }, [files, query, extFilter, workspaceFilter, sortKey, sortAsc]);
 
   async function upload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -174,57 +178,68 @@ export function FilesManager() {
         className="mx-auto max-w-3xl"
         title="Files"
         description="Everything the assistant can read. A file answers questions only in the workspaces it belongs to."
+        actions={
+          <div className="flex items-center gap-2">
+            <label
+              className={cn(
+                "inline-flex cursor-pointer items-center gap-2 rounded border border-border-strong px-3 py-2 text-sm transition-colors hover:bg-surface-2",
+                // The input itself carries the ring, not this label: a `hidden` input
+                // is unfocusable and not in the tab order, so a ring drawn on it would
+                // never be visible to the keyboard user it exists for. `focus-within`
+                // makes the label draw the ring when its `sr-only` input takes focus.
+                "outline-none focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent",
+              )}
+            >
+              {busy ? <Spinner label="Uploading" /> : <Upload className="h-4 w-4" />}
+              {busy ? "Uploading..." : "Upload file"}
+              <input ref={fileInputRef} type="file" accept={ACCEPT} aria-label="Upload file" onChange={upload} className="sr-only" disabled={busy} />
+            </label>
+            {/* noValidate: bad input is reported by our own error state (from the
+                server's validation), not the browser's native url-constraint popup —
+                keeps the failure path consistent with every other error in this form. */}
+            <form onSubmit={ingestUrl} noValidate className="flex items-center gap-2">
+              <input
+                type="url"
+                aria-label="Ingest from URL"
+                placeholder="Paste a URL to ingest"
+                value={urlValue}
+                onChange={(e) => setUrlValue(e.target.value)}
+                disabled={urlBusy}
+                className={cn("rounded border border-border-strong bg-transparent px-3 py-2 text-sm", FOCUS_RING)}
+              />
+              <Button type="submit" variant="secondary" disabled={urlBusy || urlValue.trim() === ""}>
+                {urlBusy ? <Spinner label="Ingesting" /> : <Link2 className="h-4 w-4" />}
+                {urlBusy ? "Ingesting..." : "Ingest URL"}
+              </Button>
+            </form>
+            <div className="flex items-center gap-2 text-sm">
+              <span>Upload to</span>
+              <MultiSelect
+                ariaLabel="Workspaces for upload"
+                value={uploadWorkspaceIds}
+                onChange={setUploadWorkspaceIds}
+                options={allWorkspaces.map((w) => ({ value: w.id, label: w.name, hint: w.isDefault ? "everyone" : undefined }))}
+                className="min-w-36"
+              />
+            </div>
+          </div>
+        }
       />
       <PageBody className="mx-auto max-w-3xl space-y-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <label
-            className={cn(
-              "inline-flex cursor-pointer items-center gap-2 rounded border border-border-strong px-3 py-2 text-sm transition-colors hover:bg-surface-2",
-              // The input itself carries the ring, not this label: a `hidden` input
-              // is unfocusable and not in the tab order, so a ring drawn on it would
-              // never be visible to the keyboard user it exists for. `focus-within`
-              // makes the label draw the ring when its `sr-only` input takes focus.
-              "outline-none focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent",
-            )}
-          >
-            {busy ? <Spinner label="Uploading" /> : <Upload className="h-4 w-4" />}
-            {busy ? "Uploading..." : "Upload file"}
-            <input ref={fileInputRef} type="file" accept={ACCEPT} aria-label="Upload file" onChange={upload} className="sr-only" disabled={busy} />
-          </label>
-          {/* noValidate: bad input is reported by our own error state (from the
-              server's validation), not the browser's native url-constraint popup —
-              keeps the failure path consistent with every other error in this form. */}
-          <form onSubmit={ingestUrl} noValidate className="flex items-center gap-2">
-            <input
-              type="url"
-              aria-label="Ingest from URL"
-              placeholder="Paste a URL to ingest"
-              value={urlValue}
-              onChange={(e) => setUrlValue(e.target.value)}
-              disabled={urlBusy}
-              className={cn("rounded border border-border-strong bg-transparent px-3 py-2 text-sm", FOCUS_RING)}
-            />
-            <Button type="submit" variant="secondary" disabled={urlBusy || urlValue.trim() === ""}>
-              {urlBusy ? <Spinner label="Ingesting" /> : <Link2 className="h-4 w-4" />}
-              {urlBusy ? "Ingesting..." : "Ingest URL"}
-            </Button>
-          </form>
+        <div data-testid="files-filters" className="flex flex-wrap items-center gap-3">
+          <Input
+            aria-label="Search files"
+            placeholder="Search by name"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="max-w-xs"
+          />
           <div className="flex items-center gap-2 text-sm">
-            <span>Type</span>
+            <span className="text-ink-muted">Type</span>
             <Select ariaLabel="Filter by type" value={extFilter} onChange={setExtFilter} options={["all", ...exts]} className="min-w-28" />
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <span>Upload to</span>
-            <MultiSelect
-              ariaLabel="Workspaces for upload"
-              value={uploadWorkspaceIds}
-              onChange={setUploadWorkspaceIds}
-              options={allWorkspaces.map((w) => ({ value: w.id, label: w.name, hint: w.isDefault ? "everyone" : undefined }))}
-              className="min-w-36"
-            />
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span>Workspace</span>
+            <span className="text-ink-muted">Workspace</span>
             <Select
               ariaLabel="Filter by workspace"
               value={workspaceFilter}
@@ -233,6 +248,9 @@ export function FilesManager() {
               className="min-w-32"
             />
           </div>
+          <span className="ml-auto text-xs text-ink-muted">
+            {visible.length === files.length ? `${files.length} files` : `${visible.length} of ${files.length} files`}
+          </span>
         </div>
         {urlError && <Alert tone="danger">{urlError}</Alert>}
         <Table>

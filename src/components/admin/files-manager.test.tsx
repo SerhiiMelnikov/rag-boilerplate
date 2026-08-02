@@ -133,4 +133,44 @@ describe("FilesManager", () => {
     fireEvent.change(screen.getByLabelText("Ingest from URL"), { target: { value: "https://example.com" } });
     expect(screen.getByRole("button", { name: "Ingest URL" })).toBeEnabled();
   });
+
+  // Upload and Ingest are actions; type and workspace are filters; and
+  // "Upload to" is a parameter of the upload, not a third filter.
+  it("puts the actions in the page header, not the filter bar", async () => {
+    render(<FilesManager />);
+    const upload = await screen.findByLabelText("Upload file");
+    const typeFilter = screen.getByLabelText("Filter by type");
+    const bar = typeFilter.closest("[data-testid='files-filters']");
+    expect(bar).not.toBeNull();
+    expect(bar!.contains(upload)).toBe(false);
+  });
+
+  it("finds a file by name", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "report" } });
+    expect(screen.getByText("report.pdf")).toBeInTheDocument();
+    expect(screen.queryByText("bike.png")).toBeNull();
+  });
+
+  it("searches by name regardless of case", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "REPORT" } });
+    expect(screen.getByText("report.pdf")).toBeInTheDocument();
+  });
+
+  // Without this an admin cannot tell a short list from a filtered one.
+  it("says how many rows the filters are hiding", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "report" } });
+    expect(screen.getByText("1 of 2 files")).toBeInTheDocument();
+  });
+
+  it("does not show a count when nothing is filtered", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    expect(screen.getByText("2 files")).toBeInTheDocument();
+  });
 });

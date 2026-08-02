@@ -143,6 +143,38 @@ describe("generateReadme navigation", () => {
   });
 });
 
+describe("the admin section describes the real navigation", () => {
+  const readme = () => generateReadme(opts());
+
+  it("names the three Settings pages", () => {
+    const text = readme();
+    expect(text).toContain("**Answering**");
+    expect(text).toContain("**Provider keys**");
+    expect(text).toContain("**Access & email**");
+  });
+
+  // The old copy sent people to "Settings → Models" for SMTP, which was the wrong
+  // page name even before this package moved it.
+  it("sends SMTP to Access & email, not to Models", () => {
+    const text = readme();
+    expect(text).toContain("Settings → Access & email");
+    expect(text).not.toContain("Settings → Models");
+  });
+
+  // Not `not.toContain("/admin/keys")` — the README never printed URL paths, so
+  // that assertion would pass whether or not this task did anything. Pin the
+  // Settings section's real content instead: the three bullets, in order.
+  it("lists exactly the three Settings pages, in nav order", () => {
+    const section = readme().split("### Settings")[1].split("### People")[0];
+    const bullets = section.split("\n").filter((l) => l.startsWith("- **"));
+    expect(bullets.map((l) => l.slice(4, l.indexOf("**", 4)))).toEqual([
+      "Answering",
+      "Provider keys",
+      "Access & email",
+    ]);
+  });
+});
+
 describe("generateReadme deploying", () => {
   it("documents the Docker deployment path and that migrations stay on the host", () => {
     const out = generateReadme(opts());

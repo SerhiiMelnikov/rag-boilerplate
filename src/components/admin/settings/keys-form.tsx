@@ -115,20 +115,22 @@ export function KeysForm() {
       {header}
       <PageBody className="mx-auto max-w-2xl">
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <Card title="API keys">
-            <div className="flex flex-col gap-4">
-              {KEYED_PROVIDERS.map((p) => (
-                <KeyRow
-                  key={p.id}
-                  provider={p}
-                  status={s.keys[p.keyName] ?? NO_KEY}
-                  value={typed[p.id] ?? ""}
-                  onChange={(v) => setTyped((prev) => ({ ...prev, [p.id]: v }))}
-                  onClear={() => setPendingClear(p)}
-                />
-              ))}
-            </div>
-          </Card>
+          {KEYED_PROVIDERS.length > 0 && (
+            <Card title="API keys">
+              <div className="flex flex-col gap-4">
+                {KEYED_PROVIDERS.map((p) => (
+                  <KeyRow
+                    key={p.id}
+                    provider={p}
+                    status={s.keys[p.keyName] ?? NO_KEY}
+                    value={typed[p.id] ?? ""}
+                    onChange={(v) => setTyped((prev) => ({ ...prev, [p.id]: v }))}
+                    onClear={() => setPendingClear(p)}
+                  />
+                ))}
+              </div>
+            </Card>
+          )}
 
           {/* Ollama authenticates with nothing — it needs an address, not a key.
               The catalog decides whether this renders at all: a generated project

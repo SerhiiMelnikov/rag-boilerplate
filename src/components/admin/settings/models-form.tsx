@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { PageHeader, PageBody } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
-import { Button, FOCUS_RING } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,7 @@ import { Alert } from "@/components/ui/alert";
 import { Field } from "@/components/ui/field";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Loading } from "@/components/ui/loading";
-import { cn } from "@/lib/cn";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   CHAT_PROVIDER_IDS,
   EMBEDDING_PROVIDER_IDS,
@@ -174,12 +174,10 @@ export function ModelsForm() {
           <Card title="Models">
             <div className="flex flex-col gap-4">
               <label className="flex items-center gap-2 text-sm text-ink">
-                <input
-                  type="checkbox"
+                <Checkbox
                   aria-label="Unified provider mode"
                   checked={s.unifiedMode}
                   onChange={(e) => patch({ unifiedMode: e.target.checked })}
-                  className={cn("h-4 w-4 rounded border-border-strong accent-accent", FOCUS_RING)}
                 />
                 Use one provider and model for all tasks (except embedding)
               </label>

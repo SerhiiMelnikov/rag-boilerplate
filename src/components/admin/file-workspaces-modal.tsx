@@ -5,6 +5,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Loading } from "@/components/ui/loading";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Workspace { id: string; name: string; isDefault: boolean }
 interface Props {
@@ -74,7 +75,7 @@ export function FileWorkspacesModal({ file, onClose, onSaved }: Props) {
         <ul className="flex flex-col gap-1">
           {all.map((w) => (
             <li key={w.id} className="flex items-center gap-2 rounded px-1 py-1 text-sm">
-              <input id={`ws-${w.id}`} type="checkbox" checked={checked.has(w.id)} onChange={() => toggle(w.id)} className="h-4 w-4" />
+              <Checkbox id={`ws-${w.id}`} checked={checked.has(w.id)} onChange={() => toggle(w.id)} />
               {/* The "everyone" hint sits outside the <label> so the checkbox's
                   accessible name stays exactly the workspace name. */}
               <label htmlFor={`ws-${w.id}`} className="flex-1">{w.name}</label>

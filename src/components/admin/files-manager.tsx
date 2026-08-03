@@ -152,7 +152,7 @@ export function FilesManager() {
       const res = await fetch("/api/admin/documents/url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, workspaceIds: uploadWorkspaceIds }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);

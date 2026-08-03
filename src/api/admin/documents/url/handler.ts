@@ -5,6 +5,7 @@ import { getVectorStore, getDocumentRepo } from "@/lib/vectorstore";
 import type { VectorStore, DocumentRepo } from "@/lib/vectorstore/types";
 import { createWorkspaceRepo, type WorkspaceRepo } from "@/lib/workspaces/repo";
 import { setDocumentWorkspaces } from "@/lib/workspaces/membership";
+import { resolveWorkspaceIds } from "@/lib/workspaces/upload-ids";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
 
 export interface IngestUrlDeps {
@@ -60,6 +61,16 @@ export async function ingestUrlResponse(request: Request, deps: IngestUrlDeps = 
     return Response.json({ error: "url is required" }, { status: 400 });
   }
 
+  // JSON transport for the same rule the multipart upload path uses. Absent =>
+  // General; an explicit [] => unassigned. Anything that is not an array of
+  // strings is a client bug, reported rather than coerced.
+  const rawIds = body && typeof body === "object" && "workspaceIds" in body
+    ? (body as { workspaceIds?: unknown }).workspaceIds
+    : undefined;
+  if (rawIds !== undefined && !(Array.isArray(rawIds) && rawIds.every((v) => typeof v === "string"))) {
+    return Response.json({ error: "workspaceIds must be an array of strings" }, { status: 400 });
+  }
+
   // Fetch + Readability extraction runs synchronously here (bounded to 15s inside
   // extractFromUrl) so a bad URL — malformed syntax, an unfetchable host, a non-HTML
   // response, an oversized body — is reported to the caller immediately as a 400,
@@ -78,11 +89,10 @@ export async function ingestUrlResponse(request: Request, deps: IngestUrlDeps = 
   // creating a duplicate — intended, so an admin can refresh a page's ingested copy.
   const { id: documentId } = await documentRepo.createDocument(url);
   await documentRepo.setStatus(documentId, "processing");
-  // Mirrors uploadDocument: always (re-)assign the default workspace, whether the
-  // row is new or already existed — posting a URL is an explicit admin action each
-  // time, not an unattended batch re-run (unlike the CLI path, which only assigns
-  // membership on first creation).
-  await setDocumentWorkspacesFn(documentId, [await workspaceRepo.getDefaultId()]);
+  // Mirrors uploadDocument: always (re-)assign the admin's chosen workspaces,
+  // whether the row is new or already existed — posting a URL is an explicit
+  // admin action each time, not an unattended batch re-run.
+  await setDocumentWorkspacesFn(documentId, await resolveWorkspaceIds(rawIds as string[] | undefined, workspaceRepo));
 
   const settings = await getSettings();
   schedule(() => ingest(documentId, { filename: url, text: article.text }, { documentRepo, vectorStore, settings }));

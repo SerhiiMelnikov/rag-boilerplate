@@ -18,7 +18,10 @@ const PAGED_FILES = Array.from({ length: 25 }, (_, i) => ({
   workspaces: [{ id: "w1", name: "General", isDefault: true }],
 }));
 
-const WORKSPACES = [{ id: "w1", name: "General", description: null, isDefault: true, createdAt: "2026-01-01T00:00:00Z" }];
+const WORKSPACES = [
+  { id: "w1", name: "General", description: null, isDefault: true, createdAt: "2026-01-01T00:00:00Z" },
+  { id: "w2", name: "Marketing", description: null, isDefault: false, createdAt: "2026-01-02T00:00:00Z" },
+];
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ files: FILES, workspaces: WORKSPACES }) })) as never);
@@ -111,12 +114,45 @@ describe("FilesManager", () => {
       expect(post).toBeDefined();
       const init = post![1] as { method?: string; body?: string };
       expect(init.method).toBe("POST");
-      expect(JSON.parse(init.body!)).toEqual({ url: "https://example.com/article" });
+      // General is preselected by default, so it rides along even though this
+      // test never touches "Upload to" — see the dedicated test below for a
+      // chosen (non-default) workspace actually being honoured.
+      expect(JSON.parse(init.body!)).toEqual({ url: "https://example.com/article", workspaceIds: ["w1"] });
     });
     // Cleared on success, and the list is reloaded (same endpoint the initial mount used).
     await waitFor(() => expect((input as HTMLInputElement).value).toBe(""));
     const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
     expect(calls.filter((c) => c[0] === "/api/admin/files").length).toBeGreaterThanOrEqual(2);
+  });
+
+  // The handler being correct is worth nothing if the client never sends the
+  // field: prove the "Upload to" selection actually leaves the browser on a
+  // URL ingest, not just on a file upload.
+  it("sends the chosen upload workspaces with an ingested URL", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    global.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      return String(url).includes("workspaces")
+        ? { ok: true, json: async () => ({ workspaces: WORKSPACES }) }
+        : { ok: true, json: async () => ({ files: [] }) };
+    }) as unknown as typeof fetch;
+
+    render(<FilesManager />);
+    const trigger = await screen.findByLabelText("Workspaces for upload");
+    // Wait for the default (General) to land before touching the control, so the
+    // deselect click below has something deterministic to act on.
+    await waitFor(() => expect(trigger).toHaveTextContent("General"));
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("option", { name: /General/ })); // deselect the default
+    fireEvent.click(screen.getByRole("option", { name: "Marketing" })); // choose Marketing instead
+    fireEvent.click(trigger); // close the listbox — while open it is modal, and the URL form sits outside it
+    await waitFor(() => expect(screen.queryByRole("option")).toBeNull());
+
+    fireEvent.change(screen.getByLabelText("Ingest from URL"), { target: { value: "https://example.com/a" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ingest URL" }));
+
+    const posted = await waitFor(() => calls.find((c) => c.url.includes("/documents/url"))!);
+    expect(posted.body).toMatchObject({ url: "https://example.com/a", workspaceIds: ["w2"] });
   });
 
   it("shows an error when the URL cannot be ingested", async () => {

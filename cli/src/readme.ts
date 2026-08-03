@@ -72,14 +72,20 @@ function passwordSection(o: InstallOptions): string[] {
 
   lines.push("Resetting or changing a password signs the user out of every existing");
   lines.push("session: each account carries a cut-off timestamp, and any session token");
-  lines.push("issued before it is refused. This is enforced on **API routes**, by the same");
-  lines.push("per-request lookup that makes blocking a user take effect immediately.");
+  lines.push("issued before it is refused.");
   if (o.appKind === "full") {
-    lines.push("Server-rendered pages are a known exception: they use Auth.js's own token");
-    lines.push("check, so a retired session can still render a page. Pages that query the");
-    lines.push("database directly — the admin analytics and usage pages — will therefore");
-    lines.push("still show their data to a retired admin session. Move page-level auth onto");
-    lines.push("the same lookup if that matters to you.");
+    // api-only server-renders nothing at all, so the "pages" half of this claim
+    // would describe a surface that was pruned out of the project the reader is
+    // holding — this branch is the one place it belongs.
+    lines.push("This is enforced on **API routes and server-rendered pages alike**: both run");
+    lines.push("the same per-request lookup, so blocking, deleting or demoting a user takes");
+    lines.push("effect on their next request or navigation rather than whenever their cookie");
+    lines.push("happens to expire. `middleware.ts` is the one deliberate exception — it runs");
+    lines.push("on the edge with no database access, so it checks only that a session token");
+    lines.push("exists at all, and the page behind it performs the real check.");
+  } else {
+    lines.push("This is enforced on **API routes**, by the same per-request lookup that makes");
+    lines.push("blocking a user take effect immediately.");
   }
   lines.push("");
   return lines;
@@ -279,8 +285,8 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("them backfills the existing settings row, so if this app was already deployed");
   lines.push("unlimited, it starts enforcing 20 chat requests/minute and 200/day per user the");
   lines.push("moment you run `db:migrate` — a user who was sending 250 messages a day will");
-  lines.push("start getting 429s with no warning. Set either to `0` in **Settings** to disable");
-  lines.push("it.", "");
+  lines.push("start getting 429s with no warning. Set either to `0` under **Settings →");
+  lines.push("Answering** to disable it.", "");
   lines.push("The per-user chat cap bounds one account, not your total spend. Registration is");
   lines.push("gated (see **Registration** below), so this is no longer \"anyone can create");
   lines.push("unlimited accounts\" — but an attacker who does control a mailbox at an allowed");
@@ -298,11 +304,12 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("host/port/user/from and password under **Settings → Access & email**, registration returns 503");
   lines.push("— there is no mailer yet to send the verification link with. This is the first");
   lines.push("thing you will hit on a fresh install; it is expected, not a bug.", "");
-  lines.push("The allowed-domains list (also in Settings) is comma-separated, e.g.");
-  lines.push("`company.com,contractor.com`. **An empty list denies everyone** — deliberately:");
-  lines.push("treating empty as \"allow all\" would silently accept registrations from anyone.");
-  lines.push("`npm run seed:admin` seeds it from `ADMIN_EMAIL`'s domain, so a fresh install");
-  lines.push("already has a working allowlist; widen it in Settings as needed.", "");
+  lines.push("The allowed-domains list (also under **Settings → Access & email**) is");
+  lines.push("comma-separated, e.g. `company.com,contractor.com`. **An empty list denies everyone**");
+  lines.push("— deliberately: treating empty as \"allow all\" would silently accept");
+  lines.push("registrations from anyone. `npm run seed:admin` seeds it from `ADMIN_EMAIL`'s domain,");
+  lines.push("so a fresh install already has a working allowlist; widen it under");
+  lines.push("**Settings → Access & email** as needed.", "");
   lines.push("`AUTH_URL` is required in production: the verification link must point");
   lines.push("somewhere trustworthy, and a proxy that forwards the client's `Host` header");
   lines.push("verbatim would otherwise let an attacker mint a link to their own server,");
@@ -310,6 +317,13 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("rather than trust the request. See `.env.example` for the variable.", "");
   lines.push("The confirmation link expires in 24 hours. Registering never sets a password —");
   lines.push("whoever clicks the link chooses it, on the form the link opens.");
+  lines.push("");
+  lines.push("Email addresses are stored and matched in lower case. If you are upgrading an");
+  lines.push("install that ran 0.5.8, migration 0020 repairs accounts that OAuth forked: the");
+  lines.push("confirmed row keeps the address and any duplicate is renamed to");
+  lines.push("`name+dup-xxxxxxxx@domain` and blocked, for you to review on the Users page.");
+  lines.push("Nothing is deleted — but note that chats made under a forked account stay in");
+  lines.push("the database and are no longer reachable from the UI.");
   lines.push("");
 
   lines.push("## Workspaces", "");
@@ -471,6 +485,14 @@ function generateApiOnlyReadme(o: InstallOptions): string {
       "returns 503. The allowed-domains list lives in the same settings and **denies everyone when empty**, " +
       "deliberately; `npm run seed:admin` seeds it from `ADMIN_EMAIL`'s domain, so a fresh install already " +
       "has a working allowlist. The confirmation link expires in 24 hours.",
+  );
+  lines.push("");
+  lines.push(
+    "Email addresses are stored and matched in lower case. If you are upgrading an install that ran " +
+      "0.5.8, migration 0020 repairs accounts that OAuth forked: the confirmed row keeps the address and " +
+      "any duplicate is renamed to `name+dup-xxxxxxxx@domain` and blocked, for you to review with " +
+      "`GET /api/admin/users`. Nothing is deleted — but note that chats made under a forked account stay " +
+      "in the database and are no longer reachable from the API.",
   );
   lines.push("");
 

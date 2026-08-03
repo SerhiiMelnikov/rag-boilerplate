@@ -271,6 +271,22 @@ describe("generateReadme registration", () => {
     expect(out).toMatch(/expires in 24 hours/);
     expect(out).toMatch(/whoever clicks the link chooses it/);
   });
+
+  // Migration 0020 unforks accounts an upgrading install may already have split
+  // by casing. Both builds must say addresses are lower-cased and that a forked
+  // account's chats become unreachable, without inventing UI that appKind: "api"
+  // does not ship (there is no Users page there).
+  it("documents that emails are lower-cased and migration 0020 unforks duplicated accounts", () => {
+    for (const appKind of ["full", "api"] as const) {
+      const readme = generateReadme(opts({ appKind }));
+      expect(readme).toMatch(/stored and matched in lower case/);
+      expect(readme).toMatch(/migration 0020/);
+      expect(readme).toContain("name+dup-xxxxxxxx@domain");
+      expect(readme).toMatch(/Nothing is deleted/);
+    }
+    expect(generateReadme(opts({ appKind: "full" }))).toMatch(/Users page/);
+    expect(generateReadme(opts({ appKind: "api" }))).not.toMatch(/Users page/);
+  });
 });
 
 describe("generateReadme API docs", () => {
@@ -425,15 +441,27 @@ describe("password reset documentation", () => {
     }
   });
 
-  // The full-app README used to claim "every endpoint behind it refuses to
-  // return data", which is false: the admin analytics and usage pages query the
-  // database directly from a server component, so a retired admin session still
-  // sees real conversation content. Naming the exception is the whole point.
-  it("names the server-rendered page exception instead of implying blanket coverage", () => {
+  // The full-app README used to carve out server-rendered pages as a "known
+  // exception" that could still show a retired admin session's data — the admin
+  // analytics and usage pages queried the database directly from a server
+  // component, bypassing the per-request session check API routes got. Page
+  // guards now read the database too, so this documents parity instead of the
+  // old caveat, and guards against both historical false claims re-appearing.
+  it("documents that API routes and server-rendered pages share the same per-request check", () => {
     const readme = generateReadme(opts({ appKind: "full" }));
-    expect(readme).toContain("known exception");
-    expect(readme).toMatch(/analytics and usage/i);
+    expect(readme).toContain("API routes and server-rendered pages alike");
+    expect(readme).toMatch(/middleware\.ts/);
+    expect(readme).not.toContain("known exception");
     expect(readme).not.toContain("refuses to return data");
+  });
+
+  // The api-only build serves no pages at all, so it must not inherit language
+  // written for the full app's page/API parity — that would describe a surface
+  // pruned out of the project the reader is holding.
+  it("does not mention server-rendered pages or middleware.ts in the api-only build", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).not.toContain("server-rendered pages");
+    expect(readme).not.toMatch(/middleware\.ts/);
   });
 });
 

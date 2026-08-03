@@ -71,7 +71,10 @@ The generated app includes:
   by default — see [Rate limits](#rate-limits) below.**
 - A hand-rolled RAG engine: chunking, parsing (PDF/DOCX/Markdown/text),
   embeddings, hybrid (vector + keyword) retrieval, ingestion
-- Auth.js-based authentication with admin/user roles
+- Auth.js-based authentication with admin/user roles, enforced by the same
+  per-request database lookup on API routes and server-rendered pages alike —
+  blocking, deleting or demoting a user takes effect on their very next request
+  or navigation, not whenever their session cookie happens to expire
 - Drizzle ORM + Postgres for documents, users, chat history, and settings;
   S3-compatible object storage (MinIO locally) for image bytes
 - A `.env` pre-populated with fresh secrets, and a `README.md` tailored to
@@ -147,6 +150,14 @@ the alternative (locking real users out on upgrade) is worse, but it means
 anyone who self-registered through the old open endpoint keeps both their
 account and their access to the shared budget. Audit `users` after upgrading
 and block (**Admin → Users**) anyone you don't want to keep.
+
+Email addresses are stored and matched in lower case. If you are upgrading an
+install that ran 0.5.8, migration `0020` repairs any account OAuth had forked
+under mismatched casing: the confirmed row keeps the address, and any
+duplicate is renamed to `name+dup-xxxxxxxx@domain` and blocked, for you to
+review on the same **Admin → Users** page. Nothing is deleted — but note that
+chats made under a forked account stay in the database and are no longer
+reachable from the UI.
 
 ## Development
 

@@ -118,8 +118,14 @@ export function MultiSelect({ value, onChange, options, ariaLabel, placeholder =
             {/* A bounded column, not a list that grows to whatever the option count
                 happens to be: the search box is pinned as a shrink-0 row and only the
                 options below it scroll, so filtering never scrolls the field you are
-                typing into out of view. max-h-80 is about eight rows — enough to
-                choose from without the panel swallowing the dialog behind it. */}
+                typing into out of view. `--anchor-max-height` is an input Headless UI's
+                own floating logic *reads*, not an output it sets: it applies
+                `maxHeight: min(var(--anchor-max-height, 100vh), <available>px)` as an
+                inline style (internal/floating.js), so we set the variable here rather
+                than writing a `max-h-[...]` class -- that class would either reference
+                an undefined variable (dropped at computed-value time) or, if it somehow
+                resolved, lose to the inline style anyway. 20rem is about eight rows,
+                enough to choose from without the panel swallowing the dialog behind it. */}
             <ListboxOptions
               transition
               // `anchor` rather than absolute positioning: the panel used to be an
@@ -129,7 +135,7 @@ export function MultiSelect({ value, onChange, options, ariaLabel, placeholder =
               // it out and positions it against the button, so it escapes every
               // scroller and flips above the trigger when there is no room below.
               anchor={{ to: "bottom start", gap: 4 }}
-              className="z-50 flex max-h-[min(20rem,var(--anchor-max-height))] w-[var(--button-width)] flex-col rounded border border-border bg-surface p-1.5 shadow-pop transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+              className="z-50 flex [--anchor-max-height:20rem] w-[var(--button-width)] flex-col rounded border border-border bg-surface p-1.5 shadow-pop transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
             >
               <input
                 aria-label={`Filter ${ariaLabel.toLowerCase()}`}

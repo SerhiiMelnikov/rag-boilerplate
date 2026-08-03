@@ -29,7 +29,7 @@ export function PageHeader({
         <h1 className="text-xl font-semibold tracking-tight text-ink">{title}</h1>
         {description && <p className="mt-1 max-w-prose text-sm text-ink-muted">{description}</p>}
       </div>
-      {actions && <div data-testid="page-actions" className="flex flex-none items-center gap-2">{actions}</div>}
+      {actions && <div data-testid="page-actions" className="flex flex-wrap flex-none items-center justify-end gap-2">{actions}</div>}
     </div>
   );
 }

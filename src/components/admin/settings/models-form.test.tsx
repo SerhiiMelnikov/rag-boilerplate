@@ -129,17 +129,67 @@ describe("ModelsForm", () => {
     expect(calls.some((c) => (c[1] as { method?: string } | undefined)?.method === "PUT")).toBe(false);
   });
 
-  it("sends null for the cleared key, alongside this page's own fields", async () => {
+  // Pinned as an exact key set, not a handful of spot checks. confirmClear once
+  // sent `{ [keyName]: null }` alone, and the hook adopts the PUT response
+  // wholesale — so clearing one key silently reverted every unsaved edit on the
+  // page. That regression is invisible to `not.toHaveProperty` checks, which pass
+  // just as happily when the body is too SMALL.
+  it("sends null for the cleared key, alongside exactly this page's own fields", async () => {
     render(<ModelsForm />);
     fireEvent.click(await screen.findByLabelText("Clear Google API key"));
     fireEvent.click(await screen.findByRole("button", { name: "Clear key" }));
     await waitFor(() => expect(putBody()).toHaveProperty("googleKey"));
     const body = putBody();
     expect(body.googleKey).toBeNull();
-    // No other provider's key rides along, and no other page's field does either.
-    expect(body).not.toHaveProperty("openaiKey");
-    expect(body).not.toHaveProperty("anthropicKey");
-    expect(body).not.toHaveProperty("systemPrompt");
+    expect(Object.keys(body).sort()).toEqual([
+      "chatModel", "chatProvider", "embeddingModel", "embeddingProvider", "googleKey",
+      "imageModel", "imageProvider", "ollamaBaseUrl", "parserModel", "parserProvider",
+      "unifiedMode", "unifiedModel", "unifiedProvider",
+    ]);
+  });
+
+  it("keeps an unsaved Ollama base URL edit through a key clear", async () => {
+    render(<ModelsForm />);
+    fireEvent.change(await screen.findByLabelText("Ollama base URL"), { target: { value: "http://gpu-box:11434" } });
+    fireEvent.click(screen.getByLabelText("Clear Google API key"));
+    fireEvent.click(await screen.findByRole("button", { name: "Clear key" }));
+    await waitFor(() => expect(putBody()).toHaveProperty("googleKey"));
+    expect(putBody().ollamaBaseUrl).toBe("http://gpu-box:11434");
+  });
+
+  it("clears the typed inputs after a successful save", async () => {
+    render(<ModelsForm />);
+    const input = (await screen.findByLabelText("OpenAI API key")) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "sk-new-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(input.value).toBe(""));
+  });
+
+  // `saved` comes from the hook, which never sees a typed key — it is local state.
+  // Without the gate, "Saved" sits over a secret that cannot be read back anywhere.
+  it("hides Saved once the admin types a key", async () => {
+    render(<ModelsForm />);
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("OpenAI API key"), { target: { value: "sk-typed" } });
+    expect(screen.queryByText("Saved")).toBeNull();
+  });
+
+  // I3: the only test anywhere of a form rendered against a pruned catalog. An
+  // ollama-only generated project has no keyed providers at all, and an empty
+  // bordered "API keys" card shipped past tsc, lint and the whole scaffold matrix
+  // precisely because nothing rendered this case.
+  it("renders no API keys card when the catalog has no keyed providers", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/providers/catalog", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/providers/catalog")>()),
+      KEYED_PROVIDERS: [],
+    }));
+    const { ModelsForm: Pruned } = await import("./models-form");
+    render(<Pruned />);
+    await screen.findByLabelText("Ollama base URL");
+    expect(screen.queryByText("API keys")).toBeNull();
+    vi.doUnmock("@/lib/providers/catalog");
   });
 
   it("shows the Ollama base URL because ollama is in the catalog", async () => {

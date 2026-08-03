@@ -8,12 +8,14 @@ import {
 } from "./types";
 
 describe("provider errors", () => {
-  it("MissingProviderKeyError carries task + provider and a Provider keys hint", () => {
+  it("MissingProviderKeyError carries task + provider and names the page that holds the keys", () => {
     const e = new MissingProviderKeyError("Chat", "openai");
     expect(e.task).toBe("Chat");
     expect(e.provider).toBe("openai");
     expect(e.message).toMatch(/no API key for provider "openai"/);
-    expect(e.message).toMatch(/Admin → Provider keys/);
+    // The page this used to name was deleted when Settings was repartitioned, and
+    // this is the first error a fresh install hits — it has to lead somewhere real.
+    expect(e.message).toMatch(/Admin → Settings → Models/);
     expect(isProviderError(e)).toBe(true);
   });
 

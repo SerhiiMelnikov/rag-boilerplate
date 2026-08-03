@@ -173,10 +173,10 @@ describe("FilesManager", () => {
   // overflow" the way a real viewport would -- it only guards the class list
   // that produces that layout in a real browser. The actual layout claim (no
   // overflow at 375px/320px with a long default-workspace name) is verified
-  // by a headless-Chromium measurement recorded in
-  // .superpowers/sdd/2026-08-02-ux-6c2-admin-screens/fix-wave-report.md under
-  // "B1 residual"; this test only catches someone deleting the classes that
-  // measurement depends on.
+  // by a headless-Chromium measurement done when the fix landed (+49px overflow at
+  // 375px and +104px at 320px before, zero at both after, with a long
+  // default-workspace name in "Upload to"); this test only catches someone
+  // deleting the classes that measurement depends on.
   it("wraps instead of overflowing: the actions row and the Upload-to control both carry their layout classes", async () => {
     render(<FilesManager />);
     const upload = await screen.findByLabelText("Upload file");

@@ -107,7 +107,7 @@ A `.env` is generated for you with fresh secrets. Sign in with its `ADMIN_EMAIL`
 
 ### Configure two things before anyone can use it
 
-1. **Provider API keys** (admin → *Provider keys*) — nothing can be ingested or
+1. **Provider API keys** (admin → *Settings → Models*) — nothing can be ingested or
    answered without them. They are encrypted at rest and never shown again.
 2. **SMTP** (admin → *Settings*) — needed only if other people will register.
    Until a host is set, registration returns **503** rather than pretending a

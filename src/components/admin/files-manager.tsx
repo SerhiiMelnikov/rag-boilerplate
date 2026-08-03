@@ -198,61 +198,72 @@ export function FilesManager() {
     setWorkspaceFilter("all");
   }
 
+  const header = (
+    <PageHeader
+      className="mx-auto w-full max-w-6xl"
+      title="Files"
+      description="Everything the assistant can read. A file answers questions only in the workspaces it belongs to."
+      actions={
+        // flex-wrap (+ justify-end so a wrapped second line still hugs the
+        // right edge like the first) is what actually does the wrapping:
+        // PageHeader's own actions wrapper only ever receives this single
+        // div as its one child, so flex-wrap there has nothing to wrap
+        // between. This is the flex container that actually holds more
+        // than one item -- the upload control and the "Upload to" group --
+        // so this is where they can drop onto separate lines on a narrow
+        // viewport instead of forcing the header to overflow sideways.
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <label
+            className={cn(
+              "inline-flex cursor-pointer items-center gap-2 rounded border border-border-strong px-3 py-2 text-sm transition-colors hover:bg-surface-2",
+              // The input itself carries the ring, not this label: a `hidden` input
+              // is unfocusable and not in the tab order, so a ring drawn on it would
+              // never be visible to the keyboard user it exists for. `focus-within`
+              // makes the label draw the ring when its `sr-only` input takes focus.
+              "outline-none focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent",
+            )}
+          >
+            {busy ? <Spinner label="Uploading" /> : <Upload className="h-4 w-4" />}
+            {busy ? "Uploading..." : "Upload file"}
+            <input ref={fileInputRef} type="file" accept={ACCEPT} aria-label="Upload file" onChange={upload} className="sr-only" disabled={busy} />
+          </label>
+          <div className="flex items-center gap-2 text-sm">
+            <span>Upload to</span>
+            <MultiSelect
+              ariaLabel="Workspaces for upload"
+              value={uploadWorkspaceIds}
+              onChange={setUploadWorkspaceIds}
+              options={allWorkspaces.map((w) => ({ value: w.id, label: w.name, hint: w.isDefault ? "everyone" : undefined }))}
+              // max-w-40 caps how far a long workspace name (this shows the
+              // real default workspace's name, not a short placeholder) can
+              // push the header wide; MultiSelect's own trigger truncates
+              // the label instead of growing past this.
+              className="min-w-36 max-w-40"
+            />
+          </div>
+        </div>
+      }
+    />
+  );
+
+  // The frame first, the data into it — the same rule the other five screens
+  // follow. This was the one still returning a bare block instead of its header,
+  // so the largest and slowest admin screen showed a lone spinner and then popped
+  // title, filters and table in together.
   if (files === null) {
     return (
-      <div className="p-6">
-        {loadError ? <Alert tone="danger">{loadError}</Alert> : <Loading label="Loading files" />}
-      </div>
+      <>
+        {header}
+        <PageBody className="mx-auto w-full max-w-6xl">
+          {loadError ? <Alert tone="danger">{loadError}</Alert> : <Loading label="Loading files" />}
+        </PageBody>
+      </>
     );
   }
 
   return (
     <>
-      <PageHeader
-        className="mx-auto w-full max-w-6xl"
-        title="Files"
-        description="Everything the assistant can read. A file answers questions only in the workspaces it belongs to."
-        actions={
-          // flex-wrap (+ justify-end so a wrapped second line still hugs the
-          // right edge like the first) is what actually does the wrapping:
-          // PageHeader's own actions wrapper only ever receives this single
-          // div as its one child, so flex-wrap there has nothing to wrap
-          // between. This is the flex container that actually holds more
-          // than one item -- the upload control and the "Upload to" group --
-          // so this is where they can drop onto separate lines on a narrow
-          // viewport instead of forcing the header to overflow sideways.
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <label
-              className={cn(
-                "inline-flex cursor-pointer items-center gap-2 rounded border border-border-strong px-3 py-2 text-sm transition-colors hover:bg-surface-2",
-                // The input itself carries the ring, not this label: a `hidden` input
-                // is unfocusable and not in the tab order, so a ring drawn on it would
-                // never be visible to the keyboard user it exists for. `focus-within`
-                // makes the label draw the ring when its `sr-only` input takes focus.
-                "outline-none focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent",
-              )}
-            >
-              {busy ? <Spinner label="Uploading" /> : <Upload className="h-4 w-4" />}
-              {busy ? "Uploading..." : "Upload file"}
-              <input ref={fileInputRef} type="file" accept={ACCEPT} aria-label="Upload file" onChange={upload} className="sr-only" disabled={busy} />
-            </label>
-            <div className="flex items-center gap-2 text-sm">
-              <span>Upload to</span>
-              <MultiSelect
-                ariaLabel="Workspaces for upload"
-                value={uploadWorkspaceIds}
-                onChange={setUploadWorkspaceIds}
-                options={allWorkspaces.map((w) => ({ value: w.id, label: w.name, hint: w.isDefault ? "everyone" : undefined }))}
-                // max-w-40 caps how far a long workspace name (this shows the
-                // real default workspace's name, not a short placeholder) can
-                // push the header wide; MultiSelect's own trigger truncates
-                // the label instead of growing past this.
-                className="min-w-36 max-w-40"
-              />
-            </div>
-          </div>
-        }
-      />
+      {header}
       <PageBody className="mx-auto w-full max-w-6xl space-y-4">
         {/* Its own row, not a filter: the URL box is a second way to add a file, so it
             sits with the other actions rather than inside files-filters below. */}

@@ -58,7 +58,12 @@ export function Rail({
       <Link
         href="/"
         aria-label="RAG Chat home"
-        onClick={() => {
+        onClick={(e) => {
+          // A modified click is not a navigation: the browser opens a new tab and
+          // next/link bails out — but React fires onClick first, so without this
+          // the *current* tab would forget its workspace and reset its chat while
+          // never going anywhere.
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
           clearActiveWorkspace();
           window.dispatchEvent(new Event(WORKSPACE_CHANGED_EVENT));
         }}

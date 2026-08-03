@@ -21,7 +21,6 @@ describe("MultiSelect", () => {
   // `min-w-0` on this span, because it is a flex item inside the button and
   // without overriding the default min-width:auto it never shrinks below its
   // own text's width. The real guard is the headless-Chromium measurement in
-  // .superpowers/sdd/2026-08-02-ux-6c2-admin-screens/fix-wave-report.md
   // ("B1 residual"), which renders this exact button at 320px/375px with a
   // long label and checks the document does not scroll sideways.
   it("truncates a long selected label instead of growing the trigger", () => {

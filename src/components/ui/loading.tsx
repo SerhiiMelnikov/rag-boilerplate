@@ -23,14 +23,16 @@ export function Loading({
   if (inline) {
     return (
       <span className={cn("inline-flex items-center gap-2 text-sm text-ink-muted", className)}>
-        <Spinner label={label} />
+        {/* The label is visible text right here, so the spinner must not announce it
+            too — otherwise every loading state on the branch says it twice. */}
+        <Spinner label={label} aria-hidden="true" />
         {label}
       </span>
     );
   }
   return (
     <div className={cn("flex items-center justify-center gap-2 px-6 py-14 text-sm text-ink-muted", className)}>
-      <Spinner label={label} />
+      <Spinner label={label} aria-hidden="true" />
       {label}
     </div>
   );

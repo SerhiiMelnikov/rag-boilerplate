@@ -107,7 +107,12 @@ export function MultiSelect({ value, onChange, options, ariaLabel, placeholder =
                 FOCUS_RING,
               )}
             >
-              <span className="truncate">{summary}</span>
+              {/* min-w-0: this span is a flex item inside the button (flex,
+                  no explicit basis), so without overriding the default
+                  min-width:auto it will never shrink below its own text's
+                  width -- `truncate`'s overflow:hidden then has nothing to
+                  clip against and the text spills past the button instead. */}
+              <span className="min-w-0 truncate">{summary}</span>
               <ChevronDown className="h-4 w-4 shrink-0 text-ink-subtle" aria-hidden="true" />
             </ListboxButton>
             <ListboxOptions

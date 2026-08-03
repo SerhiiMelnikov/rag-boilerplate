@@ -149,13 +149,14 @@ describe("FilesManager", () => {
     expect(bar!.contains(upload)).toBe(false);
   });
 
-  // The header's actions slot cannot wrap or shrink its own children (see
-  // page-header.test.tsx and PageHeader itself), so a toolbar wide enough to
+  // Before the actions row learned to wrap (see the "wraps instead of
+  // overflowing" test below and PageHeader itself), a toolbar wide enough to
   // include the URL form pushed the header past the viewport and scrolled the
-  // whole page sideways on mobile. The URL form now lives in its own row in the
-  // body instead — proved here by checking BOTH places it must not be, since
-  // "not in page-actions" alone would still pass if it had been dropped into
-  // files-filters instead.
+  // whole page sideways on mobile. Wrapping fixed the overflow, but the URL
+  // form still belongs in its own row: it is a second, independent way to add
+  // a file, not one more upload-parameter beside "Upload to" — proved here by
+  // checking BOTH places it must not be, since "not in page-actions" alone
+  // would still pass if it had been dropped into files-filters instead.
   it("keeps the URL form out of the header actions and out of the filter bar", async () => {
     render(<FilesManager />);
     const upload = await screen.findByLabelText("Upload file");
@@ -166,6 +167,29 @@ describe("FilesManager", () => {
     expect(actions.contains(upload)).toBe(true);
     expect(actions.contains(urlInput)).toBe(false);
     expect(filters.contains(urlInput)).toBe(false);
+  });
+
+  // jsdom does not lay out flexbox, so this cannot assert "no horizontal
+  // overflow" the way a real viewport would -- it only guards the class list
+  // that produces that layout in a real browser. The actual layout claim (no
+  // overflow at 375px/320px with a long default-workspace name) is verified
+  // by a headless-Chromium measurement recorded in
+  // .superpowers/sdd/2026-08-02-ux-6c2-admin-screens/fix-wave-report.md under
+  // "B1 residual"; this test only catches someone deleting the classes that
+  // measurement depends on.
+  it("wraps instead of overflowing: the actions row and the Upload-to control both carry their layout classes", async () => {
+    render(<FilesManager />);
+    const upload = await screen.findByLabelText("Upload file");
+    // The actual flex-wrap container is this inner div (the one FilesManager
+    // passes as PageHeader's `actions`), not page-actions itself -- see
+    // files-manager.tsx and the comment on PageHeader's own wrapper.
+    const actionsRow = upload.closest("div.flex.items-center.gap-2")!;
+    expect(actionsRow.className).toContain("flex-wrap");
+    expect(actionsRow.className).toContain("justify-end");
+
+    const multiSelectRoot = screen.getByLabelText("Workspaces for upload").closest(".relative")!;
+    expect(multiSelectRoot.className).toContain("min-w-36");
+    expect(multiSelectRoot.className).toContain("max-w-40");
   });
 
   it("finds a file by name", async () => {

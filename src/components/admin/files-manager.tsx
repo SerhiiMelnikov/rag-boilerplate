@@ -208,7 +208,15 @@ export function FilesManager() {
         title="Files"
         description="Everything the assistant can read. A file answers questions only in the workspaces it belongs to."
         actions={
-          <div className="flex items-center gap-2">
+          // flex-wrap (+ justify-end so a wrapped second line still hugs the
+          // right edge like the first) is what actually does the wrapping:
+          // PageHeader's own actions wrapper only ever receives this single
+          // div as its one child, so flex-wrap there has nothing to wrap
+          // between. This is the flex container that actually holds more
+          // than one item -- the upload control and the "Upload to" group --
+          // so this is where they can drop onto separate lines on a narrow
+          // viewport instead of forcing the header to overflow sideways.
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <label
               className={cn(
                 "inline-flex cursor-pointer items-center gap-2 rounded border border-border-strong px-3 py-2 text-sm transition-colors hover:bg-surface-2",
@@ -230,7 +238,11 @@ export function FilesManager() {
                 value={uploadWorkspaceIds}
                 onChange={setUploadWorkspaceIds}
                 options={allWorkspaces.map((w) => ({ value: w.id, label: w.name, hint: w.isDefault ? "everyone" : undefined }))}
-                className="min-w-36"
+                // max-w-40 caps how far a long workspace name (this shows the
+                // real default workspace's name, not a short placeholder) can
+                // push the header wide; MultiSelect's own trigger truncates
+                // the label instead of growing past this.
+                className="min-w-36 max-w-40"
               />
             </div>
           </div>

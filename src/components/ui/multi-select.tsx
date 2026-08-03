@@ -115,9 +115,14 @@ export function MultiSelect({ value, onChange, options, ariaLabel, placeholder =
               <span className="min-w-0 truncate">{summary}</span>
               <ChevronDown className="h-4 w-4 shrink-0 text-ink-subtle" aria-hidden="true" />
             </ListboxButton>
+            {/* A bounded column, not a list that grows to whatever the option count
+                happens to be: the search box is pinned as a shrink-0 row and only the
+                options below it scroll, so filtering never scrolls the field you are
+                typing into out of view. max-h-80 is about eight rows — enough to
+                choose from without the panel swallowing the dialog behind it. */}
             <ListboxOptions
               transition
-              className="absolute left-0 z-50 mt-1 min-w-full origin-top rounded border border-border bg-surface p-1 shadow-pop transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+              className="absolute left-0 z-50 mt-1 flex max-h-80 min-w-full origin-top flex-col rounded border border-border bg-surface p-1.5 shadow-pop transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
             >
               <input
                 aria-label={`Filter ${ariaLabel.toLowerCase()}`}
@@ -139,22 +144,24 @@ export function MultiSelect({ value, onChange, options, ariaLabel, placeholder =
                     event.stopPropagation();
                   }
                 }}
-                className="mb-1 w-full rounded border border-border-strong bg-surface px-2 py-1.5 text-sm"
+                className="mb-1.5 w-full shrink-0 rounded border border-border-strong bg-surface px-2.5 py-1.5 text-md text-ink placeholder:text-ink-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               />
-              {filtered.length === 0 && <div className="px-2 py-1.5 text-sm text-ink-subtle">No matches</div>}
-              {filtered.map((option) => (
-                <ListboxOption
-                  key={option.value}
-                  value={option.value}
-                  className="group flex w-full cursor-pointer items-center justify-between gap-3 whitespace-nowrap rounded px-2 py-1.5 text-sm data-[focus]:bg-surface-2"
-                >
-                  <span className="flex items-baseline gap-2">
-                    <span>{option.label}</span>
-                    {option.hint && <span className="text-xs text-ink-subtle">{option.hint}</span>}
-                  </span>
-                  <Check className="h-4 w-4 opacity-0 group-data-[selected]:opacity-100" aria-hidden="true" />
-                </ListboxOption>
-              ))}
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {filtered.length === 0 && <div className="px-2 py-3 text-center text-md text-ink-subtle">No matches</div>}
+                {filtered.map((option) => (
+                  <ListboxOption
+                    key={option.value}
+                    value={option.value}
+                    className="group flex w-full cursor-pointer items-center justify-between gap-3 rounded px-2.5 py-2 text-md data-[focus]:bg-surface-2 data-[selected]:text-accent"
+                  >
+                    <span className="flex min-w-0 items-baseline gap-2">
+                      <span className="truncate">{option.label}</span>
+                      {option.hint && <span className="shrink-0 text-xs text-ink-subtle">{option.hint}</span>}
+                    </span>
+                    <Check className="h-4 w-4 shrink-0 opacity-0 group-data-[selected]:opacity-100" aria-hidden="true" />
+                  </ListboxOption>
+                ))}
+              </div>
             </ListboxOptions>
           </>
         );

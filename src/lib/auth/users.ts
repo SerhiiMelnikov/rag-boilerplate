@@ -4,6 +4,19 @@ import { db as defaultDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { hashPassword } from "./password";
 
+// One canonical form for an address, applied on every write and every lookup.
+//
+// It has to live here rather than in the handlers: @auth/core lowercases an
+// OAuth profile's email before our signIn callback ever sees it, while
+// registration stored whatever was typed. Since 0.5.8 that mismatch did not
+// merely fail a login — it created a SECOND account for the same person, and
+// the unique index had no objection. A rule enforced at the five functions
+// every address-keyed read and write already passes through cannot be forgotten
+// by the next handler someone adds.
+export function normalizeEmail(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
 // Minimal projection for the registration path: is this address taken, and is it
 // confirmed?
 //
@@ -19,7 +32,7 @@ export async function findUserForRegistration(
 ): Promise<{ id: string; emailVerifiedAt: Date | null } | null> {
   const [row] = await database
     .select({ id: users.id, emailVerifiedAt: users.emailVerifiedAt })
-    .from(users).where(eq(users.email, email)).limit(1);
+    .from(users).where(eq(users.email, normalizeEmail(email))).limit(1);
   return row ?? null;
 }
 
@@ -40,7 +53,7 @@ export async function findUserForReset(
 ): Promise<{ id: string; emailVerifiedAt: Date | null; blockedAt: Date | null } | null> {
   const [row] = await database
     .select({ id: users.id, emailVerifiedAt: users.emailVerifiedAt, blockedAt: users.blockedAt })
-    .from(users).where(eq(users.email, email)).limit(1);
+    .from(users).where(eq(users.email, normalizeEmail(email))).limit(1);
   return row ?? null;
 }
 
@@ -69,7 +82,7 @@ export async function createUser(input: NewUser, database = defaultDb): Promise<
   try {
     const [row] = await database
       .insert(users)
-      .values({ email: input.email, passwordHash, role: input.role ?? "user" })
+      .values({ email: normalizeEmail(input.email), passwordHash, role: input.role ?? "user" })
       .returning({ id: users.id, email: users.email, role: users.role });
     return row;
   } catch (err) {
@@ -142,7 +155,7 @@ export async function getUserByEmail(email: string, database = defaultDb) {
   const rows = await database
     .select({ id: users.id, email: users.email, role: users.role, passwordHash: users.passwordHash, blockedAt: users.blockedAt, isSuperAdmin: users.isSuperAdmin, emailVerifiedAt: users.emailVerifiedAt })
     .from(users)
-    .where(eq(users.email, email))
+    .where(eq(users.email, normalizeEmail(email)))
     .limit(1);
   return rows[0] ?? null;
 }

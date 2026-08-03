@@ -15,9 +15,29 @@ export interface FileRow {
 }
 
 // Extension from a filename: lowercased, no leading dot. "" when there is none.
+//
+// A URL-ingested document keeps its URL as its filename, and scanning the whole
+// string for the last dot then finds the one in "wikipedia.org" and returns the
+// entire path after it. That rendered as a type badge wide enough to push the
+// files table sideways. An extension lives in the last path segment and is a
+// short alphanumeric token — anything else is not one.
 export function extOf(filename: string): string {
-  const i = filename.lastIndexOf(".");
-  return i === -1 || i === filename.length - 1 ? "" : filename.slice(i + 1).toLowerCase();
+  // Parsed as a URL rather than pattern-matched, so the host is never mistaken
+  // for a name: "https://example.com" has a dot and a plausible three-letter
+  // tail, and only the pathname says it is a domain and not a file.
+  let name = filename;
+  if (/^https?:\/\//i.test(name)) {
+    try {
+      name = new URL(name).pathname;
+    } catch {
+      // A malformed URL is just a filename that happens to start with "http".
+    }
+  }
+  const base = name.slice(name.lastIndexOf("/") + 1);
+  const i = base.lastIndexOf(".");
+  if (i === -1 || i === base.length - 1) return "";
+  const ext = base.slice(i + 1).toLowerCase();
+  return /^[a-z0-9]{1,8}$/.test(ext) ? ext : "";
 }
 
 export interface ListFilesDeps {

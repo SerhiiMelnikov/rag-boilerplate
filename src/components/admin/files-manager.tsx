@@ -349,22 +349,27 @@ export function FilesManager() {
                       it legible; this restores a comparable floor explicitly. The table
                       itself still scrolls (see Table's own overflow-x-auto), so this only
                       changes how much of that scroll area the name column claims first. */}
-                  <TD className="min-w-32">
+                  {/* max-w bounds the column so a long name ellipsizes instead of widening
+                      the table until it scrolls; `title` keeps the whole name readable on
+                      hover, which matters most for the URL-ingested rows that are longest. */}
+                  <TD className="min-w-32 max-w-[22rem]">
                     <div className="flex min-w-0 items-center gap-2">
                       {/* The name cell is where a file's grounding in the knowledge base
                           shows up: one tick per workspace it belongs to, dashed when none.
                           The workspaces cell below still carries the count as text. */}
                       <Gutter sources={f.workspaces.length} size="sm" />
                       {f.kind === "image" ? (
-                        <button type="button" onClick={() => setModalImage(f)} className={cn("truncate text-left underline-offset-2 hover:underline", FOCUS_RING)}>
+                        <button type="button" title={f.filename} onClick={() => setModalImage(f)} className={cn("truncate text-left underline-offset-2 hover:underline", FOCUS_RING)}>
                           {f.filename}
                         </button>
                       ) : (
-                        <span className="truncate">{f.filename}</span>
+                        <span className="truncate" title={f.filename}>{f.filename}</span>
                       )}
                     </div>
                   </TD>
-                  <TD><Badge>{f.ext || "—"}</Badge></TD>
+                  {/* Bounded on purpose: extOf now refuses to call a URL path an extension, but a
+                      badge that can grow without limit is what let one bad row widen the whole table. */}
+                  <TD><Badge className="max-w-24 truncate">{f.ext || "—"}</Badge></TD>
                   <TD><StatusBadge status={f.status} error={f.error} /></TD>
                   <TD className="text-xs text-ink-muted">{new Date(f.createdAt).toLocaleDateString()}</TD>
                   <TD>

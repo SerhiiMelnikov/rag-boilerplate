@@ -8,6 +8,15 @@ describe("extOf", () => {
     expect(extOf("photo.jpeg")).toBe("jpeg");
     expect(extOf("noext")).toBe("");
     expect(extOf("trailing.")).toBe("");
+    // A URL-ingested document keeps its URL as its filename. Scanning the whole
+    // string finds the dot in "wikipedia.org" and returns the rest of the path,
+    // which reached the admin table as a type badge wide enough to push it sideways.
+    expect(extOf("https://uk.wikipedia.org/wiki/%D0%9E%D1%81%D1%82%D0%B0%D0%BF")).toBe("");
+    expect(extOf("https://example.com/a/b/report.pdf")).toBe("pdf");
+    // Not every dot-suffix is an extension: a bare domain has one too.
+    expect(extOf("https://example.com")).toBe("");
+    // Long enough to be a path segment rather than a type.
+    expect(extOf("archive.somethinglong")).toBe("");
   });
 });
 

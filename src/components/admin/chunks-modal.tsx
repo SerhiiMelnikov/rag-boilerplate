@@ -20,16 +20,10 @@ interface Props {
 
 const PAGE_SIZE = 50;
 
-// Paged chunk preview for a single document (Task 5). Mirrors FileWorkspacesModal:
-// same click-outside-to-close backdrop, same Escape handling, same panel chrome.
-//
-// NOT migrated to the shared Dialog (Task 15): its existing test asserts that
-// clicking the element with role="dialog" does not close the modal while clicking
-// that element's parent does — pinning a backdrop-click contract only satisfiable by
-// this hand-rolled overlay. The shared Dialog delegates outside-click detection to
-// Headless UI's useOutsideClick, which listens for pointerdown/pointerup, not click,
-// so a bare fireEvent.click (as the test uses) never reaches it and the assertion
-// fails. Reusing Dialog here would require editing that test, which is out of scope.
+// Paged chunk preview for a single document (Task 5). Now built on the shared
+// `Dialog` (Task 15's shell, adopted here in a later pass) rather than a hand-rolled
+// backdrop/panel: dismissal (Escape, an outside pointerdown/pointerup) and the focus
+// trap are Headless UI's, not this component's.
 export function ChunksModal({ doc, onClose }: Props) {
   const [rows, setRows] = useState<ChunkRow[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -57,12 +51,6 @@ export function ChunksModal({ doc, onClose }: Props) {
 
   useEffect(() => { void load(offset); }, [load, offset]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   // A legacy chunk (ingested before position tracking) has chunkIndex: null. Rows are
   // never renumbered 1..n to fill the gap — that would present arbitrary store order
   // as document order, exactly the lie this feature exists to prevent.
@@ -70,10 +58,8 @@ export function ChunksModal({ doc, onClose }: Props) {
   const rangeEnd = rows ? Math.min(offset + rows.length, total) : offset;
 
   return (
-    // The one modal that had never moved onto the shared shell: its own backdrop,
-    // its own panel, its own close affordance, and no focus trap or Escape handling
-    // at all. `xl` because the content is a document's own prose — at the default
-    // width a chunk wrapped every few words.
+    // `xl` because the content is a document's own prose — at the default width a
+    // chunk wrapped every few words.
     <Dialog open onClose={onClose} title={`Chunks for ${doc.filename}`} size="xl">
 
         {error && <Alert tone="danger" className="mb-3">{error}</Alert>}

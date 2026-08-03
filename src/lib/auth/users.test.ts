@@ -10,7 +10,7 @@ vi.mock("node:crypto", async (importOriginal) => {
 });
 
 import { randomBytes } from "node:crypto";
-import { createUser, createUnverifiedUser, getUserByEmail, getAuthUserById, markEmailVerified, DuplicateEmailError, normalizeEmail } from "@/lib/auth/users";
+import { createUser, createUnverifiedUser, createVerifiedOAuthUser, getUserByEmail, getAuthUserById, markEmailVerified, DuplicateEmailError, normalizeEmail } from "@/lib/auth/users";
 
 // Minimal fake matching the Drizzle calls used by the service.
 function fakeDb(opts: { existing?: unknown[]; insertResult?: unknown[]; insertThrows?: unknown } = {}) {
@@ -139,5 +139,21 @@ describe("case-insensitive addressing", () => {
     const database = { insert: () => ({ values }) } as never;
     await createUser({ email: "John@Corp.com", password: "hunter2hunter2" }, database);
     expect(values.mock.calls[0][0]).toMatchObject({ email: "john@corp.com" });
+  });
+
+  // Fix round 1: createVerifiedOAuthUser is the sixth address-keyed function —
+  // the brief that specced this task named only five. It is also the one that
+  // matters most: this repo fetches GitHub addresses itself (see
+  // oauth/github-email.ts) and GitHub preserves whatever case the user typed,
+  // so an un-normalised insert here means the row this function creates could
+  // never again be found by getUserByEmail's normalised lookup, and the user's
+  // second sign-in would fall through to create (and collide on) a second row.
+  it("createVerifiedOAuthUser stores the normalised address", async () => {
+    const values = vi.fn((_row: unknown) => ({
+      returning: async () => [{ id: "u1", role: "user", isSuperAdmin: false }],
+    }));
+    const database = { insert: () => ({ values }) } as never;
+    await createVerifiedOAuthUser("John.Doe@Corp.com", database);
+    expect(values.mock.calls[0][0]).toMatchObject({ email: "john.doe@corp.com" });
   });
 });

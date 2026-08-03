@@ -10,9 +10,10 @@ import { hashPassword } from "./password";
 // OAuth profile's email before our signIn callback ever sees it, while
 // registration stored whatever was typed. Since 0.5.8 that mismatch did not
 // merely fail a login — it created a SECOND account for the same person, and
-// the unique index had no objection. A rule enforced at the five functions
+// the unique index had no objection. A rule enforced at the six functions
 // every address-keyed read and write already passes through cannot be forgotten
-// by the next handler someone adds.
+// by the next handler someone adds — including createVerifiedOAuthUser, the
+// exact function on the OAuth path that used to leave this hole open.
 export function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase();
 }
@@ -116,6 +117,15 @@ export async function createUnverifiedUser(input: NewUnverifiedUser, database = 
 // gets a hash of 32 random bytes: never a constant, which would be a shared
 // backdoor across every OAuth row. The user can later set a real password
 // through the reset flow and end up with both sign-in routes.
+//
+// normalizeEmail matters here specifically: @auth/core lowercases a profile's
+// email before signIn ever sees it, but this repo fetches GitHub addresses
+// itself (see oauth/github-email.ts) and GitHub preserves the case the user
+// typed. Storing that raw would mean the row this function creates could
+// never again be found by getUserByEmail's normalised lookup — the user's
+// very next sign-in would miss its own row, fall through to create a second
+// one, and hit the unique index. Normalising on write, the same as every
+// other address-keyed function here, is what keeps this row reachable.
 export async function createVerifiedOAuthUser(
   email: string,
   database = defaultDb,
@@ -124,7 +134,7 @@ export async function createVerifiedOAuthUser(
   const passwordHash = await hashPassword(placeholder);
   const [row] = await database
     .insert(users)
-    .values({ email, passwordHash, role: "user", emailVerifiedAt: new Date() })
+    .values({ email: normalizeEmail(email), passwordHash, role: "user", emailVerifiedAt: new Date() })
     .returning({ id: users.id, role: users.role, isSuperAdmin: users.isSuperAdmin });
   return row;
 }

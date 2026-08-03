@@ -94,6 +94,71 @@ describe("FilesManager", () => {
     });
   });
 
+  // The regression this branch introduced: `uploadWorkspaceIds` starts as `[]`
+  // until GET /api/admin/workspaces resolves. Before this fix, an upload made
+  // in that window sent a single empty-string `workspaceIds` entry (the same
+  // wire shape as an admin deliberately deselecting everything), which
+  // resolveUploadWorkspaceIds treats as "unassigned" — invisible to retrieval.
+  // Before this branch, an upload with no known workspace always defaulted to
+  // General. The fix is to omit the field entirely while the list is still
+  // unknown, so the handler's absent-means-General path applies.
+  it("omits workspaceIds from an upload made before the workspace list has loaded", async () => {
+    let resolveWorkspaces!: (v: { ok: true; json: () => Promise<{ workspaces: typeof WORKSPACES }> }) => void;
+    const workspacesResponse = new Promise<{ ok: true; json: () => Promise<{ workspaces: typeof WORKSPACES }> }>((resolve) => {
+      resolveWorkspaces = resolve;
+    });
+    global.fetch = vi.fn(async (url: string) => {
+      if (String(url).includes("workspaces")) return workspacesResponse; // never resolves during this test
+      return { ok: true, json: async () => ({ files: FILES }) };
+    }) as unknown as typeof fetch;
+
+    render(<FilesManager />);
+    await screen.findByText("report.pdf"); // the files load does not depend on the workspaces fetch
+
+    const input = screen.getByLabelText("Upload file") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["x"], "n.md", { type: "text/markdown" })] } });
+
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const post = calls.find((c) => (c[1] as { method?: string } | undefined)?.method === "POST");
+      expect(post).toBeDefined();
+      const body = (post![1] as { body: FormData }).body;
+      expect(body.has("workspaceIds")).toBe(false);
+    });
+
+    // Quiet the still-pending promise so it cannot resolve into a later test.
+    resolveWorkspaces({ ok: true, json: async () => ({ workspaces: WORKSPACES }) });
+  });
+
+  // Same regression, the URL-ingest path: the JSON body must not carry
+  // `workspaceIds: []` while the workspace list is still unknown, since that is
+  // indistinguishable on the wire from an admin's deliberate "assign to
+  // nothing".
+  it("omits workspaceIds from a URL ingested before the workspace list has loaded", async () => {
+    let resolveWorkspaces!: (v: { ok: true; json: () => Promise<{ workspaces: typeof WORKSPACES }> }) => void;
+    const workspacesResponse = new Promise<{ ok: true; json: () => Promise<{ workspaces: typeof WORKSPACES }> }>((resolve) => {
+      resolveWorkspaces = resolve;
+    });
+    const calls: { url: string; body: unknown }[] = [];
+    global.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (String(url).includes("workspaces")) return workspacesResponse; // never resolves during this test
+      if (String(url) === "/api/admin/files") return { ok: true, json: async () => ({ files: FILES }) };
+      return { ok: true, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+
+    fireEvent.change(screen.getByLabelText("Ingest from URL"), { target: { value: "https://example.com/early" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ingest URL" }));
+
+    const posted = await waitFor(() => calls.find((c) => c.url.includes("/documents/url"))!);
+    expect(posted.body).toEqual({ url: "https://example.com/early" });
+
+    resolveWorkspaces({ ok: true, json: async () => ({ workspaces: WORKSPACES }) });
+  });
+
   it("filters the list to unassigned files", async () => {
     render(<FilesManager />);
     await screen.findByText("report.pdf");

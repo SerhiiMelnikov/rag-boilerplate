@@ -16,6 +16,10 @@ export class ForbiddenError extends Error {
 
 export interface SessionUser {
   id: string;
+  // Carried so a server component can render the signed-in identity from the
+  // same DB-backed read that authorises it, instead of a second lookup or a
+  // stale JWT claim.
+  email: string;
   role: "admin" | "user";
   isSuperAdmin: boolean;
 }
@@ -56,7 +60,7 @@ export async function requireUser(request: Request, deps: GuardDeps = {}): Promi
     const cutoffSeconds = Math.floor(dbUser.sessionsValidFrom.getTime() / 1000);
     if (session.sessionIssuedAt === null || session.sessionIssuedAt < cutoffSeconds) throw new UnauthorizedError();
   }
-  return { id: dbUser.id, role: dbUser.role, isSuperAdmin: dbUser.isSuperAdmin };
+  return { id: dbUser.id, email: dbUser.email, role: dbUser.role, isSuperAdmin: dbUser.isSuperAdmin };
 }
 
 // Require an authenticated admin; throws Unauthorized or Forbidden.

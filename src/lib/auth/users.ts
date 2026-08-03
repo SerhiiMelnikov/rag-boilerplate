@@ -164,7 +164,7 @@ export async function getUserWithHashById(
 export async function getAuthUserById(id: string, database = defaultDb) {
   const rows = await database
     .select({
-      id: users.id, role: users.role, isSuperAdmin: users.isSuperAdmin,
+      id: users.id, email: users.email, role: users.role, isSuperAdmin: users.isSuperAdmin,
       blockedAt: users.blockedAt, sessionsValidFrom: users.sessionsValidFrom,
     })
     .from(users)

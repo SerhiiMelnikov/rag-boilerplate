@@ -101,7 +101,7 @@ describe("createQuestionResponse", () => {
       method: "POST",
       body: JSON.stringify({ question: "  what is a cat?  ", expectedDocumentIds: [], referenceAnswer: "  a small animal  " }),
     });
-    const res = await createQuestionResponse(request, { getAdmin: async () => ({ id: "a1", role: "admin", isSuperAdmin: false }), repo: repo as never });
+    const res = await createQuestionResponse(request, { getAdmin: async () => ({ id: "a1", email: "a1@corp.com", role: "admin", isSuperAdmin: false }), repo: repo as never });
     expect(res.status).toBe(201);
     expect(repo.createQuestion.mock.calls[0][0]).toMatchObject({ question: "what is a cat?", referenceAnswer: "a small animal" });
   });
@@ -170,7 +170,7 @@ describe("updateQuestionResponse", () => {
       method: "PATCH",
       body: JSON.stringify({ question: "q", expectedDocumentIds: [], referenceAnswer: "  ref  " }),
     });
-    const res = await updateQuestionResponse("q1", request, { getAdmin: async () => ({ id: "a1", role: "admin", isSuperAdmin: false }), repo: repo as never });
+    const res = await updateQuestionResponse("q1", request, { getAdmin: async () => ({ id: "a1", email: "a1@corp.com", role: "admin", isSuperAdmin: false }), repo: repo as never });
     expect(res.status).toBe(200);
     expect(repo.updateQuestion.mock.calls[0][1]).toMatchObject({ referenceAnswer: "ref" });
   });

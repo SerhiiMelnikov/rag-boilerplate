@@ -12,7 +12,7 @@ const req = (body: unknown) =>
 // are built with `{ ...deps(), someFn: ... }` at the call site instead.
 function deps() {
   return {
-    requireUserFn: vi.fn(async () => ({ id: "u1", role: "user" as const, isSuperAdmin: false })),
+    requireUserFn: vi.fn(async () => ({ id: "u1", email: "u1@corp.com", role: "user" as const, isSuperAdmin: false })),
     lookupFn: vi.fn(async () => ({ id: "u1", passwordHash: "stored-hash" }) as { id: string; passwordHash: string } | null),
     verifyFn: vi.fn(async (plain: string) => plain === "current-password"),
     hashPasswordFn: vi.fn(async (pw: string) => `hashed:${pw}`),

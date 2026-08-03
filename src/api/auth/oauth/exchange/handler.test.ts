@@ -10,7 +10,7 @@ const req = (body: unknown) =>
 function deps(userId: string | null) {
   return {
     consumeCodeFn: vi.fn(async () => userId),
-    getAuthUserFn: vi.fn(async () => ({ id: "u1", role: "admin" as const, isSuperAdmin: true, blockedAt: null, sessionsValidFrom: null })),
+    getAuthUserFn: vi.fn(async () => ({ id: "u1", email: "u1@corp.com", role: "admin" as const, isSuperAdmin: true, blockedAt: null, sessionsValidFrom: null })),
     encodeTokenFn: vi.fn(async () => "bearer-token"),
     pruneFn: vi.fn(async () => {}),
   };
@@ -72,7 +72,7 @@ describe("oauthExchange", () => {
   it("refuses a code whose user row still exists but is now blocked", async () => {
     const d = {
       ...deps("u1"),
-      getAuthUserFn: vi.fn(async () => ({ id: "u1", role: "admin" as const, isSuperAdmin: true, blockedAt: new Date(), sessionsValidFrom: null })),
+      getAuthUserFn: vi.fn(async () => ({ id: "u1", email: "u1@corp.com", role: "admin" as const, isSuperAdmin: true, blockedAt: new Date(), sessionsValidFrom: null })),
     };
     expect((await oauthExchange(req({ code: "c" }), d)).status).toBe(400);
     expect(d.encodeTokenFn).not.toHaveBeenCalled();

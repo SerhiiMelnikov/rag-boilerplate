@@ -8,13 +8,14 @@ const FILES = [
   { id: "d1", kind: "document", filename: "report.pdf", ext: "pdf", status: "ready", error: null, caption: null, createdAt: "2026-01-02T00:00:00Z", workspaces: [{ id: "w1", name: "General", isDefault: true }] },
   { id: "i1", kind: "image", filename: "bike.png", ext: "png", status: "ready", error: null, caption: "a red bicycle", createdAt: "2026-01-01T00:00:00Z", workspaces: [] },
 ];
-// Bigger than one page. Every other fixture here is under DEFAULT_PAGE_SIZE, so
-// nothing exercised a slice — the pagination could have been deleted with the
-// suite green.
-const PAGED_FILES = Array.from({ length: 25 }, (_, i) => ({
+// 60 rows, not 25: at 25 the clamp inside paginate() makes "page 3 of ten" and
+// "page 1 of fifty" the same screen, so the page-size reset test below passed
+// with the reset deleted. Sixty gives fifty-per-page a real second page.
+const PAGED_FILES = Array.from({ length: 60 }, (_, i) => ({
   id: `p${i}`, kind: "document", filename: `paged${String(i).padStart(2, "0")}.pdf`, ext: "pdf",
   status: "ready", error: null, caption: null,
-  createdAt: `2026-02-${String(i + 1).padStart(2, "0")}T00:00:00Z`,
+  // Distinct and ordered without overflowing a month.
+  createdAt: new Date(Date.UTC(2026, 0, 1) + i * 86_400_000).toISOString(),
   workspaces: [{ id: "w1", name: "General", isDefault: true }],
 }));
 
@@ -384,26 +385,32 @@ describe("FilesManager", () => {
 
     it("renders one page of ten and says how far through the list it is", async () => {
       render(<FilesManager />);
-      expect(await screen.findByText("paged24.pdf")).toBeInTheDocument();
-      expect(screen.queryByText("paged14.pdf")).toBeNull();
-      expect(screen.getByText("1–10 of 25 files")).toBeInTheDocument();
+      expect(await screen.findByText("paged59.pdf")).toBeInTheDocument();
+      expect(screen.queryByText("paged49.pdf")).toBeNull();
+      expect(screen.getByText("1–10 of 60 files")).toBeInTheDocument();
     });
 
     it("pages forward over the same list", async () => {
       render(<FilesManager />);
       fireEvent.click(await screen.findByLabelText("Next page"));
-      expect(await screen.findByText("paged14.pdf")).toBeInTheDocument();
-      expect(screen.queryByText("paged24.pdf")).toBeNull();
+      expect(await screen.findByText("paged49.pdf")).toBeInTheDocument();
+      expect(screen.queryByText("paged59.pdf")).toBeNull();
     });
 
-    // Asking to see MORE must never land on an emptier screen.
+    // Asking to see MORE must never land on an emptier screen. The second
+    // assertion is the whole test: paged00 is the LAST row of the list, so it
+    // is only on screen if the view stayed on page 2 after the size grew.
     it("returns to the first page when the page size grows", async () => {
       render(<FilesManager />);
       fireEvent.click(await screen.findByLabelText("Next page"));
+      expect(await screen.findByText("paged49.pdf")).toBeInTheDocument();
+
       fireEvent.click(screen.getByLabelText("Rows per page"));
       fireEvent.click(await screen.findByRole("option", { name: "50" }));
-      expect(await screen.findByText("paged24.pdf")).toBeInTheDocument();
-      expect(screen.getByText("1–25 of 25 files")).toBeInTheDocument();
+
+      expect(await screen.findByText("paged59.pdf")).toBeInTheDocument();
+      expect(screen.queryByText("paged00.pdf")).toBeNull();
+      expect(screen.getByText("1–50 of 60 files")).toBeInTheDocument();
     });
   });
 });

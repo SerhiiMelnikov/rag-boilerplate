@@ -11,10 +11,10 @@ const USERS = [
   { id: "b2", email: "carol@corp.com", role: "user", isSuperAdmin: false, blockedAt: "2024-01-01T00:00:00.000Z" },
 ];
 
-// Bigger than one page on purpose. Every other fixture in this file is under
-// DEFAULT_PAGE_SIZE, so before this nothing on any admin screen ever exercised a
-// slice — the pagination could have been deleted outright with the suite green.
-const PAGED_USERS = Array.from({ length: 25 }, (_, i) => ({
+// 60 rows, not 25: at 25 the clamp inside paginate() makes "page 3 of ten" and
+// "page 1 of fifty" the same screen, so the page-size reset test below passed
+// with the reset deleted. Sixty gives fifty-per-page a real second page.
+const PAGED_USERS = Array.from({ length: 60 }, (_, i) => ({
   id: `p${i}`, email: `paged${String(i).padStart(2, "0")}@corp.com`, role: "user" as const, isSuperAdmin: false, blockedAt: null,
 }));
 
@@ -183,7 +183,7 @@ describe("UsersManager", () => {
       render(<UsersManager currentUserId="me" />);
       expect(await screen.findByText("paged00@corp.com")).toBeInTheDocument();
       expect(screen.queryByText("paged10@corp.com")).toBeNull();
-      expect(screen.getByText("1–10 of 25 accounts")).toBeInTheDocument();
+      expect(screen.getByText("1–10 of 60 accounts")).toBeInTheDocument();
     });
 
     it("pages forward and back over the same list", async () => {
@@ -195,20 +195,21 @@ describe("UsersManager", () => {
       expect(await screen.findByText("paged00@corp.com")).toBeInTheDocument();
     });
 
-    // Asking to see MORE must never land on an emptier screen: page 3 of a
-    // ten-per-page list is past the end of the same list at fifty per page.
+    // Asking to see MORE must never land on an emptier screen. The second
+    // assertion is the whole test: paged50 is on the SECOND page at fifty per
+    // page, so it is only on screen if the view stayed on page 2 after the
+    // size grew.
     it("returns to the first page when the page size grows", async () => {
       render(<UsersManager currentUserId="me" />);
       fireEvent.click(await screen.findByLabelText("Next page"));
-      fireEvent.click(await screen.findByLabelText("Next page"));
-      expect(await screen.findByText("paged20@corp.com")).toBeInTheDocument();
+      expect(await screen.findByText("paged10@corp.com")).toBeInTheDocument();
 
       fireEvent.click(screen.getByLabelText("Rows per page"));
       fireEvent.click(await screen.findByRole("option", { name: "50" }));
 
       expect(await screen.findByText("paged00@corp.com")).toBeInTheDocument();
-      expect(screen.getByText("paged24@corp.com")).toBeInTheDocument();
-      expect(screen.getByText("1–25 of 25 accounts")).toBeInTheDocument();
+      expect(screen.queryByText("paged50@corp.com")).toBeNull();
+      expect(screen.getByText("1–50 of 60 accounts")).toBeInTheDocument();
     });
 
     // Filtering while deep in the list used to be the way to reach a page with no

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, ne } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
-import { workspaces, userWorkspaces, users } from "@/lib/db/schema";
+import { workspaces, userWorkspaces, users, conversations } from "@/lib/db/schema";
 
 export class WorkspaceNotFoundError extends Error {
   constructor() { super("Workspace not found."); this.name = "WorkspaceNotFoundError"; }
@@ -76,11 +76,27 @@ export async function updateWorkspace(
   await database.update(workspaces).set(set).where(eq(workspaces.id, id));
 }
 
-// Deleting cascades memberships + grants (FKs). Content stays reachable via General.
+// Deleting cascades memberships + grants (FKs). Conversations are moved to the
+// default workspace first, in the same transaction: conversations.workspace_id
+// is ON DELETE set null and every sidebar filters on a strict workspace_id = X,
+// so a null makes the chat unreachable from every workspace at once while its
+// rows sit in the database untouched. The order is load-bearing — after the
+// delete there is nothing left to reassign.
+//
+// messages.workspace_id is deliberately NOT moved: usage analytics groups by
+// that column, and re-badging another workspace's tokens as General would put
+// a false number on a dashboard. Documents and images are not moved either —
+// their membership rows cascade, so one that lived only here becomes
+// unassigned, which is visible and fixable on the Files page.
 export async function deleteWorkspace(id: string, database = defaultDb): Promise<void> {
   const target = await loadWorkspace(id, database);
   if (target.isDefault) throw new DefaultWorkspaceProtectedError("The General workspace cannot be deleted.");
-  await database.delete(workspaces).where(eq(workspaces.id, id));
+  await database.transaction(async (tx) => {
+    const [fallback] = await tx.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.isDefault, true)).limit(1);
+    if (!fallback) throw new Error('default workspace (General) not found — run `npm run seed:admin`');
+    await tx.update(conversations).set({ workspaceId: fallback.id }).where(eq(conversations.workspaceId, id));
+    await tx.delete(workspaces).where(eq(workspaces.id, id));
+  });
 }
 
 export interface WorkspaceUserRow { id: string; email: string; granted: boolean }

@@ -74,7 +74,10 @@ The generated app includes:
 - Auth.js-based authentication with admin/user roles, enforced by the same
   per-request database lookup on API routes and server-rendered pages alike —
   blocking, deleting or demoting a user takes effect on their very next request
-  or navigation, not whenever their session cookie happens to expire
+  or navigation, not whenever their session cookie happens to expire.
+  `middleware.ts` is the one deliberate exception — it runs on the edge with no
+  database access, so it only checks that a session token exists at all, and
+  the page behind it performs the real check
 - Drizzle ORM + Postgres for documents, users, chat history, and settings;
   S3-compatible object storage (MinIO locally) for image bytes
 - A `.env` pre-populated with fresh secrets, and a `README.md` tailored to

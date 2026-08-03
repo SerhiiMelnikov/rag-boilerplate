@@ -318,12 +318,21 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("The confirmation link expires in 24 hours. Registering never sets a password —");
   lines.push("whoever clicks the link chooses it, on the form the link opens.");
   lines.push("");
-  lines.push("Email addresses are stored and matched in lower case. If you are upgrading an");
-  lines.push("install that ran 0.5.8, migration 0020 repairs accounts that OAuth forked: the");
-  lines.push("confirmed row keeps the address and any duplicate is renamed to");
-  lines.push("`name+dup-xxxxxxxx@domain` and blocked, for you to review on the Users page.");
-  lines.push("Nothing is deleted — but note that chats made under a forked account stay in");
-  lines.push("the database and are no longer reachable from the UI.");
+  lines.push("Email addresses are stored and matched in lower case.");
+  // Only a pgvector-store project ships migration 0020 at all: scaffold()
+  // deletes drizzle/ for every other store, and their `npm run db:generate`
+  // builds fresh DDL-only migrations from the current schema, with no
+  // historical data migration to repair anything. Promising a repair to a
+  // project that will never run that migration would be dishonest, so this
+  // paragraph only appears for pgvector.
+  if (o.vectorStore === "pgvector") {
+    lines.push("If you are upgrading an install that ran 0.5.8, migration 0020 repairs");
+    lines.push("accounts that OAuth forked: the confirmed row keeps the address and any");
+    lines.push("duplicate is renamed to `name+dup-xxxxxxxx@domain` and blocked, for you to");
+    lines.push("review on the Users page. Nothing is deleted — but note that chats made");
+    lines.push("under a forked account stay in the database and are no longer reachable");
+    lines.push("from the UI.");
+  }
   lines.push("");
 
   lines.push("## Workspaces", "");
@@ -487,13 +496,19 @@ function generateApiOnlyReadme(o: InstallOptions): string {
       "has a working allowlist. The confirmation link expires in 24 hours.",
   );
   lines.push("");
-  lines.push(
-    "Email addresses are stored and matched in lower case. If you are upgrading an install that ran " +
-      "0.5.8, migration 0020 repairs accounts that OAuth forked: the confirmed row keeps the address and " +
-      "any duplicate is renamed to `name+dup-xxxxxxxx@domain` and blocked, for you to review with " +
-      "`GET /api/admin/users`. Nothing is deleted — but note that chats made under a forked account stay " +
-      "in the database and are no longer reachable from the API.",
-  );
+  lines.push("Email addresses are stored and matched in lower case.");
+  // Same reasoning as generateFullAppReadme's version of this paragraph: only a
+  // pgvector-store project ships migration 0020 (every other store's drizzle/
+  // is deleted and regenerated as DDL-only via `npm run db:generate`, with no
+  // historical data migration to repair anything), so this only appears there.
+  if (o.vectorStore === "pgvector") {
+    lines.push(
+      "If you are upgrading an install that ran 0.5.8, migration 0020 repairs accounts that OAuth forked: " +
+        "the confirmed row keeps the address and any duplicate is renamed to `name+dup-xxxxxxxx@domain` and " +
+        "blocked, for you to review with `GET /api/admin/users`. Nothing is deleted — but note that chats " +
+        "made under a forked account stay in the database and are no longer reachable from the API.",
+    );
+  }
   lines.push("");
 
   lines.push("## Rate limits", "");

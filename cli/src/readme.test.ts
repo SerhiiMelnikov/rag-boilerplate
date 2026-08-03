@@ -278,14 +278,29 @@ describe("generateReadme registration", () => {
   // does not ship (there is no Users page there).
   it("documents that emails are lower-cased and migration 0020 unforks duplicated accounts", () => {
     for (const appKind of ["full", "api"] as const) {
-      const readme = generateReadme(opts({ appKind }));
+      const readme = generateReadme(opts({ appKind, vectorStore: "pgvector" }));
       expect(readme).toMatch(/stored and matched in lower case/);
       expect(readme).toMatch(/migration 0020/);
       expect(readme).toContain("name+dup-xxxxxxxx@domain");
       expect(readme).toMatch(/Nothing is deleted/);
     }
-    expect(generateReadme(opts({ appKind: "full" }))).toMatch(/Users page/);
-    expect(generateReadme(opts({ appKind: "api" }))).not.toMatch(/Users page/);
+    expect(generateReadme(opts({ appKind: "full", vectorStore: "pgvector" }))).toMatch(/Users page/);
+    expect(generateReadme(opts({ appKind: "api", vectorStore: "pgvector" }))).not.toMatch(/Users page/);
+  });
+
+  // scaffold() deletes drizzle/ for every non-pgvector store (cli/src/scaffold.ts
+  // step 7b); that project's `npm run db:generate` builds fresh DDL-only
+  // migrations from the current schema, so migration 0020 never ships there and
+  // never runs. Promising a repair the project cannot perform would be worse
+  // than silence, so the migration-0020 paragraph must not appear for those
+  // stores — only the (still true, store-independent) lower-casing sentence.
+  it("does not promise the migration 0020 repair to a non-pgvector store, which never ships it", () => {
+    for (const appKind of ["full", "api"] as const) {
+      const readme = generateReadme(opts({ appKind, vectorStore: "qdrant" }));
+      expect(readme).toMatch(/stored and matched in lower case/);
+      expect(readme).not.toMatch(/migration 0020/);
+      expect(readme).not.toContain("name+dup-xxxxxxxx@domain");
+    }
   });
 });
 

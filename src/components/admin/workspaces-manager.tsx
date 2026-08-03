@@ -10,6 +10,7 @@ import { Button, FOCUS_RING } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { Loading } from "@/components/ui/loading";
+import { Pagination, paginate, PAGE_SIZES, DEFAULT_PAGE_SIZE } from "@/components/ui/pagination";
 import { cn } from "@/lib/cn";
 import { WorkspaceAccessModal } from "./workspace-access-modal";
 
@@ -68,6 +69,8 @@ export function WorkspacesManager() {
   const [pendingDelete, setPendingDelete] = useState<Row | null>(null);
   const [busy, setBusy] = useState(false);
   const [accessFor, setAccessFor] = useState<Row | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   // One commit per edit, whichever path (Save, Enter, or the blur that follows
   // Escape/unmount in a real browser) gets there first. A ref, not state: a blur
   // handler closes over the render it was attached in, so state would hand it a
@@ -169,18 +172,20 @@ export function WorkspacesManager() {
 
   const header = (
     <PageHeader
-      className="mx-auto max-w-3xl"
+      className="mx-auto w-full max-w-6xl"
       title="Workspaces"
       description="Groups of files. Each conversation asks questions of exactly one workspace."
     />
   );
+
+  const paged = paginate(rows ?? [], page, pageSize);
 
   // The frame first, the data into it — same note as users-manager.
   if (!rows) {
     return (
       <>
         {header}
-        <PageBody className="mx-auto max-w-3xl"><Loading label="Loading workspaces" /></PageBody>
+        <PageBody className="mx-auto w-full max-w-6xl"><Loading label="Loading workspaces" /></PageBody>
       </>
     );
   }
@@ -188,7 +193,7 @@ export function WorkspacesManager() {
   return (
     <>
       {header}
-      <PageBody className="mx-auto max-w-3xl space-y-4">
+      <PageBody className="mx-auto w-full max-w-6xl space-y-4">
         {/* Kept verbatim from the pre-redesign page: the header description above
             doesn't mention that the default workspace is always accessible to everyone. */}
         <p className="text-sm text-ink-muted">Group documents and images. Everyone always has access to the default workspace.</p>
@@ -222,7 +227,7 @@ export function WorkspacesManager() {
               </TR>
             </THead>
             <TBody>
-              {rows.map((w) => {
+              {paged.rows.map((w) => {
                 const isEditing = editingId === w.id;
                 const d = draft[w.id] ?? { name: w.name, description: w.description ?? "" };
                 // Escape sets cancelled.current before unmounting the input; Enter and
@@ -339,6 +344,19 @@ export function WorkspacesManager() {
               })}
             </TBody>
           </Table>
+        )}
+        {rows.length > PAGE_SIZES[0] && (
+          <Pagination
+            total={rows.length}
+            page={paged.page}
+            pageCount={paged.pageCount}
+            from={paged.from}
+            to={paged.to}
+            pageSize={pageSize}
+            onPage={setPage}
+            onPageSize={setPageSize}
+            noun="workspaces"
+          />
         )}
       </PageBody>
 

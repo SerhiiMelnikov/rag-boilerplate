@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Gutter } from "@/components/ui/gutter";
 import { Alert } from "@/components/ui/alert";
 import { Loading } from "@/components/ui/loading";
+import { Pagination, paginate, PAGE_SIZES, DEFAULT_PAGE_SIZE } from "@/components/ui/pagination";
 import { cn } from "@/lib/cn";
 import { ImageModal } from "./image-modal";
 import { FileWorkspacesModal } from "./file-workspaces-modal";
@@ -51,6 +52,8 @@ export function FilesManager() {
   const [busy, setBusy] = useState(false);
   const [extFilter, setExtFilter] = useState("all");
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortAsc, setSortAsc] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<FileRow | null>(null);
@@ -113,6 +116,7 @@ export function FilesManager() {
     );
     return sortAsc ? sorted : sorted.reverse();
   }, [files, query, extFilter, workspaceFilter, sortKey, sortAsc]);
+  const paged = paginate(visible, page, pageSize);
 
   async function upload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -205,7 +209,7 @@ export function FilesManager() {
   return (
     <>
       <PageHeader
-        className="mx-auto max-w-3xl"
+        className="mx-auto w-full max-w-6xl"
         title="Files"
         description="Everything the assistant can read. A file answers questions only in the workspaces it belongs to."
         actions={
@@ -249,7 +253,7 @@ export function FilesManager() {
           </div>
         }
       />
-      <PageBody className="mx-auto max-w-3xl space-y-4">
+      <PageBody className="mx-auto w-full max-w-6xl space-y-4">
         {/* Its own row, not a filter: the URL box is a second way to add a file, so it
             sits with the other actions rather than inside files-filters below. */}
         <div data-testid="files-ingest" className="flex items-center gap-2">
@@ -279,19 +283,19 @@ export function FilesManager() {
               aria-label="Search files"
               placeholder="Search by name"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { setQuery(e.target.value); setPage(1); }}
               className="max-w-xs"
             />
             <div className="flex items-center gap-2 text-sm">
               <span className="text-ink-muted">Type</span>
-              <Select ariaLabel="Filter by type" value={extFilter} onChange={setExtFilter} options={["all", ...exts]} className="min-w-28" />
+              <Select ariaLabel="Filter by type" value={extFilter} onChange={(v) => { setExtFilter(v); setPage(1); }} options={["all", ...exts]} className="min-w-28" />
             </div>
             <div className="flex items-center gap-2 text-sm">
               <span className="text-ink-muted">Workspace</span>
               <Select
                 ariaLabel="Filter by workspace"
                 value={workspaceFilter}
-                onChange={setWorkspaceFilter}
+                onChange={(v) => { setWorkspaceFilter(v); setPage(1); }}
                 options={["all", ...allWorkspaces.map((w) => w.name), "unassigned"]}
                 className="min-w-32"
               />
@@ -339,7 +343,7 @@ export function FilesManager() {
               </TR>
             </THead>
             <TBody>
-              {visible.map((f) => (
+              {paged.rows.map((f) => (
                 <TR key={f.id}>
                   {/* min-w-32 (8rem): `truncate` sets this cell's own min-content to zero
                       (overflow:hidden removes it from the intrinsic-size calculation), so
@@ -414,6 +418,19 @@ export function FilesManager() {
               ))}
             </TBody>
           </Table>
+        )}
+        {visible.length > PAGE_SIZES[0] && (
+          <Pagination
+            total={visible.length}
+            page={paged.page}
+            pageCount={paged.pageCount}
+            from={paged.from}
+            to={paged.to}
+            pageSize={pageSize}
+            onPage={setPage}
+            onPageSize={setPageSize}
+            noun="files"
+          />
         )}
       </PageBody>
       <ConfirmDialog

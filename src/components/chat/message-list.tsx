@@ -44,7 +44,12 @@ export function MessageList({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-[68ch] px-4 pb-6 md:px-6">
+      {/* 68ch is the comfortable measure for prose, and on a phone or a laptop it is
+          what the viewport gives anyway. On a wide monitor it left most of the screen
+          empty beside a narrow column, so the transcript widens past that breakpoint —
+          still bounded, because a line that runs the full width of a 27" display is
+          harder to read, not easier. */}
+      <div className="mx-auto w-full max-w-[68ch] px-4 pb-6 md:px-6 lg:max-w-[86ch] 2xl:max-w-[100ch]">
         {visible.map((m, index) => (
           <ChatMessage
             key={m.id}

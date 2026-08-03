@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { Loading } from "@/components/ui/loading";
+import { Pagination, paginate, PAGE_SIZES, DEFAULT_PAGE_SIZE } from "@/components/ui/pagination";
 import { cn } from "@/lib/cn";
 
 type Row = { id: string; email: string; role: "admin" | "user"; isSuperAdmin: boolean; blockedAt: string | null };
@@ -24,6 +25,8 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
   const [blocking, setBlocking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/users");
@@ -55,7 +58,7 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
 
   const header = (
     <PageHeader
-      className="mx-auto max-w-2xl"
+      className="mx-auto w-full max-w-6xl"
       title="Users"
       description="Who can sign in, and what they are allowed to do."
     />
@@ -68,7 +71,7 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
     return (
       <>
         {header}
-        <PageBody className="mx-auto max-w-2xl"><Loading label="Loading accounts" /></PageBody>
+        <PageBody className="mx-auto w-full max-w-6xl"><Loading label="Loading accounts" /></PageBody>
       </>
     );
   }
@@ -76,18 +79,19 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
   const visible = searchable && query.trim() !== ""
     ? rows.filter((u) => u.email.toLowerCase().includes(query.trim().toLowerCase()))
     : rows;
+  const paged = paginate(visible, page, pageSize);
 
   return (
     <>
       {header}
-      <PageBody className="mx-auto max-w-2xl">
+      <PageBody className="mx-auto w-full max-w-6xl">
         {error && <Alert tone="danger">{error}</Alert>}
         {searchable && (
           <Input
             aria-label="Search accounts"
             placeholder="Search by email"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(1); }}
             className="mb-3 max-w-xs"
           />
         )}
@@ -116,7 +120,7 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
               </TR>
             </THead>
             <TBody>
-              {visible.map((u) => {
+              {paged.rows.map((u) => {
                 const locked = u.isSuperAdmin || u.id === currentUserId; // no actions on super-admin or self
                 return (
                   <TR key={u.id}>
@@ -169,6 +173,21 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
               })}
             </TBody>
           </Table>
+        )}
+        {visible.length > PAGE_SIZES[0] && (
+          <div className="mt-3">
+            <Pagination
+              total={visible.length}
+              page={paged.page}
+              pageCount={paged.pageCount}
+              from={paged.from}
+              to={paged.to}
+              pageSize={pageSize}
+              onPage={setPage}
+              onPageSize={setPageSize}
+              noun="accounts"
+            />
+          </div>
         )}
       </PageBody>
       <ConfirmDialog

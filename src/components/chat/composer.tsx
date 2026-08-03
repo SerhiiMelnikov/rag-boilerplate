@@ -78,7 +78,9 @@ export function Composer({
       className="flex-none border-t border-border bg-bg"
     >
       {/* Same measure as the transcript, so the field lines up under the answers. */}
-      <div className="mx-auto flex w-full max-w-[68ch] items-end gap-2 px-4 py-3 md:px-6">
+      {/* Tracks the transcript's width exactly — a composer narrower than the answers
+          above it reads as a different column. */}
+      <div className="mx-auto flex w-full max-w-[68ch] items-end gap-2 px-4 py-3 md:px-6 lg:max-w-[86ch] 2xl:max-w-[100ch]">
         <Textarea
           ref={textareaRef}
           autoGrow

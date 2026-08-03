@@ -48,6 +48,10 @@ export function PageHeader({
   );
 }
 
+// `pb-10` rather than a symmetric padding: this is the scroller, and a table or a
+// long form that ends flush against the bottom edge reads as cut off — there is no
+// way to tell "this is the end" from "there is more below". The extra space at the
+// end of the scroll is the signal.
 export function PageBody({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("w-full min-h-0 flex-1 overflow-y-auto p-4 md:p-6", className)}>{children}</div>;
+  return <div className={cn("w-full min-h-0 flex-1 overflow-y-auto p-4 pb-10 md:p-6 md:pb-12", className)}>{children}</div>;
 }

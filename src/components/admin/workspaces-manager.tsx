@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { Loading } from "@/components/ui/loading";
 import { Pagination, paginate, PAGE_SIZES, DEFAULT_PAGE_SIZE } from "@/components/ui/pagination";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/cn";
 import { WorkspaceAccessModal } from "./workspace-access-modal";
 
@@ -21,8 +23,6 @@ interface Row {
   isDefault: boolean;
   createdAt: string;
 }
-
-const inputClass = "rounded border border-border-strong bg-transparent px-2 py-1 text-sm";
 
 export type EditIntent =
   | { kind: "commit"; name: string | null; description: string | null }
@@ -194,19 +194,43 @@ export function WorkspacesManager() {
     <>
       {header}
       <PageBody className="mx-auto w-full max-w-6xl space-y-4">
-        {/* Kept verbatim from the pre-redesign page: the header description above
-            doesn't mention that the default workspace is always accessible to everyone. */}
-        <p className="text-sm text-ink-muted">Group documents and images. Everyone always has access to the default workspace.</p>
-
         {error && <Alert tone="danger">{error}</Alert>}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <input aria-label="New workspace name" placeholder="Name" value={newName} onChange={(e) => setNewName(e.target.value)} className={cn(inputClass, FOCUS_RING)} />
-          <input aria-label="New workspace description" placeholder="Description (optional)" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} className={cn(inputClass, "flex-1", FOCUS_RING)} />
-          <Button variant="secondary" size="sm" onClick={create} disabled={busy || !newName.trim()}>
-            <Plus className="h-4 w-4" /> Create
-          </Button>
-        </div>
+        {/* A card rather than two loose inputs above a table: this is an action, and
+            the note about the default workspace is something the page header's own
+            description does not say. */}
+        <Card
+          title="New workspace"
+          description="Group documents and images. Everyone always has access to the default workspace."
+        >
+          {/* A form, so Enter submits — the fields sat outside one, and typing a name
+              then pressing Enter did nothing at all. */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!busy && newName.trim()) void create();
+            }}
+            className="flex flex-wrap items-center gap-2"
+          >
+            <Input
+              aria-label="New workspace name"
+              placeholder="Name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="w-full sm:w-56"
+            />
+            <Input
+              aria-label="New workspace description"
+              placeholder="Description (optional)"
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+              className="w-full sm:min-w-0 sm:flex-1"
+            />
+            <Button type="submit" variant="secondary" disabled={busy || !newName.trim()}>
+              <Plus className="h-4 w-4" /> Create
+            </Button>
+          </form>
+        </Card>
 
         {rows.length === 0 ? (
           // The default workspace always exists (it is seeded at install), so an
@@ -275,13 +299,13 @@ export function WorkspacesManager() {
                           <Badge>default</Badge>
                         </span>
                       ) : isEditing ? (
-                        <input
+                        <Input
+                          compact
                           aria-label={`Name of ${w.name}`}
                           autoFocus
                           value={d.name}
                           onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, name: e.target.value } }))}
                           onKeyDown={onFieldKeyDown}
-                          className={cn(inputClass, "w-full", FOCUS_RING)}
                         />
                       ) : (
                         <span>{w.name}</span>
@@ -289,7 +313,8 @@ export function WorkspacesManager() {
                     </TD>
                     <TD>
                       {isEditing ? (
-                        <input
+                        <Input
+                          compact
                           aria-label={`Description of ${w.name}`}
                           placeholder="Description"
                           // The default workspace has no name input (its name is immutable —
@@ -300,7 +325,6 @@ export function WorkspacesManager() {
                           value={d.description}
                           onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, description: e.target.value } }))}
                           onKeyDown={onFieldKeyDown}
-                          className={cn(inputClass, "w-full", FOCUS_RING)}
                         />
                       ) : (
                         <span className={cn(!w.description && "text-ink-muted")}>{w.description || "—"}</span>

@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { FOCUS_RING } from "@/components/ui/button";
 import { activeGroup, visibleGroups, type NavGroup } from "./nav-config";
 import { AccountMenu } from "./account-menu";
+import { clearActiveWorkspace, WORKSPACE_CHANGED_EVENT } from "@/lib/workspaces/cookie";
 
 function RailLink({ group, active }: { group: NavGroup; active: boolean }) {
   const Icon = group.icon;
@@ -49,9 +50,18 @@ export function Rail({
       aria-label="Sections"
       className="hidden w-rail flex-none flex-col gap-0.5 border-r border-border bg-surface-2 p-1.5 md:flex"
     >
+      {/* Home means the beginning, not just the chat route. Navigating to "/" while
+          already there is a no-op — React keeps the open conversation mounted — so
+          this also forgets the remembered workspace and fires the switch event the
+          chat page already listens for, which drops the selection. The result from
+          anywhere in the app is the same: default workspace, nothing open. */}
       <Link
         href="/"
         aria-label="RAG Chat home"
+        onClick={() => {
+          clearActiveWorkspace();
+          window.dispatchEvent(new Event(WORKSPACE_CHANGED_EVENT));
+        }}
         className={cn("mb-1.5 flex h-[30px] items-center justify-center rounded", FOCUS_RING)}
       >
         <span

@@ -48,9 +48,14 @@ export function Select({ value, onChange, options, ariaLabel, className = "", co
         // option unreachable. Anchoring portals it out and flips it above the
         // button when there is no room below, which is what `dropUp` was
         // hand-simulating before.
+        //
+        // The width variable is `--button-width`, NOT `--anchor-width`: Headless UI
+        // sets the former (verified in its listbox source). The latter resolves to
+        // nothing, and a width that resolves to nothing is not a build error — the
+        // panel simply sizes to its content and nobody is told why.
         anchor={{ to: "bottom start", gap: 4 }}
         className={cn(
-          "z-50 w-[var(--anchor-width)] rounded border border-border bg-surface p-1 shadow-pop",
+          "z-50 w-[var(--button-width)] rounded border border-border bg-surface p-1 shadow-pop",
           "max-h-[min(18rem,var(--anchor-max-height))] overflow-y-auto",
           "transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0",
         )}

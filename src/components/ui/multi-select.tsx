@@ -129,7 +129,7 @@ export function MultiSelect({ value, onChange, options, ariaLabel, placeholder =
               // it out and positions it against the button, so it escapes every
               // scroller and flips above the trigger when there is no room below.
               anchor={{ to: "bottom start", gap: 4 }}
-              className="z-50 flex max-h-[min(20rem,var(--anchor-max-height))] w-[var(--anchor-width)] flex-col rounded border border-border bg-surface p-1.5 shadow-pop transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+              className="z-50 flex max-h-[min(20rem,var(--anchor-max-height))] w-[var(--button-width)] flex-col rounded border border-border bg-surface p-1.5 shadow-pop transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
             >
               <input
                 aria-label={`Filter ${ariaLabel.toLowerCase()}`}

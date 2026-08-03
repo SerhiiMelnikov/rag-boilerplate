@@ -149,6 +149,25 @@ describe("FilesManager", () => {
     expect(bar!.contains(upload)).toBe(false);
   });
 
+  // The header's actions slot cannot wrap or shrink its own children (see
+  // page-header.test.tsx and PageHeader itself), so a toolbar wide enough to
+  // include the URL form pushed the header past the viewport and scrolled the
+  // whole page sideways on mobile. The URL form now lives in its own row in the
+  // body instead — proved here by checking BOTH places it must not be, since
+  // "not in page-actions" alone would still pass if it had been dropped into
+  // files-filters instead.
+  it("keeps the URL form out of the header actions and out of the filter bar", async () => {
+    render(<FilesManager />);
+    const upload = await screen.findByLabelText("Upload file");
+    const urlInput = screen.getByLabelText("Ingest from URL");
+    const actions = screen.getByTestId("page-actions");
+    const filters = screen.getByTestId("files-filters");
+
+    expect(actions.contains(upload)).toBe(true);
+    expect(actions.contains(urlInput)).toBe(false);
+    expect(filters.contains(urlInput)).toBe(false);
+  });
+
   it("finds a file by name", async () => {
     render(<FilesManager />);
     await screen.findByText("report.pdf");
@@ -178,6 +197,19 @@ describe("FilesManager", () => {
     expect(screen.getByText("2 files")).toBeInTheDocument();
   });
 
+  // "1 files" is wrong.
+  it("uses the singular for exactly one file", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => (String(url).includes("workspaces")
+        ? { ok: true, status: 200, json: async () => ({ workspaces: [] }) }
+        : { ok: true, status: 200, json: async () => ({ files: [FILES[0]] }) })) as never,
+    );
+    render(<FilesManager />);
+    expect(await screen.findByText("1 file")).toBeInTheDocument();
+    expect(screen.queryByText("1 files")).toBeNull();
+  });
+
   // The two cases mean different things and deserve different offers. Conflating
   // them is the common bug: "upload your first file" is nonsense in front of an
   // admin who has fifty files and a typo in the search box.
@@ -191,6 +223,50 @@ describe("FilesManager", () => {
     render(<FilesManager />);
     expect(await screen.findByText("No files yet")).toBeInTheDocument();
     expect(screen.queryByText("No files match")).toBeNull();
+  });
+
+  // A virgin install has nothing to filter; offering to filter an empty table is
+  // clutter, and it primes the very "No files match" empty state (with its own
+  // "Clear filters" offer) that a genuinely empty library must never show.
+  it("hides the filter bar once the load resolves to zero files", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => (String(url).includes("workspaces")
+        ? { ok: true, status: 200, json: async () => ({ workspaces: [] }) }
+        : { ok: true, status: 200, json: async () => ({ files: [] }) })) as never,
+    );
+    render(<FilesManager />);
+    await screen.findByText("No files yet");
+    expect(screen.queryByTestId("files-filters")).toBeNull();
+  });
+
+  describe("initial load", () => {
+    // The default fetch mock in beforeEach resolves on a microtask, so the
+    // assertions below — made with no `await` in between — run before that
+    // resolution has had a chance to land, i.e. exactly the state React paints
+    // on first render.
+    it("does not claim the library is empty before the fetch resolves", async () => {
+      render(<FilesManager />);
+      expect(screen.queryByText("No files yet")).toBeNull();
+      expect(screen.queryByRole("table")).toBeNull();
+      // Drain the pending fetch inside this test (rather than leaving it to
+      // resolve, unawaited, into whatever test runs next).
+      await screen.findByText("report.pdf");
+    });
+
+    it("shows the real list once the fetch resolves", async () => {
+      render(<FilesManager />);
+      expect(await screen.findByText("report.pdf")).toBeInTheDocument();
+    });
+
+    // A failed load must say so, not sit there silently claiming (via the
+    // now-unblocked empty state) that the library has nothing in it.
+    it("surfaces a failed load instead of swallowing it", async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) })) as never);
+      render(<FilesManager />);
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the files. Try again.");
+      expect(screen.queryByText("No files yet")).toBeNull();
+    });
   });
 
   it("offers to clear the filters when they matched nothing", async () => {

@@ -39,8 +39,14 @@ const IMAGE_MIME = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"
 
 type SortKey = "date" | "name";
 
+// "1 files" is wrong; every other count in the app already avoids this.
+function fileCountLabel(n: number): string {
+  return `${n} ${n === 1 ? "file" : "files"}`;
+}
+
 export function FilesManager() {
-  const [files, setFiles] = useState<FileRow[]>([]);
+  const [files, setFiles] = useState<FileRow[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [extFilter, setExtFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -61,7 +67,12 @@ export function FilesManager() {
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/files");
-    if (res.ok) setFiles((await res.json()).files);
+    if (res.ok) {
+      setFiles((await res.json()).files);
+      setLoadError(null);
+    } else {
+      setLoadError("Could not load the files. Try again.");
+    }
   }, []);
   useEffect(() => { void load(); }, [load]);
 
@@ -76,17 +87,18 @@ export function FilesManager() {
     })();
   }, []);
 
-  const hasProcessing = files.some((f) => f.status === "processing" || f.status === "pending");
+  const hasProcessing = (files ?? []).some((f) => f.status === "processing" || f.status === "pending");
   useEffect(() => {
     if (!hasProcessing) return;
     const t = setInterval(() => void load(), POLL_INTERVAL_MS);
     return () => clearInterval(t);
   }, [hasProcessing, load]);
 
-  const exts = useMemo(() => [...new Set(files.map((f) => f.ext).filter(Boolean))].sort(), [files]);
+  const exts = useMemo(() => [...new Set((files ?? []).map((f) => f.ext).filter(Boolean))].sort(), [files]);
   const visible = useMemo(() => {
+    const all = files ?? [];
     const q = query.trim().toLowerCase();
-    const byName = q === "" ? files : files.filter((f) => f.filename.toLowerCase().includes(q));
+    const byName = q === "" ? all : all.filter((f) => f.filename.toLowerCase().includes(q));
     const filtered = extFilter === "all" ? byName : byName.filter((f) => f.ext === extFilter);
     const byWorkspace = workspaceFilter === "all"
       ? filtered
@@ -181,6 +193,14 @@ export function FilesManager() {
     setWorkspaceFilter("all");
   }
 
+  if (files === null) {
+    return (
+      <div className="p-6">
+        {loadError ? <Alert tone="danger">{loadError}</Alert> : <p className="text-ink-muted">Loading...</p>}
+      </div>
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -203,24 +223,6 @@ export function FilesManager() {
               {busy ? "Uploading..." : "Upload file"}
               <input ref={fileInputRef} type="file" accept={ACCEPT} aria-label="Upload file" onChange={upload} className="sr-only" disabled={busy} />
             </label>
-            {/* noValidate: bad input is reported by our own error state (from the
-                server's validation), not the browser's native url-constraint popup —
-                keeps the failure path consistent with every other error in this form. */}
-            <form onSubmit={ingestUrl} noValidate className="flex items-center gap-2">
-              <input
-                type="url"
-                aria-label="Ingest from URL"
-                placeholder="Paste a URL to ingest"
-                value={urlValue}
-                onChange={(e) => setUrlValue(e.target.value)}
-                disabled={urlBusy}
-                className={cn("rounded border border-border-strong bg-transparent px-3 py-2 text-sm", FOCUS_RING)}
-              />
-              <Button type="submit" variant="secondary" disabled={urlBusy || urlValue.trim() === ""}>
-                {urlBusy ? <Spinner label="Ingesting" /> : <Link2 className="h-4 w-4" />}
-                {urlBusy ? "Ingesting..." : "Ingest URL"}
-              </Button>
-            </form>
             <div className="flex items-center gap-2 text-sm">
               <span>Upload to</span>
               <MultiSelect
@@ -235,33 +237,57 @@ export function FilesManager() {
         }
       />
       <PageBody className="mx-auto max-w-3xl space-y-4">
-        <div data-testid="files-filters" className="flex flex-wrap items-center gap-3">
-          <Input
-            aria-label="Search files"
-            placeholder="Search by name"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="max-w-xs"
-          />
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-ink-muted">Type</span>
-            <Select ariaLabel="Filter by type" value={extFilter} onChange={setExtFilter} options={["all", ...exts]} className="min-w-28" />
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-ink-muted">Workspace</span>
-            <Select
-              ariaLabel="Filter by workspace"
-              value={workspaceFilter}
-              onChange={setWorkspaceFilter}
-              options={["all", ...allWorkspaces.map((w) => w.name), "unassigned"]}
-              className="min-w-32"
+        {/* Its own row, not a filter: the URL box is a second way to add a file, so it
+            sits with the other actions rather than inside files-filters below. */}
+        <div data-testid="files-ingest" className="flex items-center gap-2">
+          {/* noValidate: bad input is reported by our own error state (from the
+              server's validation), not the browser's native url-constraint popup —
+              keeps the failure path consistent with every other error in this form. */}
+          <form onSubmit={ingestUrl} noValidate className="flex items-center gap-2">
+            <input
+              type="url"
+              aria-label="Ingest from URL"
+              placeholder="Paste a URL to ingest"
+              value={urlValue}
+              onChange={(e) => setUrlValue(e.target.value)}
+              disabled={urlBusy}
+              className={cn("rounded border border-border-strong bg-transparent px-3 py-2 text-sm", FOCUS_RING)}
             />
-          </div>
-          <span className="ml-auto text-xs text-ink-muted">
-            {visible.length === files.length ? `${files.length} files` : `${visible.length} of ${files.length} files`}
-          </span>
+            <Button type="submit" variant="secondary" disabled={urlBusy || urlValue.trim() === ""}>
+              {urlBusy ? <Spinner label="Ingesting" /> : <Link2 className="h-4 w-4" />}
+              {urlBusy ? "Ingesting..." : "Ingest URL"}
+            </Button>
+          </form>
         </div>
         {urlError && <Alert tone="danger">{urlError}</Alert>}
+        {files.length > 0 && (
+          <div data-testid="files-filters" className="flex flex-wrap items-center gap-3">
+            <Input
+              aria-label="Search files"
+              placeholder="Search by name"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="max-w-xs"
+            />
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-ink-muted">Type</span>
+              <Select ariaLabel="Filter by type" value={extFilter} onChange={setExtFilter} options={["all", ...exts]} className="min-w-28" />
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-ink-muted">Workspace</span>
+              <Select
+                ariaLabel="Filter by workspace"
+                value={workspaceFilter}
+                onChange={setWorkspaceFilter}
+                options={["all", ...allWorkspaces.map((w) => w.name), "unassigned"]}
+                className="min-w-32"
+              />
+            </div>
+            <span className="ml-auto text-xs text-ink-muted">
+              {visible.length === files.length ? fileCountLabel(files.length) : `${visible.length} of ${fileCountLabel(files.length)}`}
+            </span>
+          </div>
+        )}
         {visible.length === 0 ? (
           files.length === 0 ? (
             <EmptyState
@@ -302,7 +328,15 @@ export function FilesManager() {
             <TBody>
               {visible.map((f) => (
                 <TR key={f.id}>
-                  <TD>
+                  {/* min-w-32 (8rem): `truncate` sets this cell's own min-content to zero
+                      (overflow:hidden removes it from the intrinsic-size calculation), so
+                      without a floor it is the first column squeezed away on a narrow
+                      viewport — exactly backwards, since the name is what identifies the
+                      row. Pre-truncate, the longest unbreakable segment of a filename kept
+                      it legible; this restores a comparable floor explicitly. The table
+                      itself still scrolls (see Table's own overflow-x-auto), so this only
+                      changes how much of that scroll area the name column claims first. */}
+                  <TD className="min-w-32">
                     <div className="flex min-w-0 items-center gap-2">
                       {/* The name cell is where a file's grounding in the knowledge base
                           shows up: one tick per workspace it belongs to, dashed when none.

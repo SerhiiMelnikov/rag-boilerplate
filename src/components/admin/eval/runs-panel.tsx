@@ -9,6 +9,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Button, FOCUS_RING } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
+import { Loading } from "@/components/ui/loading";
 import { cn } from "@/lib/cn";
 import type { EvalAggregate, EvalSettingsSnapshot, RetrievedDoc } from "@/lib/eval/types";
 
@@ -170,7 +171,15 @@ export function RunsPanel() {
     await loadDetail(id);
   }
 
-  if (!runs) return <div className="p-6 text-ink-muted">Loading...</div>;
+  // Same as QuestionsManager above it — the titled card is drawn first so the
+  // page reads as two known sections filling in, not two anonymous spinners.
+  if (!runs) {
+    return (
+      <Card title="Evaluation runs" description="Trigger a run against the current settings and golden questions.">
+        <Loading label="Loading runs" />
+      </Card>
+    );
+  }
 
   return (
     <Card
@@ -226,7 +235,7 @@ export function RunsPanel() {
         <div className="rounded border border-border p-3">
           <h3 className="mb-2 text-sm font-medium">Run detail</h3>
           {!detail ? (
-            <p className="text-sm text-ink-muted">Loading...</p>
+            <Loading inline label="Loading results" />
           ) : (
             <>
               <SettingsSnapshotSummary snapshot={detail.run.settingsSnapshot} />

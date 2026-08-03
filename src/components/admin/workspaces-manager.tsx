@@ -9,6 +9,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Button, FOCUS_RING } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
+import { Loading } from "@/components/ui/loading";
 import { cn } from "@/lib/cn";
 import { WorkspaceAccessModal } from "./workspace-access-modal";
 
@@ -166,15 +167,27 @@ export function WorkspacesManager() {
     }
   }
 
-  if (!rows) return <div className="p-6 text-ink-muted">Loading...</div>;
+  const header = (
+    <PageHeader
+      className="mx-auto max-w-3xl"
+      title="Workspaces"
+      description="Groups of files. Each conversation asks questions of exactly one workspace."
+    />
+  );
+
+  // The frame first, the data into it — same note as users-manager.
+  if (!rows) {
+    return (
+      <>
+        {header}
+        <PageBody className="mx-auto max-w-3xl"><Loading label="Loading workspaces" /></PageBody>
+      </>
+    );
+  }
 
   return (
     <>
-      <PageHeader
-        className="mx-auto max-w-3xl"
-        title="Workspaces"
-        description="Groups of files. Each conversation asks questions of exactly one workspace."
-      />
+      {header}
       <PageBody className="mx-auto max-w-3xl space-y-4">
         {/* Kept verbatim from the pre-redesign page: the header description above
             doesn't mention that the default workspace is always accessible to everyone. */}

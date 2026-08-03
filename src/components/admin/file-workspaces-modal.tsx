@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Spinner } from "@/components/ui/spinner";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
+import { Loading } from "@/components/ui/loading";
 
 interface Workspace { id: string; name: string; isDefault: boolean }
 interface Props {
@@ -69,7 +69,7 @@ export function FileWorkspacesModal({ file, onClose, onSaved }: Props) {
       {error && <Alert tone="danger" className="mb-3">{error}</Alert>}
 
       {!all ? (
-        <div className="flex items-center gap-2 text-sm text-ink-muted"><Spinner label="Loading" /> Loading...</div>
+        <Loading inline />
       ) : (
         <ul className="flex flex-col gap-1">
           {all.map((w) => (

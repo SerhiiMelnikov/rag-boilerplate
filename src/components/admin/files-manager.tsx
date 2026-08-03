@@ -14,6 +14,7 @@ import { Button, FOCUS_RING } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Gutter } from "@/components/ui/gutter";
 import { Alert } from "@/components/ui/alert";
+import { Loading } from "@/components/ui/loading";
 import { cn } from "@/lib/cn";
 import { ImageModal } from "./image-modal";
 import { FileWorkspacesModal } from "./file-workspaces-modal";
@@ -196,7 +197,7 @@ export function FilesManager() {
   if (files === null) {
     return (
       <div className="p-6">
-        {loadError ? <Alert tone="danger">{loadError}</Alert> : <p className="text-ink-muted">Loading...</p>}
+        {loadError ? <Alert tone="danger">{loadError}</Alert> : <Loading label="Loading files" />}
       </div>
     );
   }

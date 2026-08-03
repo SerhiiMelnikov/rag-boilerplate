@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button, FOCUS_RING } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
+import { Loading } from "@/components/ui/loading";
 import { cn } from "@/lib/cn";
 
 interface QuestionRow {
@@ -117,7 +118,16 @@ export function QuestionsManager() {
     return documents.find((d) => d.id === id)?.filename ?? id;
   }
 
-  if (!rows) return <div className="p-6 text-ink-muted">Loading...</div>;
+  // The card first, its rows into it: this and RunsPanel share one PageBody, so
+  // two bare "Loading..." strings used to sit one above the other with nothing
+  // saying which belonged to what.
+  if (!rows) {
+    return (
+      <Card title="Golden questions" description="The questions every run is scored against.">
+        <Loading label="Loading questions" />
+      </Card>
+    );
+  }
 
   return (
     <>

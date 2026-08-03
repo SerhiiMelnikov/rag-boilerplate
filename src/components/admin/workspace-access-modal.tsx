@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog } from "@/components/ui/dialog";
+import { Loading } from "@/components/ui/loading";
 
 interface UserRow { id: string; email: string; granted: boolean }
 interface Props {
@@ -51,7 +52,7 @@ export function WorkspaceAccessModal({ workspace, onClose }: Props) {
       size="md"
     >
       {!users ? (
-        <div className="flex items-center gap-2 text-sm text-ink-muted"><Spinner label="Loading" /> Loading...</div>
+        <Loading inline />
       ) : (
         <ul className="flex flex-col gap-1">
           {users.map((u) => (

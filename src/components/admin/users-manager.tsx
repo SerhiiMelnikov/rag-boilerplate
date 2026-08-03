@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
+import { Loading } from "@/components/ui/loading";
 import { cn } from "@/lib/cn";
 
 type Row = { id: string; email: string; role: "admin" | "user"; isSuperAdmin: boolean; blockedAt: string | null };
@@ -52,7 +53,25 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
     if (!searchable && query !== "") setQuery("");
   }, [searchable, query]);
 
-  if (!rows) return <div className="p-6 text-ink-muted">Loading...</div>;
+  const header = (
+    <PageHeader
+      className="mx-auto max-w-2xl"
+      title="Users"
+      description="Who can sign in, and what they are allowed to do."
+    />
+  );
+
+  // The frame first, the data into it. This used to return a bare "Loading..."
+  // *instead of* the header, so the title arrived only with the fetch and the
+  // whole page visibly jumped.
+  if (!rows) {
+    return (
+      <>
+        {header}
+        <PageBody className="mx-auto max-w-2xl"><Loading label="Loading accounts" /></PageBody>
+      </>
+    );
+  }
 
   const visible = searchable && query.trim() !== ""
     ? rows.filter((u) => u.email.toLowerCase().includes(query.trim().toLowerCase()))
@@ -60,11 +79,7 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
 
   return (
     <>
-      <PageHeader
-        className="mx-auto max-w-2xl"
-        title="Users"
-        description="Who can sign in, and what they are allowed to do."
-      />
+      {header}
       <PageBody className="mx-auto max-w-2xl">
         {error && <Alert tone="danger">{error}</Alert>}
         {searchable && (

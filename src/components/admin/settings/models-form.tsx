@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { Field } from "@/components/ui/field";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Spinner } from "@/components/ui/spinner";
+import { Loading } from "@/components/ui/loading";
 import { cn } from "@/lib/cn";
 import {
   CHAT_PROVIDER_IDS,
@@ -119,7 +119,7 @@ export function ModelsForm() {
     return (
       <>
         {header}
-        <PageBody className="mx-auto max-w-2xl"><Spinner label="Loading settings" /></PageBody>
+        <PageBody className="mx-auto max-w-2xl"><Loading label="Loading settings" /></PageBody>
       </>
     );
   }

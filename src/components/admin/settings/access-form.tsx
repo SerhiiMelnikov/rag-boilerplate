@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { Field } from "@/components/ui/field";
-import { Spinner } from "@/components/ui/spinner";
+import { Loading } from "@/components/ui/loading";
 import { useAdminSettings, type AdminSettings } from "./use-admin-settings";
 
 export function AccessForm() {
@@ -36,7 +36,7 @@ export function AccessForm() {
     return (
       <>
         {header}
-        <PageBody className="mx-auto max-w-2xl"><Spinner label="Loading settings" /></PageBody>
+        <PageBody className="mx-auto max-w-2xl"><Loading label="Loading settings" /></PageBody>
       </>
     );
   }

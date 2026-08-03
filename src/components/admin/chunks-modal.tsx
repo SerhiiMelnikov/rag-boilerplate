@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { Loading } from "@/components/ui/loading";
 
 interface ChunkRow {
   chunkIndex: number | null;
@@ -82,7 +82,7 @@ export function ChunksModal({ doc, onClose }: Props) {
         {error && <Alert tone="danger" className="mb-3">{error}</Alert>}
 
         {!rows ? (
-          <div className="flex items-center gap-2 text-sm text-ink-muted"><Spinner label="Loading" /> Loading...</div>
+          <Loading inline />
         ) : rows.length === 0 ? (
           <p className="text-sm text-ink-muted">This document has no chunks yet.</p>
         ) : (

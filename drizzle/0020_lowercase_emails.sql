@@ -4,6 +4,16 @@
 -- OAuth's version over already lowercased, so one person could end up with two
 -- rows. Canonicalise to lower case, and resolve the pairs that fork.
 --
+-- Canonicalisation trims too, matching src/lib/auth/users.ts's normalizeEmail
+-- (`.trim().toLowerCase()`) exactly: a lower()-only canonical would leave a
+-- legacy row with a stray leading/trailing space un-findable by that runtime
+-- lookup forever. The PARTITION BY below uses the SAME trimmed+lower-cased key
+-- as the canonical column, not just lower() -- otherwise a row differing from
+-- its collision partner only by whitespace would land in a different
+-- partition, escape detection as a duplicate, and then crash the second
+-- statement's unique constraint when both rows independently canonicalise to
+-- the same address.
+--
 -- The loser of a collision is renamed and blocked, never deleted and never
 -- merged: merging would have to repoint conversations, messages, workspace
 -- grants and ratings, which is an irreversible data migration running against
@@ -21,9 +31,9 @@
 WITH ranked AS (
   SELECT
     "id",
-    lower("email") AS canonical,
+    lower(trim("email")) AS canonical,
     row_number() OVER (
-      PARTITION BY lower("email")
+      PARTITION BY lower(trim("email"))
       -- Winner: confirmed first, then oldest, then lowest id. The last key is
       -- not decoration — two rows seeded in the same transaction share a
       -- created_at, and without it the migration would land differently on a
@@ -46,9 +56,9 @@ WHERE u."id" = r."id"
 WITH ranked AS (
   SELECT
     "id",
-    lower("email") AS canonical,
+    lower(trim("email")) AS canonical,
     row_number() OVER (
-      PARTITION BY lower("email")
+      PARTITION BY lower(trim("email"))
       ORDER BY ("email_verified_at" IS NULL), "created_at", "id"
     ) AS rank
   FROM "users"

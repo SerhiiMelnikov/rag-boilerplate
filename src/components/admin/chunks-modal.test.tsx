@@ -93,14 +93,18 @@ describe("ChunksModal", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("closes when the backdrop is clicked but not when the panel is clicked", async () => {
+  // Was a backdrop-click test against this modal's own hand-rolled panel. It now
+  // uses the shared Dialog, so dismissal is Headless UI's — Escape and outside
+  // click both, with a focus trap neither existed before. Escape is what the other
+  // modals' tests drive, and it is the half jsdom can exercise honestly.
+  it("closes on Escape, and stays open while the panel is used", async () => {
     vi.stubGlobal("fetch", stubFetch({ 0: { rows: [], total: 0 } }) as never);
     const onClose = vi.fn();
     render(<ChunksModal doc={doc} onClose={onClose} />);
     await screen.findByText(/no chunks yet/i);
     fireEvent.click(screen.getByRole("dialog"));
     expect(onClose).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("dialog").parentElement!);
+    fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalled();
   });
 });

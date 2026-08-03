@@ -14,6 +14,7 @@ export default {
         surface: { DEFAULT: token("surface"), 2: token("surface-2") },
         border: { DEFAULT: token("border"), strong: token("border-strong") },
         ink: { DEFAULT: token("ink"), muted: token("ink-muted"), subtle: token("ink-subtle") },
+        shade: token("shade"),
         accent: {
           DEFAULT: token("accent"),
           hover: token("accent-hover"),
@@ -44,8 +45,8 @@ export default {
       boxShadow: {
         // Only two, and both are named for what floats. Cards inside a page use
         // borders instead.
-        raise: "0 1px 2px rgb(var(--c-ink) / 0.05)",
-        pop: "0 8px 24px -8px rgb(var(--c-ink) / 0.18), 0 2px 6px rgb(var(--c-ink) / 0.08)",
+        raise: "0 1px 2px rgb(var(--c-shade) / 0.08)",
+        pop: "0 12px 32px -8px rgb(var(--c-shade) / 0.45), 0 2px 8px rgb(var(--c-shade) / 0.25)",
       },
       transitionTimingFunction: { panel: "cubic-bezier(.2,.8,.2,1)" },
       spacing: { rail: "72px", panel: "260px" },

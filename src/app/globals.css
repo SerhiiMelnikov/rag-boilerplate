@@ -15,6 +15,10 @@
   --c-border: 229 225 219;
   --c-border-strong: 211 206 198;
   --c-ink: 31 29 27;
+  /* Overlays and shadows. Deliberately NOT --c-ink: ink inverts with the theme,
+     so a backdrop or a shadow built from it turns near-white in dark mode and
+     lightens the page instead of shading it. This one stays dark in both. */
+  --c-shade: 31 29 27;
   --c-ink-muted: 110 104 98;
   --c-ink-subtle: 125 118 109;
   --c-accent: 13 110 110;
@@ -38,6 +42,7 @@
   --c-border: 48 46 42;
   --c-border-strong: 62 59 54;
   --c-ink: 242 239 234;
+  --c-shade: 8 8 7;
   --c-ink-muted: 163 156 147;
   --c-ink-subtle: 138 130 121;
   --c-accent: 79 195 191;

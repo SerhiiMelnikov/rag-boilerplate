@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Loading } from "@/components/ui/loading";
+import { Dialog } from "@/components/ui/dialog";
 
 interface ChunkRow {
   chunkIndex: number | null;
@@ -69,15 +70,11 @@ export function ChunksModal({ doc, onClose }: Props) {
   const rangeEnd = rows ? Math.min(offset + rows.length, total) : offset;
 
   return (
-    <div onClick={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Chunks for ${doc.filename}`}
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded border border-border bg-surface p-5"
-      >
-        <h2 className="mb-1 text-lg font-semibold text-ink">Chunks for {doc.filename}</h2>
+    // The one modal that had never moved onto the shared shell: its own backdrop,
+    // its own panel, its own close affordance, and no focus trap or Escape handling
+    // at all. `xl` because the content is a document's own prose — at the default
+    // width a chunk wrapped every few words.
+    <Dialog open onClose={onClose} title={`Chunks for ${doc.filename}`} size="xl">
 
         {error && <Alert tone="danger" className="mb-3">{error}</Alert>}
 
@@ -138,7 +135,6 @@ export function ChunksModal({ doc, onClose }: Props) {
             Close
           </Button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

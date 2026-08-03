@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Dialog } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Button, FOCUS_RING } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Loading } from "@/components/ui/loading";
-import { Checkbox } from "@/components/ui/checkbox";
+import { MultiSelect } from "@/components/ui/multi-select";
+import { cn } from "@/lib/cn";
+import { X } from "lucide-react";
 
 interface Workspace { id: string; name: string; isDefault: boolean }
 interface Props {
@@ -59,37 +61,68 @@ export function FileWorkspacesModal({ file, onClose, onSaved }: Props) {
     }
   }
 
+  const selected = (all ?? []).filter((w) => checked.has(w.id));
+
   return (
     <Dialog
       open
       onClose={onClose}
       title={`Workspaces for ${file.filename}`}
       description="A file with no workspaces stays in this list but is never used to answer questions."
-      size="md"
+      size="lg"
     >
       {error && <Alert tone="danger" className="mb-3">{error}</Alert>}
 
       {!all ? (
-        <Loading inline />
+        <Loading inline label="Loading workspaces" />
       ) : (
-        <ul className="flex flex-col gap-1">
-          {all.map((w) => (
-            <li key={w.id} className="flex items-center gap-2 rounded px-1 py-1 text-sm">
-              <Checkbox id={`ws-${w.id}`} checked={checked.has(w.id)} onChange={() => toggle(w.id)} />
-              {/* The "everyone" hint sits outside the <label> so the checkbox's
-                  accessible name stays exactly the workspace name. */}
-              <label htmlFor={`ws-${w.id}`} className="flex-1">{w.name}</label>
-              {w.isDefault && <span className="text-xs text-ink-subtle">everyone</span>}
-            </li>
-          ))}
-        </ul>
+        <div className="flex flex-col gap-3">
+          {/* A searchable picker rather than a checkbox per workspace: the list grows
+              with the install, and a column of small targets is a poor way to add two
+              things and remove one. What is chosen shows below as removable chips, so
+              the current state is readable without scanning for ticks. */}
+          <MultiSelect
+            ariaLabel="Add to workspace"
+            placeholder="Search workspaces"
+            value={[...checked]}
+            onChange={(ids) => setChecked(new Set(ids))}
+            options={(all ?? []).map((w) => ({
+              value: w.id,
+              label: w.name,
+              hint: w.isDefault ? "everyone" : undefined,
+            }))}
+          />
+
+          {selected.length === 0 ? (
+            <p className="text-sm text-ink-muted">
+              In no workspace. It stays in the file list, and no question will ever reach it.
+            </p>
+          ) : (
+            <ul className="flex flex-wrap gap-1.5">
+              {selected.map((w) => (
+                <li key={w.id}>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-2 py-0.5 pl-2.5 pr-1 text-sm text-ink">
+                    {w.name}
+                    <button
+                      type="button"
+                      aria-label={`Remove from ${w.name}`}
+                      title="Remove"
+                      onClick={() => toggle(w.id)}
+                      className={cn("rounded-full p-0.5 text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
+                    >
+                      <X className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       <div className="mt-5 flex justify-end gap-2">
         <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button type="button" variant="secondary" onClick={save} disabled={saving || !all}>
-          {saving ? "Saving..." : "Save"}
-        </Button>
+        <Button type="button" onClick={save} loading={saving} disabled={!all}>Save</Button>
       </div>
     </Dialog>
   );

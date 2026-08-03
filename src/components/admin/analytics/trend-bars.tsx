@@ -1,8 +1,12 @@
+import { TrendingUp } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { TrendPoint } from "@/lib/analytics/feedback";
 
 // Daily satisfaction as plain CSS bars (no charting dependency).
 export function TrendBars({ points }: { points: TrendPoint[] }) {
-  if (points.length === 0) return <p className="text-sm text-ink-muted">No rated answers in the last 30 days.</p>;
+  if (points.length === 0) {
+    return <EmptyState icon={TrendingUp} title="No rated answers in the last 30 days." />;
+  }
   return (
     <ul className="space-y-1">
       {points.map((p) => (

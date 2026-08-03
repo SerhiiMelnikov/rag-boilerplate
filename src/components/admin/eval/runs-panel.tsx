@@ -4,10 +4,12 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Play, ChevronDown, ChevronRight } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Button, FOCUS_RING } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
+import { Loading } from "@/components/ui/loading";
 import { cn } from "@/lib/cn";
 import type { EvalAggregate, EvalSettingsSnapshot, RetrievedDoc } from "@/lib/eval/types";
 
@@ -169,131 +171,143 @@ export function RunsPanel() {
     await loadDetail(id);
   }
 
-  if (!runs) return <div className="p-6 text-ink-muted">Loading...</div>;
+  // Same as QuestionsManager above it — the titled card is drawn first so the
+  // page reads as two known sections filling in, not two anonymous spinners.
+  if (!runs) {
+    return (
+      <Card title="Evaluation runs" description="Trigger a run against the current settings and golden questions.">
+        <Loading label="Loading runs" />
+      </Card>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <Card
-        title="Evaluation runs"
-        description="Trigger a run against the current settings and golden questions."
-        actions={
-          <Button variant="secondary" onClick={triggerRun} disabled={busy}>
-            <Play className="h-4 w-4" /> Run evaluation
-          </Button>
-        }
-      >
-        {error && <Alert tone="danger" className="mb-3">{error}</Alert>}
+    <Card
+      title="Evaluation runs"
+      description="Trigger a run against the current settings and golden questions."
+      actions={
+        <Button variant="secondary" onClick={triggerRun} disabled={busy}>
+          <Play className="h-4 w-4" /> Run evaluation
+        </Button>
+      }
+    >
+      {error && <Alert tone="danger" className="mb-3">{error}</Alert>}
 
-        {runs.length === 0 && <p className="text-sm text-ink-muted">No runs yet.</p>}
+      {runs.length === 0 && (
+        <EmptyState
+          icon={Play}
+          title="No evaluation runs yet"
+          description="A run scores every golden question against the current settings, so you can compare before and after tuning."
+        />
+      )}
 
-        <ul className="mb-6 flex flex-col gap-2">
-          {runs.map((r) => (
-            <li key={r.id}>
-              <button
-                type="button"
-                onClick={() => selectRun(r.id)}
-                className={cn(
-                  "w-full rounded border p-3 text-left text-sm transition-colors hover:bg-surface-2",
-                  selectedId === r.id ? "border-border-strong" : "border-border",
-                  FOCUS_RING,
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-ink-muted">{new Date(r.createdAt).toLocaleString()}</span>
-                  <RunStatusBadge status={r.status} error={r.error} />
+      <ul className="mb-6 flex flex-col gap-2">
+        {runs.map((r) => (
+          <li key={r.id}>
+            <button
+              type="button"
+              onClick={() => selectRun(r.id)}
+              className={cn(
+                "w-full rounded border p-3 text-left text-sm transition-colors hover:bg-surface-2",
+                selectedId === r.id ? "border-border-strong" : "border-border",
+                FOCUS_RING,
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-ink-muted">{new Date(r.createdAt).toLocaleString()}</span>
+                <RunStatusBadge status={r.status} error={r.error} />
+              </div>
+              {r.aggregate && (
+                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                  <Tile label="Recall" value={pct(r.aggregate.avgRecall)} />
+                  <Tile label="Precision" value={pct(r.aggregate.avgPrecision)} />
+                  <Tile label="MRR" value={pct(r.aggregate.avgMrr)} />
+                  <Tile label="Judge" value={`${r.aggregate.avgJudgeScore.toFixed(1)}/5`} />
+                  <Tile label="Pass rate" value={pct(r.aggregate.passRate)} />
                 </div>
-                {r.aggregate && (
-                  <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
-                    <Tile label="Recall" value={pct(r.aggregate.avgRecall)} />
-                    <Tile label="Precision" value={pct(r.aggregate.avgPrecision)} />
-                    <Tile label="MRR" value={pct(r.aggregate.avgMrr)} />
-                    <Tile label="Judge" value={`${r.aggregate.avgJudgeScore.toFixed(1)}/5`} />
-                    <Tile label="Pass rate" value={pct(r.aggregate.passRate)} />
-                  </div>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
 
-        {selectedId && (
-          <div className="rounded border border-border p-3">
-            <h3 className="mb-2 text-sm font-medium">Run detail</h3>
-            {!detail ? (
-              <p className="text-sm text-ink-muted">Loading...</p>
-            ) : (
-              <>
-                <SettingsSnapshotSummary snapshot={detail.run.settingsSnapshot} />
-                {detail.results.length === 0 ? (
-                  <p className="text-sm text-ink-muted">No results yet.</p>
-                ) : (
-                  <Table>
-                    <THead>
-                      <TR>
-                        <TH>Question</TH>
-                        <TH>Hit</TH>
-                        <TH numeric>Recall</TH>
-                        <TH numeric>Precision</TH>
-                        <TH numeric>MRR</TH>
-                        <TH numeric>Judge</TH>
-                      </TR>
-                    </THead>
-                    <TBody>
-                      {detail.results.map((res) => {
-                        const isOpen = openResultId === res.id;
-                        return (
-                          <Fragment key={res.id}>
+      {selectedId && (
+        <div className="rounded border border-border p-3">
+          <h3 className="mb-2 text-sm font-medium">Run detail</h3>
+          {!detail ? (
+            <Loading inline label="Loading results" />
+          ) : (
+            <>
+              <SettingsSnapshotSummary snapshot={detail.run.settingsSnapshot} />
+              {detail.results.length === 0 ? (
+                <p className="text-sm text-ink-muted">No results yet.</p>
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>Question</TH>
+                      <TH>Hit</TH>
+                      <TH numeric>Recall</TH>
+                      <TH numeric>Precision</TH>
+                      <TH numeric>MRR</TH>
+                      <TH numeric>Judge</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {detail.results.map((res) => {
+                      const isOpen = openResultId === res.id;
+                      return (
+                        <Fragment key={res.id}>
+                          <TR>
+                            <TD>
+                              <button
+                                type="button"
+                                onClick={() => setOpenResultId(isOpen ? null : res.id)}
+                                className={cn("flex items-center gap-1 text-left", FOCUS_RING)}
+                              >
+                                {isOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                                {res.questionText}
+                              </button>
+                            </TD>
+                            <TD>{res.hit ? "✓" : "✗"}</TD>
+                            <TD numeric>{pct(res.recall)}</TD>
+                            <TD numeric>{pct(res.precision)}</TD>
+                            <TD numeric>{pct(res.mrr)}</TD>
+                            <TD numeric>
+                              {res.judgeScore === null ? "—" : `${res.judgeScore}/5`}
+                              {/* Rationale stays visible without expanding the disclosure so an
+                                  admin can scan why a question scored low at a glance. Reset
+                                  back to the prose face here: this TD's numeric styling
+                                  (right-aligned, mono, tabular figures) would otherwise be
+                                  inherited by this sentence too. */}
+                              {res.judgeRationale && (
+                                <div className="mt-0.5 text-left font-sans text-xs font-normal normal-nums text-ink-subtle">
+                                  {res.judgeRationale}
+                                </div>
+                              )}
+                            </TD>
+                          </TR>
+                          {isOpen && (
                             <TR>
-                              <TD>
-                                <button
-                                  type="button"
-                                  onClick={() => setOpenResultId(isOpen ? null : res.id)}
-                                  className={cn("flex items-center gap-1 text-left", FOCUS_RING)}
-                                >
-                                  {isOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
-                                  {res.questionText}
-                                </button>
-                              </TD>
-                              <TD>{res.hit ? "✓" : "✗"}</TD>
-                              <TD numeric>{pct(res.recall)}</TD>
-                              <TD numeric>{pct(res.precision)}</TD>
-                              <TD numeric>{pct(res.mrr)}</TD>
-                              <TD numeric>
-                                {res.judgeScore === null ? "—" : `${res.judgeScore}/5`}
-                                {/* Rationale stays visible without expanding the disclosure so an
-                                    admin can scan why a question scored low at a glance. Reset
-                                    back to the prose face here: this TD's numeric styling
-                                    (right-aligned, mono, tabular figures) would otherwise be
-                                    inherited by this sentence too. */}
-                                {res.judgeRationale && (
-                                  <div className="mt-0.5 text-left font-sans text-xs font-normal normal-nums text-ink-subtle">
-                                    {res.judgeRationale}
-                                  </div>
+                              <TD colSpan={6} className="text-xs text-ink-muted">
+                                {res.generatedAnswer && <p><span className="font-medium">Answer: </span>{res.generatedAnswer}</p>}
+                                {res.retrieved.length > 0 && (
+                                  <p className="mt-1">Sources: {res.retrieved.map((d) => d.filename).join(", ")}</p>
                                 )}
+                                {res.error && <p className="mt-1 text-danger">{res.error}</p>}
                               </TD>
                             </TR>
-                            {isOpen && (
-                              <TR>
-                                <TD colSpan={6} className="text-xs text-ink-muted">
-                                  {res.generatedAnswer && <p><span className="font-medium">Answer: </span>{res.generatedAnswer}</p>}
-                                  {res.retrieved.length > 0 && (
-                                    <p className="mt-1">Sources: {res.retrieved.map((d) => d.filename).join(", ")}</p>
-                                  )}
-                                  {res.error && <p className="mt-1 text-danger">{res.error}</p>}
-                                </TD>
-                              </TR>
-                            )}
-                          </Fragment>
-                        );
-                      })}
-                    </TBody>
-                  </Table>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </Card>
-    </div>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </TBody>
+                </Table>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }

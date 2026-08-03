@@ -5,20 +5,60 @@ import { PageHeader, PageBody } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { Field } from "@/components/ui/field";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Spinner } from "@/components/ui/spinner";
-import { KEYED_PROVIDERS, HAS_OLLAMA, type KeyedProvider } from "@/lib/providers/catalog";
-import { useAdminSettings, type KeyStatus } from "./use-admin-settings";
+import { Loading } from "@/components/ui/loading";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  CHAT_PROVIDER_IDS,
+  EMBEDDING_PROVIDER_IDS,
+  KEYED_PROVIDERS,
+  HAS_OLLAMA,
+  keyNameOf,
+  type KeyedProvider,
+} from "@/lib/providers/catalog";
+import { useAdminSettings, type AdminSettings, type KeyStatus } from "./use-admin-settings";
 
 // Provider pruning never touches the masked response, so a generated project can
 // receive key entries for providers it no longer ships — and, in principle, ship
 // a provider the response has no entry for. Neither case may throw.
 const NO_KEY: KeyStatus = { set: false, last4: null };
 
-// Module level so the controlled input keeps focus across the parent's re-renders.
+// A task warns when its provider needs a key that is not set. The keys now live
+// on this same page, so the warning points down the page rather than away from it.
+function providerMissingKey(provider: string, keys: AdminSettings["keys"]): boolean {
+  const name = keyNameOf(provider);
+  if (!name) return false;
+  return !keys[name]?.set;
+}
+
+// Defined at module level, not nested in ModelsForm, so the controlled inputs
+// keep focus across the parent's re-renders.
+function ModelRow({ label, provider, model, providers, onProvider, onModel, missingKey }: {
+  label: string;
+  provider: string;
+  model: string;
+  providers: string[];
+  onProvider: (v: string) => void;
+  onModel: (v: string) => void;
+  missingKey: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs font-medium text-ink-muted">{label}</span>
+      <div className="flex flex-wrap gap-2">
+        <Select ariaLabel={`${label} provider`} value={provider} onChange={onProvider} options={providers} className="min-w-32" />
+        <Input aria-label={`${label} model`} value={model} onChange={(e) => onModel(e.target.value)} className="min-w-0 flex-1" />
+      </div>
+      {missingKey && <p className="text-xs text-warning">No key set for {provider} — add it under API keys below.</p>}
+    </div>
+  );
+}
+
+// Module level for the same focus reason as ModelRow.
 function KeyRow({ provider, status, value, onChange, onClear }: {
   provider: KeyedProvider;
   status: KeyStatus;
@@ -34,7 +74,7 @@ function KeyRow({ provider, status, value, onChange, onClear }: {
         {status.set ? (
           <span className="flex items-center gap-2">
             <Badge tone="success">····{status.last4 ?? ""}</Badge>
-            <Button type="button" variant="ghost" size="sm" aria-label={`Clear ${label}`} onClick={onClear}>
+            <Button type="button" variant="ghost" size="sm" aria-label={`Clear ${label}`} title="Clear" onClick={onClear}>
               Clear
             </Button>
           </span>
@@ -53,7 +93,7 @@ function KeyRow({ provider, status, value, onChange, onClear }: {
   );
 }
 
-export function KeysForm() {
+export function ModelsForm() {
   const { settings, patch, save, saving, saved, saveError, loadError } = useAdminSettings();
   const [typed, setTyped] = useState<Record<string, string>>({});
   const [pendingClear, setPendingClear] = useState<KeyedProvider | null>(null);
@@ -62,8 +102,8 @@ export function KeysForm() {
   const header = (
     <PageHeader
       className="mx-auto max-w-2xl"
-      title="Provider keys"
-      description="Stored encrypted. Leave a field empty to keep the existing key."
+      title="Models"
+      description="Which model answers each task, and the keys it authenticates with."
     />
   );
 
@@ -79,7 +119,7 @@ export function KeysForm() {
     return (
       <>
         {header}
-        <PageBody className="mx-auto max-w-2xl"><Spinner label="Loading settings" /></PageBody>
+        <PageBody className="mx-auto max-w-2xl"><Loading label="Loading settings" /></PageBody>
       </>
     );
   }
@@ -90,10 +130,22 @@ export function KeysForm() {
   // a secret the admin cannot read back from anywhere.
   const dirty = Object.values(typed).some((v) => v.trim() !== "");
 
+  // Every field this page owns. Both submit and Clear send the whole set, because
+  // either one adopts the server's response wholesale — sending a subset would
+  // silently discard whatever else the admin had changed but not yet saved.
+  const ownFields = (): Record<string, unknown> => ({
+    chatProvider: s.chatProvider, chatModel: s.chatModel,
+    embeddingProvider: s.embeddingProvider, embeddingModel: s.embeddingModel,
+    parserProvider: s.parserProvider, parserModel: s.parserModel,
+    imageProvider: s.imageProvider, imageModel: s.imageModel,
+    unifiedMode: s.unifiedMode, unifiedProvider: s.unifiedProvider, unifiedModel: s.unifiedModel,
+    ollamaBaseUrl: s.ollamaBaseUrl,
+  });
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const body = ownFields();
     // A key is sent only when the admin typed one; empty means "leave unchanged".
-    const body: Record<string, unknown> = { ollamaBaseUrl: s.ollamaBaseUrl };
     for (const p of KEYED_PROVIDERS) {
       const value = (typed[p.id] ?? "").trim();
       if (value !== "") body[`${p.keyName}Key`] = value;
@@ -108,10 +160,8 @@ export function KeysForm() {
     if (!pendingClear) return;
     setClearing(true);
     // null is the schema's documented "clear this key". Nothing could send it
-    // before this page existed. ollamaBaseUrl is included because it is this
-    // page's own field too — sending only the cleared key would silently
-    // discard an unsaved edit to the base URL sitting in `settings`.
-    await save({ ollamaBaseUrl: s.ollamaBaseUrl, [`${pendingClear.keyName}Key`]: null });
+    // before this page existed.
+    await save({ ...ownFields(), [`${pendingClear.keyName}Key`]: null });
     setClearing(false);
     setPendingClear(null);
   }
@@ -121,8 +171,53 @@ export function KeysForm() {
       {header}
       <PageBody className="mx-auto max-w-2xl">
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <Card title="Models">
+            <div className="flex flex-col gap-4">
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <Checkbox
+                  aria-label="Unified provider mode"
+                  checked={s.unifiedMode}
+                  onChange={(e) => patch({ unifiedMode: e.target.checked })}
+                />
+                Use one provider and model for all tasks (except embedding)
+              </label>
+              {s.unifiedMode ? (
+                <ModelRow
+                  label="All tasks" provider={s.unifiedProvider} model={s.unifiedModel} providers={CHAT_PROVIDER_IDS}
+                  onProvider={(v) => patch({ unifiedProvider: v })} onModel={(v) => patch({ unifiedModel: v })}
+                  missingKey={providerMissingKey(s.unifiedProvider, s.keys)}
+                />
+              ) : (
+                <>
+                  <ModelRow
+                    label="Chat" provider={s.chatProvider} model={s.chatModel} providers={CHAT_PROVIDER_IDS}
+                    onProvider={(v) => patch({ chatProvider: v })} onModel={(v) => patch({ chatModel: v })}
+                    missingKey={providerMissingKey(s.chatProvider, s.keys)}
+                  />
+                  <ModelRow
+                    label="Document parser" provider={s.parserProvider} model={s.parserModel} providers={CHAT_PROVIDER_IDS}
+                    onProvider={(v) => patch({ parserProvider: v })} onModel={(v) => patch({ parserModel: v })}
+                    missingKey={providerMissingKey(s.parserProvider, s.keys)}
+                  />
+                  <ModelRow
+                    label="Image analyzer" provider={s.imageProvider} model={s.imageModel} providers={CHAT_PROVIDER_IDS}
+                    onProvider={(v) => patch({ imageProvider: v })} onModel={(v) => patch({ imageModel: v })}
+                    missingKey={providerMissingKey(s.imageProvider, s.keys)}
+                  />
+                </>
+              )}
+              {/* Embedding is never folded into unified mode: anthropic cannot embed,
+                  so "one provider for everything" would break retrieval outright. */}
+              <ModelRow
+                label="Embedding" provider={s.embeddingProvider} model={s.embeddingModel} providers={EMBEDDING_PROVIDER_IDS}
+                onProvider={(v) => patch({ embeddingProvider: v })} onModel={(v) => patch({ embeddingModel: v })}
+                missingKey={providerMissingKey(s.embeddingProvider, s.keys)}
+              />
+            </div>
+          </Card>
+
           {KEYED_PROVIDERS.length > 0 && (
-            <Card title="API keys">
+            <Card title="API keys" description="Stored encrypted. Leave a field empty to keep the existing key.">
               <div className="flex flex-col gap-4">
                 {KEYED_PROVIDERS.map((p) => (
                   <KeyRow

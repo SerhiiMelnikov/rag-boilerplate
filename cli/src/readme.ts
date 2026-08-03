@@ -192,7 +192,7 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push(`${step++}. \`npm install\` (skip this if the installer already installed dependencies for you)`);
   lines.push(
     `${step++}. \`.env\` is already generated with a fresh \`AUTH_SECRET\` / \`SETTINGS_ENCRYPTION_KEY\`; ` +
-      "set provider API keys later under **Settings → Provider keys**. Set " +
+      "set provider API keys later under **Settings → Models**. Set " +
       "`ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env` if you want non-default admin credentials.",
   );
   const composeCmd = `docker compose up -d db minio${store.dockerService ? ` ${store.dockerService}` : ""}`;
@@ -254,12 +254,13 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("  **Evaluating retrieval quality** below.");
   lines.push("");
   lines.push("### Settings", "");
-  lines.push("- **Answering** — pick the chat/embedding/parser/image models, tune retrieval, set rate limits");
-  lines.push("  (chat requests per minute and per day per user). `0` disables a limit — see");
-  lines.push("  **Rate limits** below.");
-  lines.push("- **Provider keys** — set your API keys (encrypted at rest). Do this first:");
-  lines.push("  nothing can be ingested or answered without them. A key can also be cleared");
-  lines.push("  here, which stops every task using that provider.");
+  lines.push("- **Models** — pick the chat/embedding/parser/image model for each task, and set the");
+  lines.push("  API keys they authenticate with (encrypted at rest). Do the keys first: nothing");
+  lines.push("  can be ingested or answered without them. A key can also be cleared here, which");
+  lines.push("  stops every task using that provider.");
+  lines.push("- **Answering** — tune retrieval, set rate limits (chat requests per minute and per");
+  lines.push("  day per user). `0` disables a limit — see **Rate limits** below. The system");
+  lines.push("  prompt lives here too.");
   lines.push("- **Access & email** — the allowed-domains list and SMTP for registration; see");
   lines.push("  **Registration** below.");
   lines.push("");

@@ -19,8 +19,12 @@ export function TBody({ children }: { children: React.ReactNode }) {
   return <tbody>{children}</tbody>;
 }
 
-export function TR({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <tr className={cn("border-b border-border last:border-b-0", className)}>{children}</tr>;
+export function TR({ className, children, ...props }: React.HTMLAttributes<HTMLTableRowElement>) {
+  return (
+    <tr {...props} className={cn("border-b border-border last:border-b-0", className)}>
+      {children}
+    </tr>
+  );
 }
 
 export function TH({

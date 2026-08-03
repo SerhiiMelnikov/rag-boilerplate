@@ -51,7 +51,7 @@ export function Panel({ label, children }: { label: string; children: React.Reac
       <Dialog open={open} onClose={() => setOpen(false)} className="relative z-50">
         <DialogBackdrop
           transition
-          className="fixed inset-0 bg-ink/40 transition-opacity duration-200 data-[closed]:opacity-0"
+          className="fixed inset-0 bg-shade/60 transition-opacity duration-200 data-[closed]:opacity-0"
         />
         <div className="fixed inset-0 flex">
           <DialogPanel

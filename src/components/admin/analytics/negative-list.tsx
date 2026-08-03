@@ -1,13 +1,22 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { ThumbsDown } from "lucide-react";
 import { Table, TBody, TD, TR } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { NegativeAnswer } from "@/lib/analytics/feedback";
 
 // Recent downvoted answers; each row expands to show the full Q/A and sources.
 export function NegativeList({ items }: { items: NegativeAnswer[] }) {
   const [open, setOpen] = useState<string | null>(null);
-  if (items.length === 0) return <p className="text-sm text-ink-muted">No negative feedback yet.</p>;
+  if (items.length === 0)
+    return (
+      <EmptyState
+        icon={ThumbsDown}
+        title="No negative ratings"
+        description="Nobody has rated an answer down in this period. This list fills as people do."
+      />
+    );
   return (
     <Table>
       <TBody>

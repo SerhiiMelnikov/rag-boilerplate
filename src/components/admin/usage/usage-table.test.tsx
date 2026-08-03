@@ -20,6 +20,9 @@ describe("UsageTable", () => {
   it("renders the empty message when there are no rows", () => {
     render(<UsageTable rows={[]} emptyMessage="No recorded usage in this period." />);
     expect(screen.getByText("No recorded usage in this period.")).toBeInTheDocument();
+    // Not a lone <td> spanning the table: an empty state is a block with room to
+    // explain itself, and the table head above it is noise when there is no data.
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("preserves the given row order rather than sorting", () => {

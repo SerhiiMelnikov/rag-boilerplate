@@ -25,11 +25,11 @@ export default async function AnalyticsPage() {
   return (
     <>
       <PageHeader
-        className="mx-auto max-w-4xl"
+        className="mx-auto w-full max-w-6xl"
         title="Answer feedback"
         description="What people thought of the answers, and which documents produced them."
       />
-      <PageBody className="mx-auto max-w-4xl space-y-8">
+      <PageBody className="mx-auto w-full max-w-6xl space-y-8">
         <StatTiles summary={summary} />
         <Card title="Satisfaction (last 30 days)">
           <TrendBars points={trend} />

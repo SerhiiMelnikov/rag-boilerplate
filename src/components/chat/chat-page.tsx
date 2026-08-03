@@ -69,7 +69,13 @@ export function ChatPage() {
   // that no longer belongs to the visible list.
   useEffect(() => {
     const onSwitch = () => {
-      setSession((s) => ({ key: s.key + 1, id: null, focus: 0 }));
+      // Re-keyed only when there is a conversation to clear, for the same reason
+      // newChat() above is: remounting ChatView throws away whatever is in the
+      // composer, and with nothing open there is nothing a switch needs to clear.
+      // This matters more since the rail's home link became a third caller — it
+      // fires on every click, including one where the user is already home with a
+      // half-typed question and expects nothing to happen.
+      setSession((s) => (s.id === null ? s : { key: s.key + 1, id: null, focus: 0 }));
       setActiveId(null);
     };
     window.addEventListener(WORKSPACE_CHANGED_EVENT, onSwitch);

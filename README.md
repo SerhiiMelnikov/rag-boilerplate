@@ -22,7 +22,7 @@ Run without a project name and you'll be prompted for one, along with:
 
 - **AI providers** (multi-select) — which providers to include
 - **Default provider** — which of the selected providers chat + document
-  parsing use by default (changeable later in Admin → Settings)
+  parsing use by default (changeable later in Admin → Settings → Models)
 - **Vector store** — where document chunks + embeddings are stored
 - Whether to run `git init` and install dependencies afterwards
 
@@ -59,11 +59,14 @@ The generated app includes:
   one (a file can belong to several workspaces)
 - Image RAG: a vision model captions each uploaded image (describing people and
   animals in depth), and the model decides which images actually answer a request
-- An admin panel: a unified Files list (documents + images, with workspace
-  membership) that can also ingest a document directly from a URL and preview a
-  document's chunks (position + length), workspaces and user access, provider API
-  keys (encrypted at rest), retrieval settings, user management, rating analytics
-- **Rate limits** — under **Settings**, cap chat requests per minute and per day
+- An admin panel: a unified Files list (documents + images, searchable, paged
+  and filterable by type and workspace) that can also ingest a document directly
+  from a URL and preview a document's chunks (position + length); workspaces and
+  per-user access; **Settings** split into *Models* (which model runs each task,
+  and the API keys they authenticate with, encrypted at rest), *Answering*
+  (retrieval, rate limits, system prompt) and *Access & email* (allowed domains,
+  SMTP); user management; and rating analytics
+- **Rate limits** — under **Settings → Answering**, cap chat requests per minute and per day
   (per user). Set either of them to `0` to disable that limit. **They are on
   by default — see [Rate limits](#rate-limits) below.**
 - A hand-rolled RAG engine: chunking, parsing (PDF/DOCX/Markdown/text),
@@ -80,7 +83,7 @@ ever references what you picked.
 
 ## Rate limits
 
-The chat rate limits (per user, per minute + per day) under Settings exist
+The chat rate limits (per user, per minute + per day) under **Settings → Answering** exist
 because `/api/chat` sits in front of a paid model: without a cap, one runaway
 client could spend your entire budget. Read this before you rely on them.
 
@@ -88,7 +91,7 @@ client could spend your entire budget. Read this before you rely on them.
   limit columns as `NOT NULL DEFAULT` and backfills the existing `settings`
   row, so an existing deployment that was previously unlimited starts
   enforcing 20/min and 200/day per user the moment you run `db:migrate` — not
-  when you first open Settings. A power user sending 250 messages a day will
+  when you first open Settings → Answering. A power user sending 250 messages a day will
   start seeing 429s with no notice. Set either to `0` to disable it.
 - **The per-user chat cap bounds one account, not your total spend.**
   Registration is gated (see [Registration](#registration) below), so this is
@@ -108,20 +111,20 @@ whose `emailVerifiedAt` is still null.
 
 **The first thing a new operator hits: registration returns 503 until SMTP is
 configured.** The gate needs to send an email, so a fresh install has no way
-to complete a registration yet. Fix it in **Admin → Settings**: fill in the
+to complete a registration yet. Fix it in **Admin → Settings → Access & email**: fill in the
 SMTP host, port, user and from address (plain) and the password (encrypted at
 rest, shown masked afterwards). Once saved, registration starts sending real
 verification emails. This is not a bug — it is the safe default: nobody can
 be verified before there is a mailer to verify them with.
 
-The **allowed domains** list (also in Settings) is a comma-separated list of
+The **allowed domains** list (on the same Access & email page) is a comma-separated list of
 domains, e.g. `company.com,contractor.com`. **Empty means nobody can
 register** — that is deliberate, not a bug: treating empty as "allow all"
 would mean a fresh install silently accepts registrations from the whole
 internet, which is exactly the hole this feature closes. `npm run seed:admin`
 seeds this list from `ADMIN_EMAIL`'s domain on first run, so a fresh install
 already has a working, correctly-scoped allowlist instead of a second dead
-end; widen it in Settings as needed.
+end; widen it under Access & email as needed.
 
 `AUTH_URL` is **required in production** for the same reason SMTP is: the
 verification link has to point somewhere trustworthy. `/api/register` is not

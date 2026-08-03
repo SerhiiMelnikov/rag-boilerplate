@@ -15,6 +15,21 @@ describe("MultiSelect", () => {
     expect(screen.getByLabelText("Workspaces")).toHaveTextContent("General");
   });
 
+  // jsdom does not compute real layout, so this cannot prove the label
+  // actually clips instead of pushing the button wider -- it only guards the
+  // two classes that make that true in a real browser: `truncate` needs
+  // `min-w-0` on this span, because it is a flex item inside the button and
+  // without overriding the default min-width:auto it never shrinks below its
+  // own text's width. The real guard was a headless-Chromium measurement taken
+  // when the fix landed: this button carrying a long workspace name is what
+  // pushed the Files header past the viewport at 320px and 375px.
+  it("truncates a long selected label instead of growing the trigger", () => {
+    render(<MultiSelect value={["w1"]} onChange={() => {}} options={[{ value: "w1", label: "Marketing and Sales workspace" }]} ariaLabel="Workspaces" />);
+    const summary = screen.getByLabelText("Workspaces").querySelector("span")!;
+    expect(summary.className).toContain("min-w-0");
+    expect(summary.className).toContain("truncate");
+  });
+
   it("summarises multiple selections by count", () => {
     render(<MultiSelect value={["w1", "w2"]} onChange={() => {}} options={OPTIONS} ariaLabel="Workspaces" />);
     expect(screen.getByLabelText("Workspaces")).toHaveTextContent("2 selected");

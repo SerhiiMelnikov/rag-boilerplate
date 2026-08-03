@@ -11,7 +11,11 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { FOCUS_RING } from "./button";
 
-const SIZES = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-3xl" } as const;
+// `xl` exists for the one modal that shows a document's own text: at max-w-3xl a
+// chunk wrapped every few words, which is unreadable for the thing the modal is
+// for. Sizes are a scale, not a free measurement — pick the nearest, do not add
+// a sixth.
+const SIZES = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-3xl", xl: "max-w-5xl" } as const;
 
 // The one modal shell. Five modals each hand-rolled backdrop, panel, transition and
 // title markup before this existed, which is why their paddings and animations
@@ -36,7 +40,7 @@ export function Dialog({
     <HeadlessDialog open={open} onClose={onClose} className="relative z-50">
       <DialogBackdrop
         transition
-        className="fixed inset-0 bg-ink/40 transition-opacity duration-200 data-[closed]:opacity-0"
+        className="fixed inset-0 bg-shade/60 transition-opacity duration-200 data-[closed]:opacity-0"
       />
       <div className="fixed inset-0 flex items-end justify-center p-0 sm:items-center sm:p-4">
         <DialogPanel
@@ -50,7 +54,7 @@ export function Dialog({
         >
           <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
             <div className="min-w-0">
-              <DialogTitle className="text-md font-semibold text-ink">{title}</DialogTitle>
+              <DialogTitle className="break-words text-md font-semibold text-ink">{title}</DialogTitle>
               {description && (
                 <Description className="mt-0.5 text-xs text-ink-muted">{description}</Description>
               )}
@@ -64,7 +68,9 @@ export function Dialog({
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+          {/* text-md, not the 13px `sm` the modals had been inheriting: a dialog is read,
+              not scanned, and the chunk preview shows a document's own prose. */}
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 text-md">{children}</div>
         </DialogPanel>
       </div>
     </HeadlessDialog>

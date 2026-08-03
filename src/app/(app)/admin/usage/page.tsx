@@ -16,11 +16,11 @@ export default async function UsagePage() {
   return (
     <>
       <PageHeader
-        className="mx-auto max-w-4xl"
+        className="mx-auto w-full max-w-6xl"
         title="Token usage"
         description="Prompt and completion tokens over the last 30 days. Tokens, not money — the model that produced them was never recorded."
       />
-      <PageBody className="mx-auto max-w-4xl space-y-8">
+      <PageBody className="mx-auto w-full max-w-6xl space-y-8">
         {/* Kept verbatim from the pre-redesign page: it explains a real discrepancy
             (this answer count vs. the one on Analytics), which the one-line header
             description above doesn't cover. */}

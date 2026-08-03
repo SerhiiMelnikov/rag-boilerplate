@@ -1,9 +1,18 @@
+import { FileQuestion } from "lucide-react";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { DocumentQuality } from "@/lib/analytics/feedback";
 
 // Documents ranked by how often they feed downvoted answers.
 export function DocumentQualityTable({ rows }: { rows: DocumentQuality[] }) {
-  if (rows.length === 0) return <p className="text-sm text-ink-muted">No document feedback yet.</p>;
+  if (rows.length === 0)
+    return (
+      <EmptyState
+        icon={FileQuestion}
+        title="No documents retrieved yet"
+        description="A document appears here once it has been used to answer at least one question."
+      />
+    );
   return (
     <Table>
       <THead>

@@ -1,3 +1,5 @@
+import { TrendingUp } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { USAGE_WINDOW_DAYS, type UsageTrendPoint } from "@/lib/analytics/usage";
 
 // Daily tokens as plain CSS bars (no charting dependency, matching TrendBars).
@@ -5,7 +7,7 @@ import { USAGE_WINDOW_DAYS, type UsageTrendPoint } from "@/lib/analytics/usage";
 // all-zero set renders zero-width bars instead of dividing by zero into NaN%.
 export function UsageTrend({ points }: { points: UsageTrendPoint[] }) {
   if (points.length === 0) {
-    return <p className="text-sm text-ink-muted">No recorded usage in the last {USAGE_WINDOW_DAYS} days.</p>;
+    return <EmptyState icon={TrendingUp} title={`No recorded usage in the last ${USAGE_WINDOW_DAYS} days.`} />;
   }
   const max = Math.max(...points.map((p) => p.totalTokens));
   return (

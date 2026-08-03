@@ -32,3 +32,12 @@ export function readActiveWorkspaceFromCookieString(cookieString: string | null)
 export function parseActiveWorkspaceCookie(request: Request): string | undefined {
   return readActiveWorkspaceFromCookieString(request.headers.get("cookie"));
 }
+
+// Forget the remembered workspace, so the next request falls back to the default
+// one. Browser-only: `document` does not exist on the server, and this module is
+// imported by both. Used by the rail's home link, which means "take me back to
+// the beginning" — the default workspace, no conversation open.
+export function clearActiveWorkspace(): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${ACTIVE_WORKSPACE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}

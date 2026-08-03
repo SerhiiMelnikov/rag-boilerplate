@@ -122,7 +122,7 @@ describe("generateReadme navigation", () => {
   it("describes the rail, not the old profile dropdown", () => {
     const readme = generateReadme(opts({ appKind: "full" }));
     expect(readme).toContain("left rail");
-    expect(readme).toContain("Settings → Provider keys");
+    expect(readme).toContain("Settings → Models");
     expect(readme).not.toContain("Admin → Evaluation");
     expect(readme).not.toMatch(/profile (menu|dropdown)/i);
   });
@@ -148,26 +148,34 @@ describe("the admin section describes the real navigation", () => {
 
   it("names the three Settings pages", () => {
     const text = readme();
+    expect(text).toContain("**Models**");
     expect(text).toContain("**Answering**");
-    expect(text).toContain("**Provider keys**");
     expect(text).toContain("**Access & email**");
   });
 
   // The old copy sent people to "Settings → Models" for SMTP, which was the wrong
   // page name even before this package moved it.
+  // Scoped to the SMTP sentence itself: "Settings → Models" is now the correct
+  // destination for the provider keys and appears legitimately elsewhere in the
+  // same document, so a whole-document `not.toContain` would fail for the right
+  // page being named in the wrong place.
   it("sends SMTP to Access & email, not to Models", () => {
-    const text = readme();
-    expect(text).toContain("Settings → Access & email");
-    expect(text).not.toContain("Settings → Models");
+    const smtpLine = readme().split("\n").find((l) => l.includes("host/port/user/from"));
+    expect(smtpLine, "the SMTP sentence vanished from the generated README").toBeTruthy();
+    expect(smtpLine).toContain("Settings → Access & email");
+    expect(smtpLine).not.toContain("Settings → Models");
   });
 
   // Document parser is a real fourth independently-configurable row on the
   // Answering page (answering-form.tsx), alongside chat/embedding/image. The
   // bullet used to omit it, which is exactly the kind of thing a user reads
   // this README to find out.
-  it("mentions the Document parser model in the Answering bullet", () => {
-    const answeringLine = readme().split("\n").find((l) => l.includes("**Answering**"));
-    expect(answeringLine).toMatch(/parser/i);
+  // The parser is a fourth, independently-configurable model row. It moved to the
+  // Models bullet when Settings was repartitioned; naming three of the four models
+  // was the original defect and the count still has to be right wherever it lands.
+  it("mentions the Document parser model in the Models bullet", () => {
+    const modelsLine = readme().split("\n").find((l) => l.includes("**Models**"));
+    expect(modelsLine).toMatch(/parser/i);
   });
 
   // Not `not.toContain("/admin/keys")` — the README never printed URL paths, so
@@ -177,8 +185,8 @@ describe("the admin section describes the real navigation", () => {
     const section = readme().split("### Settings")[1].split("### People")[0];
     const bullets = section.split("\n").filter((l) => l.startsWith("- **"));
     expect(bullets.map((l) => l.slice(4, l.indexOf("**", 4)))).toEqual([
+      "Models",
       "Answering",
-      "Provider keys",
       "Access & email",
     ]);
   });

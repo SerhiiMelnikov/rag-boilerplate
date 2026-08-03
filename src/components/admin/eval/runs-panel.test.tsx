@@ -273,4 +273,23 @@ describe("RunsPanel", () => {
     expect(screen.getByText("Where is the office?")).toBeInTheDocument();
     expect(screen.queryByText("What is the refund policy?")).not.toBeInTheDocument();
   });
+
+  it("renders no page chrome of its own", async () => {
+    const { container } = render(<RunsPanel />);
+    await screen.findByRole("button", { name: /run evaluation/i });
+    expect(container.querySelector("[class*='mx-auto']")).toBeNull();
+  });
+
+  // A bare <p> is not an empty state: it neither names what is missing nor offers
+  // the action that would fix it.
+  it("invites the first run when there are none", async () => {
+    stubFetch((url, init) => {
+      if (url === "/api/admin/evaluation/runs" && !init?.method) {
+        return { ok: true, status: 200, json: async () => ({ runs: [] }) };
+      }
+      return undefined;
+    });
+    render(<RunsPanel />);
+    expect(await screen.findByText("No evaluation runs yet")).toBeInTheDocument();
+  });
 });

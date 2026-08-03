@@ -30,14 +30,17 @@ ships as a Docker image when you're ready.
 - **Gated registration** — an address must be at a **domain you allow**, and the
   mailbox must be **confirmed** before the account can log in. Whoever clicks the
   emailed link is the one who chooses the password. See [Who can sign up](#who-can-sign-up).
-- **Rate limits** — per-user chat caps (per minute and per day), set in the admin
-  panel. They exist because `/api/chat` sits in front of a paid model: without a
+- **Rate limits** — per-user chat caps (per minute and per day), set under
+  **Settings → Answering**. They exist because `/api/chat` sits in front of a paid model: without a
   cap, one runaway client spends your budget.
-- **Admin panel** — one **Files** list for documents *and* images (filter by type
-  or workspace, sort, preview, edit captions and workspace membership in a modal),
-  plus workspaces, users, provider API keys, SMTP, retrieval settings, rate limits,
-  answer-rating analytics, and a token-usage dashboard (per user, per workspace and
-  a 30-day trend, also exposed as `GET /api/admin/usage`).
+- **Admin panel** — one **Files** list for documents *and* images (search by name,
+  filter by type or workspace, sort, page, preview, edit captions and workspace
+  membership), plus workspaces, users, and **Settings** in three parts: *Models*
+  (which model runs each task, and the API keys they authenticate with),
+  *Answering* (retrieval, rate limits, system prompt) and *Access & email*
+  (allowed domains, SMTP). Also answer-rating analytics and a token-usage
+  dashboard (per user, per workspace and a 30-day trend, also exposed as
+  `GET /api/admin/usage`).
 - **Ingest from a URL** — paste a page's URL in **Files** and it is fetched,
   its readable article text extracted, and ingested exactly like an upload
   (`POST /api/admin/documents/url`) — no file, no extension needed.
@@ -107,9 +110,9 @@ A `.env` is generated for you with fresh secrets. Sign in with its `ADMIN_EMAIL`
 
 ### Configure two things before anyone can use it
 
-1. **Provider API keys** (admin → *Provider keys*) — nothing can be ingested or
+1. **Provider API keys** (admin → *Settings → Models*) — nothing can be ingested or
    answered without them. They are encrypted at rest and never shown again.
-2. **SMTP** (admin → *Settings*) — needed only if other people will register.
+2. **SMTP** (admin → *Settings → Access & email*) — needed only if other people will register.
    Until a host is set, registration returns **503** rather than pretending a
    confirmation link went out. Any relay works: Google Workspace, SES, Mailgun,
    Postmark, Resend, or your company's own. Locally you can point it at a catcher
@@ -156,7 +159,7 @@ Registration is deliberately narrow, because an account is a key to your model
 budget.
 
 - An address must be at an **allowed domain** — a comma-separated list under
-  admin → *Settings*. **Empty means nobody**; `seed:admin` seeds it from your
+  admin → *Settings → Access & email*. **Empty means nobody**; `seed:admin` seeds it from your
   `ADMIN_EMAIL`'s domain, so a fresh install isn't a dead end. Widen it there.
 - Registration asks for an **email only**. A confirmation link is emailed, and
   whoever clicks it chooses the password — so someone who knows a colleague's
@@ -187,7 +190,7 @@ you set it.
   switching workspace resets the open chat.
 - **Ask for a picture** ("show me a red bike") and matching images come back inline;
   click one to open it in a lightbox.
-- **Tune retrieval** and the chat rate limits under **Settings**; see how answers
+- **Tune retrieval** and the chat rate limits under **Settings → Answering**; see how answers
   were rated under **Analytics**.
 
 ## Deploying

@@ -5,7 +5,7 @@ export type EmbeddingKind = "document" | "query";
 // Thrown by the factory when a selected provider has no configured API key.
 export class MissingProviderKeyError extends Error {
   constructor(public task: string, public provider: string) {
-    super(`${task} is not configured: no API key for provider "${provider}". Add it in Admin → Provider keys.`);
+    super(`${task} is not configured: no API key for provider "${provider}". Add it in Admin → Settings → Models.`);
     this.name = "MissingProviderKeyError";
   }
 }
@@ -13,7 +13,7 @@ export class MissingProviderKeyError extends Error {
 // Thrown (via toProviderError) when a provider rejects the key at call time.
 export class InvalidProviderKeyError extends Error {
   constructor(public task: string, public provider: string) {
-    super(`${task} failed: the API key for provider "${provider}" is invalid or unauthorized. Check it in Admin → Provider keys.`);
+    super(`${task} failed: the API key for provider "${provider}" is invalid or unauthorized. Check it in Admin → Settings → Models.`);
     this.name = "InvalidProviderKeyError";
   }
 }

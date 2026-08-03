@@ -18,7 +18,11 @@ export function AuthCard({
 }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg px-4 py-10">
-      <div className={cn("w-full max-w-[326px] rounded-lg border border-border bg-surface p-6 shadow-raise", className)}>
+      {/* max-w-md (448px) rather than the 326px this started at: the narrower card
+          made every field a cramped column, and an email or a long error message
+          wrapped where it had no reason to. A scale value, not another magic pixel
+          count — 326 was one, and nothing explained it. */}
+      <div className={cn("w-full max-w-md rounded-lg border border-border bg-surface p-6 shadow-raise", className)}>
         <div className="mb-4 flex items-center gap-2">
           <span
             aria-hidden="true"

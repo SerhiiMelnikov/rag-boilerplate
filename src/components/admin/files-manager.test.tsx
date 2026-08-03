@@ -8,6 +8,16 @@ const FILES = [
   { id: "d1", kind: "document", filename: "report.pdf", ext: "pdf", status: "ready", error: null, caption: null, createdAt: "2026-01-02T00:00:00Z", workspaces: [{ id: "w1", name: "General", isDefault: true }] },
   { id: "i1", kind: "image", filename: "bike.png", ext: "png", status: "ready", error: null, caption: "a red bicycle", createdAt: "2026-01-01T00:00:00Z", workspaces: [] },
 ];
+// Bigger than one page. Every other fixture here is under DEFAULT_PAGE_SIZE, so
+// nothing exercised a slice — the pagination could have been deleted with the
+// suite green.
+const PAGED_FILES = Array.from({ length: 25 }, (_, i) => ({
+  id: `p${i}`, kind: "document", filename: `paged${String(i).padStart(2, "0")}.pdf`, ext: "pdf",
+  status: "ready", error: null, caption: null,
+  createdAt: `2026-02-${String(i + 1).padStart(2, "0")}T00:00:00Z`,
+  workspaces: [{ id: "w1", name: "General", isDefault: true }],
+}));
+
 const WORKSPACES = [{ id: "w1", name: "General", description: null, isDefault: true, createdAt: "2026-01-01T00:00:00Z" }];
 
 beforeEach(() => {
@@ -40,7 +50,7 @@ describe("FilesManager", () => {
   it("renders workspace chips and an unassigned badge", async () => {
     render(<FilesManager />);
     await screen.findByText("report.pdf");
-    // Scoped to the table: the toolbar's "Upload to" control also legitimately
+    // Scoped to the table: the header's "Upload to" control also legitimately
     // shows "General" once the default workspace is preselected.
     const table = screen.getByRole("table");
     expect(await within(table).findByText("General")).toBeInTheDocument();
@@ -132,5 +142,232 @@ describe("FilesManager", () => {
     expect(screen.getByRole("button", { name: "Ingest URL" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Ingest from URL"), { target: { value: "https://example.com" } });
     expect(screen.getByRole("button", { name: "Ingest URL" })).toBeEnabled();
+  });
+
+  // Upload and Ingest are actions; type and workspace are filters; and
+  // "Upload to" is a parameter of the upload, not a third filter.
+  //
+  // Two halves, because the first alone is not the claim the name makes. "Not in
+  // the filter bar" would still pass if the actions had been relocated to some
+  // third place; what matters is that they sit with the title.
+  it("puts the actions in the page header, not the filter bar", async () => {
+    render(<FilesManager />);
+    const upload = await screen.findByLabelText("Upload file");
+    const bar = screen.getByLabelText("Filter by type").closest("[data-testid='files-filters']");
+    expect(bar).not.toBeNull();
+    expect(screen.getByTestId("page-actions").contains(upload)).toBe(true);
+    expect(bar!.contains(upload)).toBe(false);
+  });
+
+  // Before the actions row learned to wrap (see the "wraps instead of
+  // overflowing" test below and PageHeader itself), a toolbar wide enough to
+  // include the URL form pushed the header past the viewport and scrolled the
+  // whole page sideways on mobile. Wrapping fixed the overflow, but the URL
+  // form still belongs in its own row: it is a second, independent way to add
+  // a file, not one more upload-parameter beside "Upload to" — proved here by
+  // checking BOTH places it must not be, since "not in page-actions" alone
+  // would still pass if it had been dropped into files-filters instead.
+  it("keeps the URL form out of the header actions and out of the filter bar", async () => {
+    render(<FilesManager />);
+    const upload = await screen.findByLabelText("Upload file");
+    const urlInput = screen.getByLabelText("Ingest from URL");
+    const actions = screen.getByTestId("page-actions");
+    const filters = screen.getByTestId("files-filters");
+
+    expect(actions.contains(upload)).toBe(true);
+    expect(actions.contains(urlInput)).toBe(false);
+    expect(filters.contains(urlInput)).toBe(false);
+  });
+
+  // jsdom does not lay out flexbox, so this cannot assert "no horizontal
+  // overflow" the way a real viewport would -- it only guards the class list
+  // that produces that layout in a real browser. The actual layout claim (no
+  // overflow at 375px/320px with a long default-workspace name) is verified
+  // by a headless-Chromium measurement done when the fix landed (+49px overflow at
+  // 375px and +104px at 320px before, zero at both after, with a long
+  // default-workspace name in "Upload to"); this test only catches someone
+  // deleting the classes that measurement depends on.
+  it("wraps instead of overflowing: the actions row and the Upload-to control both carry their layout classes", async () => {
+    render(<FilesManager />);
+    const upload = await screen.findByLabelText("Upload file");
+    // The actual flex-wrap container is this inner div (the one FilesManager
+    // passes as PageHeader's `actions`), not page-actions itself -- see
+    // files-manager.tsx and the comment on PageHeader's own wrapper.
+    const actionsRow = upload.closest("div.flex.items-center.gap-2")!;
+    expect(actionsRow.className).toContain("flex-wrap");
+    expect(actionsRow.className).toContain("justify-end");
+
+    const multiSelectRoot = screen.getByLabelText("Workspaces for upload").closest(".relative")!;
+    expect(multiSelectRoot.className).toContain("min-w-36");
+    expect(multiSelectRoot.className).toContain("max-w-40");
+  });
+
+  it("finds a file by name", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "report" } });
+    expect(screen.getByText("report.pdf")).toBeInTheDocument();
+    expect(screen.queryByText("bike.png")).toBeNull();
+  });
+
+  it("searches by name regardless of case", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "REPORT" } });
+    expect(screen.getByText("report.pdf")).toBeInTheDocument();
+  });
+
+  // Without this an admin cannot tell a short list from a filtered one.
+  it("says how many rows the filters are hiding", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "report" } });
+    expect(screen.getByText("1 of 2 files")).toBeInTheDocument();
+  });
+
+  it("does not show a count when nothing is filtered", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    expect(screen.getByText("2 files")).toBeInTheDocument();
+  });
+
+  // "1 files" is wrong.
+  it("uses the singular for exactly one file", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => (String(url).includes("workspaces")
+        ? { ok: true, status: 200, json: async () => ({ workspaces: [] }) }
+        : { ok: true, status: 200, json: async () => ({ files: [FILES[0]] }) })) as never,
+    );
+    render(<FilesManager />);
+    expect(await screen.findByText("1 file")).toBeInTheDocument();
+    expect(screen.queryByText("1 files")).toBeNull();
+  });
+
+  // The two cases mean different things and deserve different offers. Conflating
+  // them is the common bug: "upload your first file" is nonsense in front of an
+  // admin who has fifty files and a typo in the search box.
+  it("invites the first upload when nothing has been added", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => (String(url).includes("workspaces")
+        ? { ok: true, status: 200, json: async () => ({ workspaces: [] }) }
+        : { ok: true, status: 200, json: async () => ({ files: [] }) })) as never,
+    );
+    render(<FilesManager />);
+    expect(await screen.findByText("No files yet")).toBeInTheDocument();
+    expect(screen.queryByText("No files match")).toBeNull();
+  });
+
+  // A virgin install has nothing to filter; offering to filter an empty table is
+  // clutter, and it primes the very "No files match" empty state (with its own
+  // "Clear filters" offer) that a genuinely empty library must never show.
+  it("hides the filter bar once the load resolves to zero files", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => (String(url).includes("workspaces")
+        ? { ok: true, status: 200, json: async () => ({ workspaces: [] }) }
+        : { ok: true, status: 200, json: async () => ({ files: [] }) })) as never,
+    );
+    render(<FilesManager />);
+    await screen.findByText("No files yet");
+    expect(screen.queryByTestId("files-filters")).toBeNull();
+  });
+
+  describe("initial load", () => {
+    // The default fetch mock in beforeEach resolves on a microtask, so the
+    // assertions below — made with no `await` in between — run before that
+    // resolution has had a chance to land, i.e. exactly the state React paints
+    // on first render.
+    it("does not claim the library is empty before the fetch resolves", async () => {
+      render(<FilesManager />);
+      expect(screen.queryByText("No files yet")).toBeNull();
+      expect(screen.queryByRole("table")).toBeNull();
+      // Drain the pending fetch inside this test (rather than leaving it to
+      // resolve, unawaited, into whatever test runs next).
+      await screen.findByText("report.pdf");
+    });
+
+    it("shows the real list once the fetch resolves", async () => {
+      render(<FilesManager />);
+      expect(await screen.findByText("report.pdf")).toBeInTheDocument();
+    });
+
+    // A failed load must say so, not sit there silently claiming (via the
+    // now-unblocked empty state) that the library has nothing in it.
+    it("surfaces a failed load instead of swallowing it", async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) })) as never);
+      render(<FilesManager />);
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the files. Try again.");
+      expect(screen.queryByText("No files yet")).toBeNull();
+    });
+  });
+
+  it("offers to clear the filters when they matched nothing", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+    fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "zzzz" } });
+    expect(screen.getByText("No files match")).toBeInTheDocument();
+    expect(screen.queryByText("No files yet")).toBeNull();
+  });
+
+  // The first alone is not the claim the name makes (same discipline as the
+  // header-placement test above): a row can reappear because one filter cleared
+  // while another silently did not, if the remaining filter happens to match. So
+  // all three filters are driven off "all"/"" first, and all three are asserted
+  // back afterward — not just that rows came back.
+  it("clears every filter from the empty state, not just the search", async () => {
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+
+    fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "zzzz" } });
+
+    fireEvent.click(screen.getByLabelText("Filter by type")); // open the styled listbox
+    fireEvent.click(await screen.findByRole("option", { name: "png" }));
+
+    fireEvent.click(screen.getByLabelText("Filter by workspace"));
+    fireEvent.click(await screen.findByRole("option", { name: "unassigned" }));
+
+    expect(await screen.findByText("No files match")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(await screen.findByText("report.pdf")).toBeInTheDocument();
+    expect(screen.getByText("bike.png")).toBeInTheDocument();
+    expect((screen.getByLabelText("Search files") as HTMLInputElement).value).toBe("");
+    expect(screen.getByLabelText("Filter by type")).toHaveTextContent("all");
+    expect(screen.getByLabelText("Filter by workspace")).toHaveTextContent("all");
+  });
+
+  describe("pagination", () => {
+    beforeEach(() => {
+      global.fetch = vi.fn(async (url: string) => (String(url).includes("workspaces")
+        ? { ok: true, json: async () => ({ workspaces: WORKSPACES }) }
+        : { ok: true, json: async () => ({ files: PAGED_FILES }) })) as unknown as typeof fetch;
+    });
+
+    it("renders one page of ten and says how far through the list it is", async () => {
+      render(<FilesManager />);
+      expect(await screen.findByText("paged24.pdf")).toBeInTheDocument();
+      expect(screen.queryByText("paged14.pdf")).toBeNull();
+      expect(screen.getByText("1–10 of 25 files")).toBeInTheDocument();
+    });
+
+    it("pages forward over the same list", async () => {
+      render(<FilesManager />);
+      fireEvent.click(await screen.findByLabelText("Next page"));
+      expect(await screen.findByText("paged14.pdf")).toBeInTheDocument();
+      expect(screen.queryByText("paged24.pdf")).toBeNull();
+    });
+
+    // Asking to see MORE must never land on an emptier screen.
+    it("returns to the first page when the page size grows", async () => {
+      render(<FilesManager />);
+      fireEvent.click(await screen.findByLabelText("Next page"));
+      fireEvent.click(screen.getByLabelText("Rows per page"));
+      fireEvent.click(await screen.findByRole("option", { name: "50" }));
+      expect(await screen.findByText("paged24.pdf")).toBeInTheDocument();
+      expect(screen.getByText("1–25 of 25 files")).toBeInTheDocument();
+    });
   });
 });

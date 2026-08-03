@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { findUserForReset } from "@/lib/auth/users";
+import { findUserForReset, normalizeEmail } from "@/lib/auth/users";
 import { domainOf } from "@/lib/auth/seed-domains";
 import { createPasswordResetToken, deleteExpiredPasswordResetTokens } from "@/lib/auth/password-reset";
 import { resolveLinkBase, buildLink, UntrustedAuthOriginError, type LinkBase } from "@/lib/auth/link-base";
@@ -87,7 +87,7 @@ export async function forgotPassword(request: Request, deps: ForgotPasswordDeps 
   // and "boss@company.com" share one bucket — same as registerUser.
   // domainOf can return null here (unlike in registerUser, where the allowlist
   // check has already proved it cannot), so the domain bucket is conditional.
-  const normalized = email.trim().toLowerCase();
+  const normalized = normalizeEmail(email);
   const domain = domainOf(normalized);
   const buckets: Array<[string, number]> = [[`reset:email:${normalized}`, RESET_RATE_LIMIT_PER_EMAIL]];
   if (domain) buckets.push([`reset:domain:${domain}`, RESET_DOMAIN_RATE_LIMIT_PER_HOUR]);

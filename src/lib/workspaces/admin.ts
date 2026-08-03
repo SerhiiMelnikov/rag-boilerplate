@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, ne } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { workspaces, userWorkspaces, users, conversations } from "@/lib/db/schema";
+import { selectDefaultId } from "./repo";
 
 export class WorkspaceNotFoundError extends Error {
   constructor() { super("Workspace not found."); this.name = "WorkspaceNotFoundError"; }
@@ -92,9 +93,8 @@ export async function deleteWorkspace(id: string, database = defaultDb): Promise
   const target = await loadWorkspace(id, database);
   if (target.isDefault) throw new DefaultWorkspaceProtectedError("The General workspace cannot be deleted.");
   await database.transaction(async (tx) => {
-    const [fallback] = await tx.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.isDefault, true)).limit(1);
-    if (!fallback) throw new Error('default workspace (General) not found — run `npm run seed:admin`');
-    await tx.update(conversations).set({ workspaceId: fallback.id }).where(eq(conversations.workspaceId, id));
+    const fallbackId = await selectDefaultId(tx);
+    await tx.update(conversations).set({ workspaceId: fallbackId }).where(eq(conversations.workspaceId, id));
     await tx.delete(workspaces).where(eq(workspaces.id, id));
   });
 }

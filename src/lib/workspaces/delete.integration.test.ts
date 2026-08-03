@@ -9,11 +9,13 @@
 // real transaction, which a fake cannot model.
 //
 // Every row created here uses a fresh random UUID, so it cannot collide with
-// anything already in the developer's shared database, and afterAll deletes
-// exactly the ids this file created (never a table-wide predicate).
+// anything already in the developer's shared database. Ids are recorded in
+// createdUserIds/createdWorkspaceIds the instant each insert succeeds (not
+// computed up front), so afterAll cleans up whatever actually made it into
+// the database even if a later insert, or the call under test, throws.
 import { describe, it, expect, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { users, workspaces, conversations, messages } from "@/lib/db/schema";
 import { deleteWorkspace } from "./admin";
@@ -21,22 +23,31 @@ import { deleteWorkspace } from "./admin";
 const RUN = process.env.RUN_INTEGRATION === "1";
 
 describe.runIf(RUN)("deleteWorkspace (integration)", () => {
-  const userId = randomUUID();
-  const doomedId = randomUUID();
-  const chatId = randomUUID();
+  const createdUserIds: string[] = [];
+  const createdWorkspaceIds: string[] = [];
 
   afterAll(async () => {
-    // Cascades to the conversation and its message. The doomed workspace is
-    // deleted by the test itself (that is the behaviour under test).
-    await db.delete(users).where(eq(users.id, userId));
+    // Users cascade to their conversations/messages. The workspace has no FK
+    // from a user, so it needs its own delete — a harmless no-op when
+    // deleteWorkspace already removed it, but the only thing standing between
+    // a failed run and a workspace row orphaned forever in the shared dev DB.
+    if (createdUserIds.length) await db.delete(users).where(inArray(users.id, createdUserIds));
+    if (createdWorkspaceIds.length) await db.delete(workspaces).where(inArray(workspaces.id, createdWorkspaceIds));
   });
 
   it("moves the conversation to General and leaves the message's workspace null", async () => {
     const [general] = await db.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.isDefault, true)).limit(1);
     expect(general, "run `npm run seed:admin` first").toBeDefined();
 
+    const userId = randomUUID();
     await db.insert(users).values({ id: userId, email: `ws-delete-test-${userId}@example.test`, passwordHash: "x" });
+    createdUserIds.push(userId);
+
+    const doomedId = randomUUID();
     await db.insert(workspaces).values({ id: doomedId, name: `ws-delete-test-doomed-${doomedId}` });
+    createdWorkspaceIds.push(doomedId);
+
+    const chatId = randomUUID();
     await db.insert(conversations).values({ id: chatId, userId, title: "kept", workspaceId: doomedId });
     await db.insert(messages).values({ conversationId: chatId, role: "user", content: "hi", workspaceId: doomedId });
 

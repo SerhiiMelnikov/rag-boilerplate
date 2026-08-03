@@ -68,10 +68,6 @@ export function Pagination({
           Per page
           <Select
             compact
-            // The bar sits at the end of a scrolling list, so downwards is into
-            // the overflow: the options were clipped and the largest size could
-            // not be picked at all.
-            dropUp
             ariaLabel="Rows per page"
             value={String(pageSize)}
             onChange={(v) => {

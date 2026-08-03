@@ -11,7 +11,7 @@ import { FOCUS_RING } from "./button";
 // from Headless UI; `aria-label` is forwarded to the button so screen readers and
 // tests can find it by label. Options are absolutely positioned under the button
 // (no floating-ui) — fine for the short, fixed provider lists this is used for.
-export function Select({ value, onChange, options, ariaLabel, className = "", compact = false, dropUp = false }: {
+export function Select({ value, onChange, options, ariaLabel, className = "", compact = false }: {
   value: string;
   onChange: (value: string) => void;
   options: string[];
@@ -23,11 +23,6 @@ export function Select({ value, onChange, options, ariaLabel, className = "", co
   // every other touch control gets. It only shrinks below that on desktop, same
   // as the default size.
   compact?: boolean;
-  // Open upwards. The options list is absolutely positioned with no collision
-  // detection, so at the bottom of a scroll container it opens downwards into the
-  // overflow and gets clipped — the last option becomes unreachable. Callers that
-  // know they sit at the bottom (the pagination bar) say so.
-  dropUp?: boolean;
 }) {
   const buttonSize = compact
     ? "h-[30px] min-h-11 px-2 text-sm md:min-h-0"
@@ -47,10 +42,17 @@ export function Select({ value, onChange, options, ariaLabel, className = "", co
       </ListboxButton>
       <ListboxOptions
         transition
+        // Anchored, not absolutely positioned: as a child it was clipped by any
+        // scrolling ancestor, and at the bottom of one — the pagination bar sits
+        // exactly there — it opened downwards into the overflow with its last
+        // option unreachable. Anchoring portals it out and flips it above the
+        // button when there is no room below, which is what `dropUp` was
+        // hand-simulating before.
+        anchor={{ to: "bottom start", gap: 4 }}
         className={cn(
-          "absolute left-0 z-50 min-w-full rounded border border-border bg-surface p-1 shadow-pop",
+          "z-50 w-[var(--anchor-width)] rounded border border-border bg-surface p-1 shadow-pop",
+          "max-h-[min(18rem,var(--anchor-max-height))] overflow-y-auto",
           "transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0",
-          dropUp ? "bottom-full mb-1 origin-bottom" : "mt-1 origin-top",
         )}
       >
         {options.map((option) => (

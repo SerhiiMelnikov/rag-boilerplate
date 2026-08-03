@@ -93,8 +93,13 @@ export function FileWorkspacesModal({ file, onClose, onSaved }: Props) {
             }))}
           />
 
+          {/* A floor under the chip area so the dialog keeps its height as chips are
+              added and removed. Without it the panel grew and shrank under the
+              cursor on every pick, and an empty selection left a box barely taller
+              than its own title. */}
+          <div className="min-h-28">
           {selected.length === 0 ? (
-            <p className="text-sm text-ink-muted">
+            <p className="text-md text-ink-muted">
               In no workspace. It stays in the file list, and no question will ever reach it.
             </p>
           ) : (
@@ -117,6 +122,7 @@ export function FileWorkspacesModal({ file, onClose, onSaved }: Props) {
               ))}
             </ul>
           )}
+          </div>
         </div>
       )}
 

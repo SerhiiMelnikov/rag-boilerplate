@@ -40,7 +40,7 @@ describe("Rail", () => {
   });
 
   it("marks the active section for assistive tech, not just with colour", () => {
-    pathname.current = "/admin/settings/keys";
+    pathname.current = "/admin/settings/answering";
     render(<Rail email="admin@acme.com" role="admin" />);
     expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Chat" })).not.toHaveAttribute("aria-current");

@@ -298,6 +298,7 @@ export function WorkspacesManager() {
                           <button
                             type="button"
                             aria-label={`Edit ${w.name}`}
+                            title="Edit"
                             onClick={() => startEdit(w)}
                             className={cn("text-ink-subtle transition-colors hover:text-ink", FOCUS_RING)}
                           >
@@ -311,6 +312,7 @@ export function WorkspacesManager() {
                           <button
                             type="button"
                             aria-label={`Delete ${w.name}`}
+                            title="Delete"
                             onClick={() => setPendingDelete(w)}
                             className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
                           >

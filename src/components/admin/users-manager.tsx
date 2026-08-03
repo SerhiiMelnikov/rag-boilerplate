@@ -124,9 +124,14 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
                         <Badge dashed>{u.id === currentUserId ? "you" : "protected"}</Badge>
                       ) : (
                         <div className="flex items-center justify-end gap-3">
+                          {/* `title` as well as `aria-label`: the label names the row for a
+                              screen reader ("Make bob@corp.com an admin"), but a sighted user
+                              hovering a bare shield has nothing to read. The short form is the
+                              right one to hover — the row is already in front of them. */}
                           <button
                             type="button"
                             aria-label={u.role === "admin" ? `Make ${u.email} a user` : `Make ${u.email} an admin`}
+                            title={u.role === "admin" ? "Make user" : "Make admin"}
                             onClick={() => void patch(u.id, { role: u.role === "admin" ? "user" : "admin" })}
                             className={cn("text-ink-subtle transition-colors hover:text-ink", FOCUS_RING)}
                           >
@@ -135,6 +140,7 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
                           <button
                             type="button"
                             aria-label={u.blockedAt ? `Unblock ${u.email}` : `Block ${u.email}`}
+                            title={u.blockedAt ? "Unblock" : "Block"}
                             onClick={() => (u.blockedAt ? void patch(u.id, { blocked: false }) : setPendingBlock(u))}
                             className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
                           >

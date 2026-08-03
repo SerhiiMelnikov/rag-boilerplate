@@ -386,6 +386,7 @@ export function FilesManager() {
                         <button
                           type="button"
                           aria-label={`View chunks of ${f.filename}`}
+                          title="View chunks"
                           onClick={() => setChunksFor(f)}
                           className={cn("text-ink-subtle transition-colors hover:text-ink", FOCUS_RING)}
                         >
@@ -395,6 +396,7 @@ export function FilesManager() {
                       <button
                         type="button"
                         aria-label={`Delete ${f.filename}`}
+                        title="Delete"
                         onClick={() => setPendingDelete(f)}
                         className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
                       >

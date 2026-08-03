@@ -70,9 +70,9 @@ describe("activeGroup", () => {
     ["/admin/usage", "insights"],
     ["/admin/evaluation", "insights"],
     ["/admin/settings", "settings"],
-    // Longest match still matters here: /admin/settings/keys matches both its own
-    // href and the group's, and the scan must not stop at the shorter one.
-    ["/admin/settings/keys", "settings"],
+    // Longest match still matters here: /admin/settings/answering matches both its
+    // own href and the group's, and the scan must not stop at the shorter one.
+    ["/admin/settings/answering", "settings"],
     ["/admin/settings/access", "settings"],
     ["/admin/users", "people"],
     ["/account", "account"],

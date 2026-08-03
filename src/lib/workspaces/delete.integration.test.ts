@@ -35,7 +35,12 @@ describe.runIf(RUN)("deleteWorkspace (integration)", () => {
     if (createdWorkspaceIds.length) await db.delete(workspaces).where(inArray(workspaces.id, createdWorkspaceIds));
   });
 
-  it("moves the conversation to General and leaves the message's workspace null", async () => {
+  // Two workspaces, not one: a single seeded conversation cannot tell "reassigned
+  // because it belonged to the deleted workspace" from "reassigned because the
+  // WHERE scope was dropped and every conversation in the database got
+  // re-badged to General" — see admin.test.ts's fake-db version of this same
+  // proof. Only a second, untouched workspace's conversation can rule that out.
+  it("moves the doomed workspace's conversation to General, and leaves an unrelated workspace's conversation untouched", async () => {
     const [general] = await db.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.isDefault, true)).limit(1);
     expect(general, "run `npm run seed:admin` first").toBeDefined();
 
@@ -47,9 +52,17 @@ describe.runIf(RUN)("deleteWorkspace (integration)", () => {
     await db.insert(workspaces).values({ id: doomedId, name: `ws-delete-test-doomed-${doomedId}` });
     createdWorkspaceIds.push(doomedId);
 
+    // A second, ordinary workspace the delete must leave completely alone.
+    const bystanderId = randomUUID();
+    await db.insert(workspaces).values({ id: bystanderId, name: `ws-delete-test-bystander-${bystanderId}` });
+    createdWorkspaceIds.push(bystanderId);
+
     const chatId = randomUUID();
     await db.insert(conversations).values({ id: chatId, userId, title: "kept", workspaceId: doomedId });
     await db.insert(messages).values({ conversationId: chatId, role: "user", content: "hi", workspaceId: doomedId });
+
+    const bystanderChatId = randomUUID();
+    await db.insert(conversations).values({ id: bystanderChatId, userId, title: "bystander", workspaceId: bystanderId });
 
     await deleteWorkspace(doomedId);
 
@@ -61,5 +74,11 @@ describe.runIf(RUN)("deleteWorkspace (integration)", () => {
     // Deliberately null: usage analytics groups by this column, and re-badging
     // another workspace's tokens as General would be a false number on a chart.
     expect(msg.workspaceId).toBeNull();
+
+    // The decisive assertion: an unrelated workspace's conversation must still
+    // point at its own (still-existing) workspace, not General.
+    const [bystanderAfter] = await db.select().from(conversations).where(eq(conversations.id, bystanderChatId));
+    expect(bystanderAfter, "the bystander conversation row must survive too").toBeDefined();
+    expect(bystanderAfter.workspaceId).toBe(bystanderId);
   });
 });

@@ -78,3 +78,15 @@ describe.each([
     expect(contrast(tokens[fg], tokens[bg])).toBeGreaterThanOrEqual(min);
   });
 });
+
+// `--c-shade` exists only to stay dark in both themes (unlike `--c-ink`, which
+// deliberately inverts), so being declared in both :root and .dark is its entire
+// reason to exist -- neither PAIRS nor the "declares every token" check above
+// would ever notice one of them missing it, since both only walk the tokens each
+// *pair* references. This compares the two blocks' own key sets directly, so a
+// token added to only one of them fails here instead of shipping unnoticed.
+it("declares the same set of custom properties in :root and .dark", () => {
+  const light = Object.keys(parseTokens(":root")).sort();
+  const dark = Object.keys(parseTokens(".dark")).sort();
+  expect(dark).toEqual(light);
+});

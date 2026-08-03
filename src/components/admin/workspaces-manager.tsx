@@ -136,7 +136,16 @@ export function WorkspacesManager() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) { setError((await res.json()).error ?? "Could not save the workspace."); return; }
+      if (!res.ok) {
+        setError((await res.json()).error ?? "Could not save the workspace.");
+        // Reopen the row with the draft the admin typed still in it — without this,
+        // the row above went read-only the moment Save was pressed, and startEdit()
+        // would re-seed the input from the stored (unchanged) value on the next
+        // click, silently discarding what they typed.
+        settled.current = false;
+        setEditingId(w.id);
+        return;
+      }
       await load();
     } finally {
       setBusy(false);
@@ -265,6 +274,11 @@ export function WorkspacesManager() {
                         <input
                           aria-label={`Description of ${w.name}`}
                           placeholder="Description"
+                          // The default workspace has no name input (its name is immutable —
+                          // see the span above), so this is the only field in its row. Without
+                          // this, opening it focuses nothing: the Edit button that had focus
+                          // just unmounted, and a keyboard user is dropped to <body>.
+                          autoFocus={w.isDefault}
                           value={d.description}
                           onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, description: e.target.value } }))}
                           onKeyDown={onFieldKeyDown}

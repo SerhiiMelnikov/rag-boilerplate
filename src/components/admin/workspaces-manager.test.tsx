@@ -69,6 +69,45 @@ describe("WorkspacesManager", () => {
     expect(screen.getByLabelText("Name of Marketing")).toBeInTheDocument();
   });
 
+  // Before this fix, commit() cleared editingId before the request and never
+  // restored it on failure: the row went read-only, and the next click on Edit
+  // re-seeded the draft from the (unchanged) stored name — silently discarding
+  // whatever the admin had typed.
+  it("reopens a row with the typed draft intact when the save is rejected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { method?: string }) => {
+        if (init?.method === "PATCH") {
+          return { ok: false, status: 409, json: async () => ({ error: "A workspace with that name already exists." }) };
+        }
+        return { ok: true, status: 200, json: async () => ({ workspaces: WORKSPACES }) };
+      }) as never,
+    );
+
+    render(<WorkspacesManager />);
+    await screen.findByText("Marketing");
+    fireEvent.click(screen.getByLabelText("Edit Marketing"));
+    fireEvent.change(screen.getByLabelText("Name of Marketing"), { target: { value: "Growth" } });
+    fireEvent.click(screen.getByLabelText("Save Growth"));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("A workspace with that name already exists.");
+    // Still open, and still showing what was typed — not the row collapsed back
+    // to read-only, and not the input re-seeded from the stored "Marketing".
+    expect(screen.getByDisplayValue("Growth")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Marketing")).toBeNull();
+  });
+
+  // On a fresh install the default workspace is the only row, and every other
+  // case here drives Marketing — whose Edit button hands focus to a name input.
+  // The default row has no name input at all (its name is immutable, shown as
+  // plain text), so without this fix, opening it focuses nothing.
+  it("focuses the description input when opening the default row", async () => {
+    render(<WorkspacesManager />);
+    await screen.findByText("Marketing");
+    fireEvent.click(screen.getByLabelText("Edit General"));
+    expect(screen.getByLabelText("Description of General")).toHaveFocus();
+  });
+
   // Regression: onBlur was originally wired per-field, so moving focus from the name
   // input to the description input inside the SAME row committed prematurely — the
   // new name went out with the untouched, still-open description, and the row

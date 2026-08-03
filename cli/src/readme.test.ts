@@ -271,6 +271,37 @@ describe("generateReadme registration", () => {
     expect(out).toMatch(/expires in 24 hours/);
     expect(out).toMatch(/whoever clicks the link chooses it/);
   });
+
+  // Migration 0020 unforks accounts an upgrading install may already have split
+  // by casing. Both builds must say addresses are lower-cased and that a forked
+  // account's chats become unreachable, without inventing UI that appKind: "api"
+  // does not ship (there is no Users page there).
+  it("documents that emails are lower-cased and migration 0020 unforks duplicated accounts", () => {
+    for (const appKind of ["full", "api"] as const) {
+      const readme = generateReadme(opts({ appKind, vectorStore: "pgvector" }));
+      expect(readme).toMatch(/stored and matched in lower case/);
+      expect(readme).toMatch(/migration 0020/);
+      expect(readme).toContain("name+dup-xxxxxxxx@domain");
+      expect(readme).toMatch(/Nothing is deleted/);
+    }
+    expect(generateReadme(opts({ appKind: "full", vectorStore: "pgvector" }))).toMatch(/Users page/);
+    expect(generateReadme(opts({ appKind: "api", vectorStore: "pgvector" }))).not.toMatch(/Users page/);
+  });
+
+  // scaffold() deletes drizzle/ for every non-pgvector store (cli/src/scaffold.ts
+  // step 7b); that project's `npm run db:generate` builds fresh DDL-only
+  // migrations from the current schema, so migration 0020 never ships there and
+  // never runs. Promising a repair the project cannot perform would be worse
+  // than silence, so the migration-0020 paragraph must not appear for those
+  // stores — only the (still true, store-independent) lower-casing sentence.
+  it("does not promise the migration 0020 repair to a non-pgvector store, which never ships it", () => {
+    for (const appKind of ["full", "api"] as const) {
+      const readme = generateReadme(opts({ appKind, vectorStore: "qdrant" }));
+      expect(readme).toMatch(/stored and matched in lower case/);
+      expect(readme).not.toMatch(/migration 0020/);
+      expect(readme).not.toContain("name+dup-xxxxxxxx@domain");
+    }
+  });
 });
 
 describe("generateReadme API docs", () => {
@@ -425,15 +456,27 @@ describe("password reset documentation", () => {
     }
   });
 
-  // The full-app README used to claim "every endpoint behind it refuses to
-  // return data", which is false: the admin analytics and usage pages query the
-  // database directly from a server component, so a retired admin session still
-  // sees real conversation content. Naming the exception is the whole point.
-  it("names the server-rendered page exception instead of implying blanket coverage", () => {
+  // The full-app README used to carve out server-rendered pages as a "known
+  // exception" that could still show a retired admin session's data — the admin
+  // analytics and usage pages queried the database directly from a server
+  // component, bypassing the per-request session check API routes got. Page
+  // guards now read the database too, so this documents parity instead of the
+  // old caveat, and guards against both historical false claims re-appearing.
+  it("documents that API routes and server-rendered pages share the same per-request check", () => {
     const readme = generateReadme(opts({ appKind: "full" }));
-    expect(readme).toContain("known exception");
-    expect(readme).toMatch(/analytics and usage/i);
+    expect(readme).toContain("API routes and server-rendered pages alike");
+    expect(readme).toMatch(/middleware\.ts/);
+    expect(readme).not.toContain("known exception");
     expect(readme).not.toContain("refuses to return data");
+  });
+
+  // The api-only build serves no pages at all, so it must not inherit language
+  // written for the full app's page/API parity — that would describe a surface
+  // pruned out of the project the reader is holding.
+  it("does not mention server-rendered pages or middleware.ts in the api-only build", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).not.toContain("server-rendered pages");
+    expect(readme).not.toMatch(/middleware\.ts/);
   });
 });
 

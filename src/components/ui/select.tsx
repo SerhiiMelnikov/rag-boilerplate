@@ -53,21 +53,34 @@ export function Select({ value, onChange, options, ariaLabel, className = "", co
         // sets the former (verified in its listbox source). The latter resolves to
         // nothing, and a width that resolves to nothing is not a build error — the
         // panel simply sizes to its content and nobody is told why.
+        //
+        // `--anchor-max-height` runs the other direction: it is an input Headless UI's
+        // floating logic *reads*, not an output it sets. It applies
+        // `maxHeight: min(var(--anchor-max-height, 100vh), <available>px)` as an inline
+        // style (internal/floating.js), so we set the variable rather than writing a
+        // `max-h-[...]` class -- that class would reference an undefined variable (and
+        // even if it resolved, an inline style outranks a class).
         anchor={{ to: "bottom start", gap: 4 }}
         className={cn(
           "z-50 w-[var(--button-width)] rounded border border-border bg-surface p-1 shadow-pop",
-          "max-h-[min(18rem,var(--anchor-max-height))] overflow-y-auto",
+          "[--anchor-max-height:18rem] overflow-y-auto",
           "transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0",
         )}
       >
         {options.map((option) => (
+          // The panel's width is pinned to the button's (`--button-width` above) and
+          // must stay that way, so a long option is truncated rather than widened into
+          // -- same trade-off `MultiSelect` already makes. `title` recovers the full
+          // text on hover; the untruncated text is still the DOM content, so it is
+          // still what a screen reader announces.
           <ListboxOption
             key={option}
             value={option}
-            className="group flex w-full cursor-pointer items-center justify-between gap-2 whitespace-nowrap rounded px-2 py-1.5 text-sm data-[focus]:bg-surface-2"
+            title={option}
+            className="group flex w-full cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-sm data-[focus]:bg-surface-2"
           >
-            <span>{option}</span>
-            <Check className="h-4 w-4 opacity-0 group-data-[selected]:opacity-100" aria-hidden="true" />
+            <span className="min-w-0 truncate">{option}</span>
+            <Check className="h-4 w-4 shrink-0 opacity-0 group-data-[selected]:opacity-100" aria-hidden="true" />
           </ListboxOption>
         ))}
       </ListboxOptions>

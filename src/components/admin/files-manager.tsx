@@ -63,6 +63,12 @@ export function FilesManager() {
   const [chunksFor, setChunksFor] = useState<FileRow | null>(null);
   const [allWorkspaces, setAllWorkspaces] = useState<{ id: string; name: string; isDefault: boolean }[]>([]);
   const [uploadWorkspaceIds, setUploadWorkspaceIds] = useState<string[]>([]);
+  // Distinct from `allWorkspaces.length > 0`: an install with zero non-General
+  // workspaces would leave that empty forever without ever having failed.
+  // `workspacesLoaded` only tracks whether the fetch itself has actually
+  // resolved, which is the only thing that should gate what "no ids chosen"
+  // means below.
+  const [workspacesLoaded, setWorkspacesLoaded] = useState(false);
   const [workspaceFilter, setWorkspaceFilter] = useState("all");
   const [urlValue, setUrlValue] = useState("");
   const [urlBusy, setUrlBusy] = useState(false);
@@ -88,6 +94,7 @@ export function FilesManager() {
       setAllWorkspaces(list);
       const def = list.find((w) => w.isDefault);
       if (def) setUploadWorkspaceIds([def.id]);
+      setWorkspacesLoaded(true);
     })();
   }, []);
 
@@ -127,9 +134,17 @@ export function FilesManager() {
       const form = new FormData();
       form.set("file", file);
       // One entry per id; a single empty entry means "explicitly no workspaces",
-      // which the handler distinguishes from the field being absent.
-      if (uploadWorkspaceIds.length === 0) form.append("workspaceIds", "");
-      else for (const id of uploadWorkspaceIds) form.append("workspaceIds", id);
+      // which the handler distinguishes from the field being absent. But until
+      // GET /api/admin/workspaces has actually resolved, `uploadWorkspaceIds`
+      // being `[]` says nothing about the admin's intent — it is just the
+      // initial state (or a failed fetch). Omitting the field entirely lets
+      // resolveUploadWorkspaceIds fall through to its absent-means-General
+      // default, instead of filing the upload as unassigned and invisible to
+      // retrieval.
+      if (workspacesLoaded) {
+        if (uploadWorkspaceIds.length === 0) form.append("workspaceIds", "");
+        else for (const id of uploadWorkspaceIds) form.append("workspaceIds", id);
+      }
       await fetch(endpoint, { method: "POST", body: form });
       await load();
     } finally {
@@ -149,10 +164,13 @@ export function FilesManager() {
     setUrlBusy(true);
     setUrlError(null);
     try {
+      // Same reasoning as upload()'s omit-until-loaded above: an unresolved
+      // (or failed) workspaces fetch must not be indistinguishable from the
+      // admin explicitly choosing no workspaces.
       const res = await fetch("/api/admin/documents/url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify(workspacesLoaded ? { url, workspaceIds: uploadWorkspaceIds } : { url }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);

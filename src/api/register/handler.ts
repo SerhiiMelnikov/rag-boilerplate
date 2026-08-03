@@ -1,5 +1,5 @@
 import { registerSchema } from "@/lib/validation";
-import { createUnverifiedUser, DuplicateEmailError, findUserForRegistration, deleteUser } from "@/lib/auth/users";
+import { createUnverifiedUser, DuplicateEmailError, findUserForRegistration, deleteUser, normalizeEmail } from "@/lib/auth/users";
 import { getRegistrationSettings } from "@/lib/config/settings-service";
 import { isEmailDomainAllowed } from "@/lib/auth/domains";
 import { domainOf } from "@/lib/auth/seed-domains";
@@ -149,7 +149,7 @@ export async function registerUser(request: Request, deps: RegisterDeps = {}): P
   const domain = domainOf(email)!;
   for (const [key, limit, message] of [
     [
-      `register:email:${email.trim().toLowerCase()}`,
+      `register:email:${normalizeEmail(email)}`,
       REGISTER_RATE_LIMIT_PER_EMAIL,
       "Too many registration attempts for this address. Try again later.",
     ],

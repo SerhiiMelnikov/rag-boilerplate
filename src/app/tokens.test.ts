@@ -17,6 +17,22 @@ function parseTokens(selector: string): Record<string, [number, number, number]>
   return out;
 }
 
+// Every custom property declared in a selector's block, whatever shape its value
+// takes -- unlike parseTokens above (RGB triples only, because that's what the
+// contrast math needs), this is what the parity check below requires: a
+// `--c-overlay: rgb(0 0 0 / .5)` or a non-colour `--radius-pop: 8px` must still
+// be caught if it exists in only one of the two blocks. parseTokens's own key set
+// would silently omit both, since neither matches its "R G B" pattern.
+function declaredProperties(selector: string): Set<string> {
+  const start = css.indexOf(`${selector} {`);
+  if (start === -1) throw new Error(`globals.css has no "${selector} {" block`);
+  const end = css.indexOf("}", start);
+  if (end === -1) throw new Error(`"${selector}" block is never closed`);
+  const out = new Set<string>();
+  for (const m of css.slice(start, end).matchAll(/--([a-z0-9-]+):/g)) out.add(m[1]);
+  return out;
+}
+
 function relativeLuminance([r, g, b]: [number, number, number]): number {
   const channel = (v: number) => {
     const s = v / 255;
@@ -77,4 +93,18 @@ describe.each([
   it.each(PAIRS)(`${theme}: %s on %s reaches %s:1`, (fg, bg, min) => {
     expect(contrast(tokens[fg], tokens[bg])).toBeGreaterThanOrEqual(min);
   });
+});
+
+// `--c-shade` exists only to stay dark in both themes (unlike `--c-ink`, which
+// deliberately inverts), so being declared in both :root and .dark is its entire
+// reason to exist -- neither PAIRS nor the "declares every token" check above
+// would ever notice one of them missing it, since both only walk the tokens each
+// *pair* references. This compares the two blocks' own declared-property sets
+// directly (every `--*`, not just the `--c-*` RGB triples parseTokens extracts),
+// so a token added to only one of them fails here instead of shipping unnoticed
+// -- whether or not it happens to be a colour.
+it("declares the same set of custom properties in :root and .dark", () => {
+  const light = [...declaredProperties(":root")].sort();
+  const dark = [...declaredProperties(".dark")].sort();
+  expect(dark).toEqual(light);
 });

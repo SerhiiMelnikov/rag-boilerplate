@@ -77,6 +77,27 @@ describe("ingestUrlResponse", () => {
     expect(deps.extract).not.toHaveBeenCalled();
   });
 
+  it("files the document under the workspaces the admin chose", async () => {
+    const deps = baseDeps();
+    await ingestUrlResponse(req({ url: "https://example.com/a", workspaceIds: ["w1", "w2"] }), deps as never);
+    expect(deps.setDocumentWorkspacesFn).toHaveBeenCalledWith("doc-1", ["w1", "w2"]);
+  });
+
+  it("leaves the document unassigned when an empty selection is sent", async () => {
+    const deps = baseDeps();
+    await ingestUrlResponse(req({ url: "https://example.com/a", workspaceIds: [] }), deps as never);
+    expect(deps.setDocumentWorkspacesFn).toHaveBeenCalledWith("doc-1", []);
+    // The point of the empty case: it must NOT silently become General.
+    expect(deps.workspaceRepo.getDefaultId).not.toHaveBeenCalled();
+  });
+
+  it("400s when workspaceIds is not an array of strings", async () => {
+    const deps = baseDeps();
+    const res = await ingestUrlResponse(req({ url: "https://example.com/a", workspaceIds: "w1" }), deps as never);
+    expect(res.status).toBe(400);
+    expect(deps.documentRepo.createDocument).not.toHaveBeenCalled();
+  });
+
   it("re-posting the same URL updates the existing document instead of creating a duplicate", async () => {
     const deps = {
       ...baseDeps(),

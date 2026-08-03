@@ -34,4 +34,26 @@ describe("Select", () => {
     expect(cls).toContain("md:min-h-0");
     expect(cls).toContain("h-[30px]"); // still tighter than the default h-[34px]
   });
+
+  // A wrong custom property produces no error, no lint warning, and no failed
+  // test -- it just falls back silently at computed-value time, which is exactly
+  // how this regressed once already. jsdom runs no Tailwind, so there is no
+  // computed style to read here; this guards the source class instead.
+  it("sets --anchor-max-height on the panel instead of reading an unset one", () => {
+    render(<Select ariaLabel="Chat provider" value="google" onChange={() => {}} options={["google", "openai"]} />);
+    fireEvent.click(screen.getByLabelText("Chat provider"));
+    expect(screen.getByRole("listbox").className).toContain("[--anchor-max-height:");
+  });
+
+  // Same reason for a className check over a rendered one: jsdom never runs
+  // Tailwind, so a dropped `truncate`/`min-w-0` shows up as nothing here but a
+  // real, silent horizontal scrollbar in the browser (the panel's width is
+  // pinned to the button's and must not grow to fit a long option instead).
+  it("truncates a long option instead of letting the panel grow", () => {
+    render(<Select ariaLabel="Chat provider" value="google" onChange={() => {}} options={["google", "a very long provider name indeed"]} />);
+    fireEvent.click(screen.getByLabelText("Chat provider"));
+    const option = screen.getByText("a very long provider name indeed");
+    expect(option.className).toContain("min-w-0");
+    expect(option.className).toContain("truncate");
+  });
 });

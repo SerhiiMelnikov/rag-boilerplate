@@ -10,7 +10,7 @@ vi.mock("node:crypto", async (importOriginal) => {
 });
 
 import { randomBytes } from "node:crypto";
-import { createUser, createUnverifiedUser, getUserByEmail, getAuthUserById, markEmailVerified, DuplicateEmailError } from "@/lib/auth/users";
+import { createUser, createUnverifiedUser, createVerifiedOAuthUser, getUserByEmail, getAuthUserById, markEmailVerified, DuplicateEmailError, normalizeEmail } from "@/lib/auth/users";
 
 // Minimal fake matching the Drizzle calls used by the service.
 function fakeDb(opts: { existing?: unknown[]; insertResult?: unknown[]; insertThrows?: unknown } = {}) {
@@ -100,5 +100,60 @@ describe("getAuthUserById", () => {
   it("returns null when the user is absent", async () => {
     const db = fakeDb({ existing: [] });
     expect(await getAuthUserById("missing", db)).toBeNull();
+  });
+});
+
+describe("normalizeEmail", () => {
+  it("lowercases and trims", () => {
+    expect(normalizeEmail("  John.Doe@Corp.COM ")).toBe("john.doe@corp.com");
+  });
+  it("leaves an already-normal address alone", () => {
+    expect(normalizeEmail("john.doe@corp.com")).toBe("john.doe@corp.com");
+  });
+});
+
+describe("case-insensitive addressing", () => {
+  it("getUserByEmail queries the normalised address", async () => {
+    const where = vi.fn(() => ({ limit: async () => [{ id: "u1" }] }));
+    const database = { select: () => ({ from: () => ({ where }) }) } as never;
+    await getUserByEmail("JOHN@CORP.COM", database);
+    // drizzle builds an opaque SQL object (a real `eq()` call, not a mock), so we
+    // assert on the value we fed it rather than on `where` being called with a
+    // particular reference. Plain JSON.stringify throws here — drizzle's column
+    // objects carry a `table` back-reference to the table they belong to, which
+    // is circular (table.email.table === table) — so the replacer drops that key.
+    // What's left still carries the bound parameter's actual value (the `Param`
+    // chunk's `value` field), which is what distinguishes a normalised query from
+    // an un-normalised one; a plain "does `where` get called" check would not.
+    const serialized = JSON.stringify(where.mock.calls[0], (key, value) => (key === "table" ? undefined : value));
+    expect(serialized).toContain("john@corp.com");
+    expect(serialized).not.toContain("JOHN@CORP.COM");
+  });
+
+  it("createUser stores the normalised address", async () => {
+    // The mock takes a parameter (even though it ignores it) so its `calls`
+    // entries are typed as a one-element tuple, not `[]` — otherwise
+    // `values.mock.calls[0][0]` below is a static index-out-of-bounds error
+    // under this tsconfig's strict mode, not just a runtime `undefined`.
+    const values = vi.fn((_row: unknown) => ({ returning: async () => [{ id: "u1", email: "john@corp.com", role: "user" }] }));
+    const database = { insert: () => ({ values }) } as never;
+    await createUser({ email: "John@Corp.com", password: "hunter2hunter2" }, database);
+    expect(values.mock.calls[0][0]).toMatchObject({ email: "john@corp.com" });
+  });
+
+  // Fix round 1: createVerifiedOAuthUser is the sixth address-keyed function —
+  // the brief that specced this task named only five. It is also the one that
+  // matters most: this repo fetches GitHub addresses itself (see
+  // oauth/github-email.ts) and GitHub preserves whatever case the user typed,
+  // so an un-normalised insert here means the row this function creates could
+  // never again be found by getUserByEmail's normalised lookup, and the user's
+  // second sign-in would fall through to create (and collide on) a second row.
+  it("createVerifiedOAuthUser stores the normalised address", async () => {
+    const values = vi.fn((_row: unknown) => ({
+      returning: async () => [{ id: "u1", role: "user", isSuperAdmin: false }],
+    }));
+    const database = { insert: () => ({ values }) } as never;
+    await createVerifiedOAuthUser("John.Doe@Corp.com", database);
+    expect(values.mock.calls[0][0]).toMatchObject({ email: "john.doe@corp.com" });
   });
 });

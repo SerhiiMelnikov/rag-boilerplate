@@ -30,6 +30,17 @@ describe("MultiSelect", () => {
     expect(summary.className).toContain("truncate");
   });
 
+  // A wrong custom property produces no error, no lint warning, and no failed
+  // test -- it just falls back silently at computed-value time, which is exactly
+  // how this regressed once already. jsdom runs no Tailwind, so there is no
+  // computed style to read here; this guards the source class instead.
+  it("sets --anchor-max-height on the panel instead of reading an unset one", async () => {
+    render(<MultiSelect value={[]} onChange={() => {}} options={OPTIONS} ariaLabel="Workspaces" />);
+    fireEvent.click(screen.getByLabelText("Workspaces"));
+    await screen.findByRole("option", { name: /General/ });
+    expect(screen.getByRole("listbox").className).toContain("[--anchor-max-height:");
+  });
+
   it("summarises multiple selections by count", () => {
     render(<MultiSelect value={["w1", "w2"]} onChange={() => {}} options={OPTIONS} ariaLabel="Workspaces" />);
     expect(screen.getByLabelText("Workspaces")).toHaveTextContent("2 selected");

@@ -1,9 +1,15 @@
 import type { WorkspaceRepo } from "./repo";
 
-// `workspaceIds` absent => default to [General]. Present (even as the single
-// empty-string sentinel the client sends for "explicitly none") => exactly what
-// was sent, minus blanks. So an empty selection yields [] — an unassigned file.
+// The rule, independent of how the ids arrived: absent => [General]; present
+// (even empty) => exactly what was sent, minus blanks. An empty selection is a
+// deliberate "unassigned", not a mistake, and stays excluded from retrieval.
+export async function resolveWorkspaceIds(ids: string[] | undefined, workspaceRepo: WorkspaceRepo): Promise<string[]> {
+  if (ids === undefined) return [await workspaceRepo.getDefaultId()];
+  return ids.filter((s) => s.length > 0);
+}
+
+// Multipart transport. The client sends a single empty-string entry to mean
+// "explicitly none", which is why presence is tested on the field, not the values.
 export async function resolveUploadWorkspaceIds(form: FormData, workspaceRepo: WorkspaceRepo): Promise<string[]> {
-  if (!form.has("workspaceIds")) return [await workspaceRepo.getDefaultId()];
-  return form.getAll("workspaceIds").map(String).filter((s) => s.length > 0);
+  return resolveWorkspaceIds(form.has("workspaceIds") ? form.getAll("workspaceIds").map(String) : undefined, workspaceRepo);
 }

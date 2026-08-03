@@ -4,6 +4,20 @@ import { db as defaultDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { hashPassword } from "./password";
 
+// One canonical form for an address, applied on every write and every lookup.
+//
+// It has to live here rather than in the handlers: @auth/core lowercases an
+// OAuth profile's email before our signIn callback ever sees it, while
+// registration stored whatever was typed. Since 0.5.8 that mismatch did not
+// merely fail a login — it created a SECOND account for the same person, and
+// the unique index had no objection. A rule enforced at the six functions
+// every address-keyed read and write already passes through cannot be forgotten
+// by the next handler someone adds — including createVerifiedOAuthUser, the
+// exact function on the OAuth path that used to leave this hole open.
+export function normalizeEmail(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
 // Minimal projection for the registration path: is this address taken, and is it
 // confirmed?
 //
@@ -19,7 +33,7 @@ export async function findUserForRegistration(
 ): Promise<{ id: string; emailVerifiedAt: Date | null } | null> {
   const [row] = await database
     .select({ id: users.id, emailVerifiedAt: users.emailVerifiedAt })
-    .from(users).where(eq(users.email, email)).limit(1);
+    .from(users).where(eq(users.email, normalizeEmail(email))).limit(1);
   return row ?? null;
 }
 
@@ -40,7 +54,7 @@ export async function findUserForReset(
 ): Promise<{ id: string; emailVerifiedAt: Date | null; blockedAt: Date | null } | null> {
   const [row] = await database
     .select({ id: users.id, emailVerifiedAt: users.emailVerifiedAt, blockedAt: users.blockedAt })
-    .from(users).where(eq(users.email, email)).limit(1);
+    .from(users).where(eq(users.email, normalizeEmail(email))).limit(1);
   return row ?? null;
 }
 
@@ -69,7 +83,7 @@ export async function createUser(input: NewUser, database = defaultDb): Promise<
   try {
     const [row] = await database
       .insert(users)
-      .values({ email: input.email, passwordHash, role: input.role ?? "user" })
+      .values({ email: normalizeEmail(input.email), passwordHash, role: input.role ?? "user" })
       .returning({ id: users.id, email: users.email, role: users.role });
     return row;
   } catch (err) {
@@ -103,6 +117,15 @@ export async function createUnverifiedUser(input: NewUnverifiedUser, database = 
 // gets a hash of 32 random bytes: never a constant, which would be a shared
 // backdoor across every OAuth row. The user can later set a real password
 // through the reset flow and end up with both sign-in routes.
+//
+// normalizeEmail matters here specifically: @auth/core lowercases a profile's
+// email before signIn ever sees it, but this repo fetches GitHub addresses
+// itself (see oauth/github-email.ts) and GitHub preserves the case the user
+// typed. Storing that raw would mean the row this function creates could
+// never again be found by getUserByEmail's normalised lookup — the user's
+// very next sign-in would miss its own row, fall through to create a second
+// one, and hit the unique index. Normalising on write, the same as every
+// other address-keyed function here, is what keeps this row reachable.
 export async function createVerifiedOAuthUser(
   email: string,
   database = defaultDb,
@@ -111,7 +134,7 @@ export async function createVerifiedOAuthUser(
   const passwordHash = await hashPassword(placeholder);
   const [row] = await database
     .insert(users)
-    .values({ email, passwordHash, role: "user", emailVerifiedAt: new Date() })
+    .values({ email: normalizeEmail(email), passwordHash, role: "user", emailVerifiedAt: new Date() })
     .returning({ id: users.id, role: users.role, isSuperAdmin: users.isSuperAdmin });
   return row;
 }
@@ -142,7 +165,7 @@ export async function getUserByEmail(email: string, database = defaultDb) {
   const rows = await database
     .select({ id: users.id, email: users.email, role: users.role, passwordHash: users.passwordHash, blockedAt: users.blockedAt, isSuperAdmin: users.isSuperAdmin, emailVerifiedAt: users.emailVerifiedAt })
     .from(users)
-    .where(eq(users.email, email))
+    .where(eq(users.email, normalizeEmail(email)))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -164,7 +187,7 @@ export async function getUserWithHashById(
 export async function getAuthUserById(id: string, database = defaultDb) {
   const rows = await database
     .select({
-      id: users.id, role: users.role, isSuperAdmin: users.isSuperAdmin,
+      id: users.id, email: users.email, role: users.role, isSuperAdmin: users.isSuperAdmin,
       blockedAt: users.blockedAt, sessionsValidFrom: users.sessionsValidFrom,
     })
     .from(users)

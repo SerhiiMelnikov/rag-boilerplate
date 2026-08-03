@@ -7,9 +7,10 @@ import { ErrorResponse } from "../schemas";
 // extracts its readable article text (Readability, src/lib/rag/extract-url.ts),
 // creates the document with filename = the URL (documents.filename is unique, so
 // re-posting the same URL updates that document instead of creating a duplicate),
-// assigns it to the General workspace, and schedules chunking/embedding/storage in
-// the background — the response always reports status "processing", never the
-// final ready/error outcome (poll GET /api/admin/documents for that, as with upload).
+// assigns it to the workspaces named in `workspaceIds` (absent = General, `[]` =
+// unassigned), and schedules chunking/embedding/storage in the background — the
+// response always reports status "processing", never the final ready/error
+// outcome (poll GET /api/admin/documents for that, as with upload).
 registry.registerPath({
   method: "post",
   path: "/api/admin/documents/url",
@@ -20,7 +21,12 @@ registry.registerPath({
     body: {
       content: {
         "application/json": {
-          schema: z.object({ url: z.string().openapi({ description: "The http(s) page to fetch and ingest" }) }),
+          schema: z.object({
+            url: z.string().openapi({ description: "The http(s) page to fetch and ingest" }),
+            workspaceIds: z.array(z.string()).optional().openapi({
+              description: "Workspaces to file the document under. Omit for General; send [] to leave it unassigned.",
+            }),
+          }),
         },
       },
     },
@@ -36,7 +42,7 @@ registry.registerPath({
     },
     400: {
       description:
-        "Missing url, or the URL could not be fetched/extracted (malformed syntax, unsupported scheme, non-HTML content-type, oversized response, or a network failure)",
+        "Missing url, workspaceIds is not an array of strings, or the URL could not be fetched/extracted (malformed syntax, unsupported scheme, non-HTML content-type, oversized response, or a network failure)",
       content: { "application/json": { schema: ErrorResponse } },
     },
     401: { description: "Not signed in", content: { "application/json": { schema: ErrorResponse } } },

@@ -1,17 +1,18 @@
 import { describe, it, expect, vi, type Mock } from "vitest";
 import { createChromaStore, type ChromaCollectionLike } from "./store";
 
-// Deliberate: ChromaCollectionLike (the store's own narrow seam, see store.ts)
-// is a real interface with precisely-typed methods, but merging a `Partial<...>`
-// override into an object literal of vi.fn()s here contextually collapses the
-// Mock type the assertions below need for `.mock.calls` — so this fake keeps
-// its own loosely-typed shape instead, and is bridged with `never` (not `any`)
-// at each call site below.
+// ChromaCollectionLike is the store's own narrow seam (see store.ts), so its
+// method types are exactly the contract this fake stands in for. Deliberate:
+// merging a `Partial<ChromaCollectionLike>` override into an object literal of
+// vi.fn()s here contextually collapses the Mock type the assertions below need
+// for `.mock.calls` — so this fake keeps its own shape (Partial<FakeCollection>
+// overrides), typing each method as `Mock<ChromaCollectionLike["method"]>`
+// rather than a bare `Mock`.
 interface FakeCollection {
-  add: Mock;
-  get: Mock;
-  delete: Mock;
-  query: Mock;
+  add: Mock<ChromaCollectionLike["add"]>;
+  get: Mock<ChromaCollectionLike["get"]>;
+  delete: Mock<ChromaCollectionLike["delete"]>;
+  query: Mock<ChromaCollectionLike["query"]>;
 }
 function fakeCollection(over: Partial<FakeCollection> = {}): FakeCollection {
   return {

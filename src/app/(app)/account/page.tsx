@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { requirePageUser } from "../guards";
 import { PageHeader, PageBody } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { PasswordForm } from "./password-form";
@@ -13,12 +12,11 @@ import { PasswordForm } from "./password-form";
 // would tap dead while still flipping its own aria-expanded. PageHeader below
 // already gives the page its heading.
 export default async function AccountPage() {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
+  const user = await requirePageUser();
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <PageHeader className="max-w-xl" title="Account" description={session.user.email ?? undefined} />
+      <PageHeader className="max-w-xl" title="Account" description={user.email} />
       <PageBody className="max-w-xl">
         <Card title="Password" description="Changing it signs out every other session.">
           <PasswordForm />

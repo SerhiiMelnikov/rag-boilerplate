@@ -40,7 +40,7 @@ describe("GET /api/admin/documents", () => {
     expect((await GET(listReq())).status).toBe(403);
   });
   it("lists documents for admin", async () => {
-    vi.mocked(requireAdmin).mockResolvedValue({ id: "u1", role: "admin", isSuperAdmin: false });
+    vi.mocked(requireAdmin).mockResolvedValue({ id: "u1", email: "u1@corp.com", role: "admin", isSuperAdmin: false });
     vi.mocked(listDocuments).mockResolvedValue([{ id: "d1", filename: "a.md", status: "ready", error: null, createdAt: new Date(0) }]);
     const res = await GET(listReq());
     expect(res.status).toBe(200);
@@ -56,12 +56,12 @@ describe("POST /api/admin/documents", () => {
     expect(ingestExistingDocument).not.toHaveBeenCalled();
   });
   it("400 when no file", async () => {
-    vi.mocked(requireAdmin).mockResolvedValue({ id: "u1", role: "admin", isSuperAdmin: false });
+    vi.mocked(requireAdmin).mockResolvedValue({ id: "u1", email: "u1@corp.com", role: "admin", isSuperAdmin: false });
     const res = await POST(new Request("http://localhost/api/admin/documents", { method: "POST", body: new FormData() }));
     expect(res.status).toBe(400);
   });
   it("creates the row, returns processing immediately, and ingests in the background", async () => {
-    vi.mocked(requireAdmin).mockResolvedValue({ id: "u1", role: "admin", isSuperAdmin: false });
+    vi.mocked(requireAdmin).mockResolvedValue({ id: "u1", email: "u1@corp.com", role: "admin", isSuperAdmin: false });
     vi.mocked(ingestExistingDocument).mockResolvedValue({ documentId: "d1", status: "ready", chunkCount: 2, skipped: 0 });
     const res = await POST(uploadReq());
     expect(res.status).toBe(200);

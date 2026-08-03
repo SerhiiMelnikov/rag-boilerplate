@@ -17,14 +17,14 @@ const session = (role?: "admin" | "user") =>
   ) => Promise<RequestSession | null>;
 
 const authUser = (over: Partial<{ role: "admin" | "user"; isSuperAdmin: boolean; blockedAt: Date | null; sessionsValidFrom: Date | null }> = {}) =>
-  vi.fn(async () => ({ id: "u1", role: "user", isSuperAdmin: false, blockedAt: null, sessionsValidFrom: null, ...over })) as unknown as typeof getAuthUserById;
+  vi.fn(async () => ({ id: "u1", email: "u1@corp.com", role: "user", isSuperAdmin: false, blockedAt: null, sessionsValidFrom: null, ...over })) as unknown as typeof getAuthUserById;
 
 describe("requireUser", () => {
   it("throws Unauthorized without a session", async () => {
     await expect(requireUser(req(), { getSession: session(undefined) })).rejects.toBeInstanceOf(UnauthorizedError);
   });
   it("returns the user when authenticated", async () => {
-    expect(await requireUser(req(), { getSession: session("user"), getAuthUser: authUser() })).toEqual({ id: "u1", role: "user", isSuperAdmin: false });
+    expect(await requireUser(req(), { getSession: session("user"), getAuthUser: authUser() })).toEqual({ id: "u1", email: "u1@corp.com", role: "user", isSuperAdmin: false });
   });
   it("throws Unauthorized when the user no longer exists", async () => {
     await expect(requireUser(req(), { getSession: session("user"), getAuthUser: (async () => null) as unknown as typeof getAuthUserById })).rejects.toBeInstanceOf(UnauthorizedError);
@@ -39,7 +39,7 @@ describe("requireAdmin", () => {
     await expect(requireAdmin(req(), { getSession: session("user"), getAuthUser: authUser() })).rejects.toBeInstanceOf(ForbiddenError);
   });
   it("returns the user for an admin", async () => {
-    expect(await requireAdmin(req(), { getSession: session("admin"), getAuthUser: authUser({ role: "admin" }) })).toEqual({ id: "u1", role: "admin", isSuperAdmin: false });
+    expect(await requireAdmin(req(), { getSession: session("admin"), getAuthUser: authUser({ role: "admin" }) })).toEqual({ id: "u1", email: "u1@corp.com", role: "admin", isSuperAdmin: false });
   });
 });
 
@@ -66,7 +66,7 @@ describe("requireUser session cut-off", () => {
 
   const guard = (sessionIssuedAt: number | null, sessionsValidFrom: Date | null) => ({
     getSession: async () => ({ id: "u1", role: "user", isSuperAdmin: false, sessionIssuedAt }),
-    getAuthUser: async () => ({ id: "u1", role: "user" as const, isSuperAdmin: false, blockedAt: null, sessionsValidFrom }),
+    getAuthUser: async () => ({ id: "u1", email: "u1@corp.com", role: "user" as const, isSuperAdmin: false, blockedAt: null, sessionsValidFrom }),
   });
 
   it("accepts any token when the user has no cut-off", async () => {

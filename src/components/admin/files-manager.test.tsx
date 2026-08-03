@@ -8,17 +8,21 @@ const FILES = [
   { id: "d1", kind: "document", filename: "report.pdf", ext: "pdf", status: "ready", error: null, caption: null, createdAt: "2026-01-02T00:00:00Z", workspaces: [{ id: "w1", name: "General", isDefault: true }] },
   { id: "i1", kind: "image", filename: "bike.png", ext: "png", status: "ready", error: null, caption: "a red bicycle", createdAt: "2026-01-01T00:00:00Z", workspaces: [] },
 ];
-// Bigger than one page. Every other fixture here is under DEFAULT_PAGE_SIZE, so
-// nothing exercised a slice — the pagination could have been deleted with the
-// suite green.
-const PAGED_FILES = Array.from({ length: 25 }, (_, i) => ({
+// 60 rows, not 25: at 25 the clamp inside paginate() makes "page 3 of ten" and
+// "page 1 of fifty" the same screen, so the page-size reset test below passed
+// with the reset deleted. Sixty gives fifty-per-page a real second page.
+const PAGED_FILES = Array.from({ length: 60 }, (_, i) => ({
   id: `p${i}`, kind: "document", filename: `paged${String(i).padStart(2, "0")}.pdf`, ext: "pdf",
   status: "ready", error: null, caption: null,
-  createdAt: `2026-02-${String(i + 1).padStart(2, "0")}T00:00:00Z`,
+  // Distinct and ordered without overflowing a month.
+  createdAt: new Date(Date.UTC(2026, 0, 1) + i * 86_400_000).toISOString(),
   workspaces: [{ id: "w1", name: "General", isDefault: true }],
 }));
 
-const WORKSPACES = [{ id: "w1", name: "General", description: null, isDefault: true, createdAt: "2026-01-01T00:00:00Z" }];
+const WORKSPACES = [
+  { id: "w1", name: "General", description: null, isDefault: true, createdAt: "2026-01-01T00:00:00Z" },
+  { id: "w2", name: "Marketing", description: null, isDefault: false, createdAt: "2026-01-02T00:00:00Z" },
+];
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ files: FILES, workspaces: WORKSPACES }) })) as never);
@@ -90,6 +94,71 @@ describe("FilesManager", () => {
     });
   });
 
+  // The regression this branch introduced: `uploadWorkspaceIds` starts as `[]`
+  // until GET /api/admin/workspaces resolves. Before this fix, an upload made
+  // in that window sent a single empty-string `workspaceIds` entry (the same
+  // wire shape as an admin deliberately deselecting everything), which
+  // resolveUploadWorkspaceIds treats as "unassigned" — invisible to retrieval.
+  // Before this branch, an upload with no known workspace always defaulted to
+  // General. The fix is to omit the field entirely while the list is still
+  // unknown, so the handler's absent-means-General path applies.
+  it("omits workspaceIds from an upload made before the workspace list has loaded", async () => {
+    let resolveWorkspaces!: (v: { ok: true; json: () => Promise<{ workspaces: typeof WORKSPACES }> }) => void;
+    const workspacesResponse = new Promise<{ ok: true; json: () => Promise<{ workspaces: typeof WORKSPACES }> }>((resolve) => {
+      resolveWorkspaces = resolve;
+    });
+    global.fetch = vi.fn(async (url: string) => {
+      if (String(url).includes("workspaces")) return workspacesResponse; // never resolves during this test
+      return { ok: true, json: async () => ({ files: FILES }) };
+    }) as unknown as typeof fetch;
+
+    render(<FilesManager />);
+    await screen.findByText("report.pdf"); // the files load does not depend on the workspaces fetch
+
+    const input = screen.getByLabelText("Upload file") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["x"], "n.md", { type: "text/markdown" })] } });
+
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const post = calls.find((c) => (c[1] as { method?: string } | undefined)?.method === "POST");
+      expect(post).toBeDefined();
+      const body = (post![1] as { body: FormData }).body;
+      expect(body.has("workspaceIds")).toBe(false);
+    });
+
+    // Quiet the still-pending promise so it cannot resolve into a later test.
+    resolveWorkspaces({ ok: true, json: async () => ({ workspaces: WORKSPACES }) });
+  });
+
+  // Same regression, the URL-ingest path: the JSON body must not carry
+  // `workspaceIds: []` while the workspace list is still unknown, since that is
+  // indistinguishable on the wire from an admin's deliberate "assign to
+  // nothing".
+  it("omits workspaceIds from a URL ingested before the workspace list has loaded", async () => {
+    let resolveWorkspaces!: (v: { ok: true; json: () => Promise<{ workspaces: typeof WORKSPACES }> }) => void;
+    const workspacesResponse = new Promise<{ ok: true; json: () => Promise<{ workspaces: typeof WORKSPACES }> }>((resolve) => {
+      resolveWorkspaces = resolve;
+    });
+    const calls: { url: string; body: unknown }[] = [];
+    global.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (String(url).includes("workspaces")) return workspacesResponse; // never resolves during this test
+      if (String(url) === "/api/admin/files") return { ok: true, json: async () => ({ files: FILES }) };
+      return { ok: true, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+
+    render(<FilesManager />);
+    await screen.findByText("report.pdf");
+
+    fireEvent.change(screen.getByLabelText("Ingest from URL"), { target: { value: "https://example.com/early" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ingest URL" }));
+
+    const posted = await waitFor(() => calls.find((c) => c.url.includes("/documents/url"))!);
+    expect(posted.body).toEqual({ url: "https://example.com/early" });
+
+    resolveWorkspaces({ ok: true, json: async () => ({ workspaces: WORKSPACES }) });
+  });
+
   it("filters the list to unassigned files", async () => {
     render(<FilesManager />);
     await screen.findByText("report.pdf");
@@ -111,12 +180,45 @@ describe("FilesManager", () => {
       expect(post).toBeDefined();
       const init = post![1] as { method?: string; body?: string };
       expect(init.method).toBe("POST");
-      expect(JSON.parse(init.body!)).toEqual({ url: "https://example.com/article" });
+      // General is preselected by default, so it rides along even though this
+      // test never touches "Upload to" — see the dedicated test below for a
+      // chosen (non-default) workspace actually being honoured.
+      expect(JSON.parse(init.body!)).toEqual({ url: "https://example.com/article", workspaceIds: ["w1"] });
     });
     // Cleared on success, and the list is reloaded (same endpoint the initial mount used).
     await waitFor(() => expect((input as HTMLInputElement).value).toBe(""));
     const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
     expect(calls.filter((c) => c[0] === "/api/admin/files").length).toBeGreaterThanOrEqual(2);
+  });
+
+  // The handler being correct is worth nothing if the client never sends the
+  // field: prove the "Upload to" selection actually leaves the browser on a
+  // URL ingest, not just on a file upload.
+  it("sends the chosen upload workspaces with an ingested URL", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    global.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      return String(url).includes("workspaces")
+        ? { ok: true, json: async () => ({ workspaces: WORKSPACES }) }
+        : { ok: true, json: async () => ({ files: [] }) };
+    }) as unknown as typeof fetch;
+
+    render(<FilesManager />);
+    const trigger = await screen.findByLabelText("Workspaces for upload");
+    // Wait for the default (General) to land before touching the control, so the
+    // deselect click below has something deterministic to act on.
+    await waitFor(() => expect(trigger).toHaveTextContent("General"));
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("option", { name: /General/ })); // deselect the default
+    fireEvent.click(screen.getByRole("option", { name: "Marketing" })); // choose Marketing instead
+    fireEvent.click(trigger); // close the listbox — while open it is modal, and the URL form sits outside it
+    await waitFor(() => expect(screen.queryByRole("option")).toBeNull());
+
+    fireEvent.change(screen.getByLabelText("Ingest from URL"), { target: { value: "https://example.com/a" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ingest URL" }));
+
+    const posted = await waitFor(() => calls.find((c) => c.url.includes("/documents/url"))!);
+    expect(posted.body).toMatchObject({ url: "https://example.com/a", workspaceIds: ["w2"] });
   });
 
   it("shows an error when the URL cannot be ingested", async () => {
@@ -348,26 +450,32 @@ describe("FilesManager", () => {
 
     it("renders one page of ten and says how far through the list it is", async () => {
       render(<FilesManager />);
-      expect(await screen.findByText("paged24.pdf")).toBeInTheDocument();
-      expect(screen.queryByText("paged14.pdf")).toBeNull();
-      expect(screen.getByText("1–10 of 25 files")).toBeInTheDocument();
+      expect(await screen.findByText("paged59.pdf")).toBeInTheDocument();
+      expect(screen.queryByText("paged49.pdf")).toBeNull();
+      expect(screen.getByText("1–10 of 60 files")).toBeInTheDocument();
     });
 
     it("pages forward over the same list", async () => {
       render(<FilesManager />);
       fireEvent.click(await screen.findByLabelText("Next page"));
-      expect(await screen.findByText("paged14.pdf")).toBeInTheDocument();
-      expect(screen.queryByText("paged24.pdf")).toBeNull();
+      expect(await screen.findByText("paged49.pdf")).toBeInTheDocument();
+      expect(screen.queryByText("paged59.pdf")).toBeNull();
     });
 
-    // Asking to see MORE must never land on an emptier screen.
+    // Asking to see MORE must never land on an emptier screen. The second
+    // assertion is the whole test: paged00 is the LAST row of the list, so it
+    // is only on screen if the view stayed on page 2 after the size grew.
     it("returns to the first page when the page size grows", async () => {
       render(<FilesManager />);
       fireEvent.click(await screen.findByLabelText("Next page"));
+      expect(await screen.findByText("paged49.pdf")).toBeInTheDocument();
+
       fireEvent.click(screen.getByLabelText("Rows per page"));
       fireEvent.click(await screen.findByRole("option", { name: "50" }));
-      expect(await screen.findByText("paged24.pdf")).toBeInTheDocument();
-      expect(screen.getByText("1–25 of 25 files")).toBeInTheDocument();
+
+      expect(await screen.findByText("paged59.pdf")).toBeInTheDocument();
+      expect(screen.queryByText("paged00.pdf")).toBeNull();
+      expect(screen.getByText("1–50 of 60 files")).toBeInTheDocument();
     });
   });
 });

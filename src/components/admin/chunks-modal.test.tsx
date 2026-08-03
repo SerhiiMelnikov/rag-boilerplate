@@ -2,6 +2,7 @@
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ChunksModal } from "./chunks-modal";
 
 const doc = { id: "d1", filename: "report.pdf" };
@@ -90,21 +91,28 @@ describe("ChunksModal", () => {
     render(<ChunksModal doc={doc} onClose={onClose} />);
     await screen.findByText(/no chunks yet/i);
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(onClose).toHaveBeenCalled();
+    // Exactly once: this modal used to also carry its own hand-rolled `window`
+    // keydown listener alongside Headless UI's, so Escape fired onClose twice.
+    // `toHaveBeenCalled()` alone would not have caught that regression.
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  // Was a backdrop-click test against this modal's own hand-rolled panel. It now
-  // uses the shared Dialog, so dismissal is Headless UI's — Escape and outside
-  // click both, with a focus trap neither existed before. Escape is what the other
-  // modals' tests drive, and it is the half jsdom can exercise honestly.
-  it("closes on Escape, and stays open while the panel is used", async () => {
+  // Headless UI's outside-click detection listens for pointerdown/pointerup, not
+  // click (see the note on `ChunksModal`), so this must fire those events -- which
+  // is exactly what `userEvent.click` (unlike `fireEvent.click`) does. It also has
+  // to land on an element genuinely outside the dialog panel: `getByRole("dialog")`
+  // would not do, since Headless UI puts that role on the dialog's root, which sits
+  // outside the panel too and proves nothing either way.
+  it("closes on an outside pointer interaction, and stays open while the panel is used", async () => {
     vi.stubGlobal("fetch", stubFetch({ 0: { rows: [], total: 0 } }) as never);
     const onClose = vi.fn();
     render(<ChunksModal doc={doc} onClose={onClose} />);
     await screen.findByText(/no chunks yet/i);
-    fireEvent.click(screen.getByRole("dialog"));
+
+    await userEvent.click(screen.getByText(/no chunks yet/i));
     expect(onClose).not.toHaveBeenCalled();
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(onClose).toHaveBeenCalled();
+
+    await userEvent.click(document.body);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

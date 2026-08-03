@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
+import { eq } from "drizzle-orm";
+import { conversations } from "@/lib/db/schema";
 import {
   createWorkspace, updateWorkspace, deleteWorkspace,
   listWorkspaceUsers, setWorkspaceGrant,
@@ -7,12 +9,27 @@ import {
 
 // Fake db: `found` is the row loadWorkspace() reads (null = not found);
 // `insertReturns` is what insert().returning() yields ([] = unique conflict);
-// `clash` is the rename collision probe row (null = no clash).
-// Returns { db, set, del } rather than stashing the spies on the db object
-// itself, so callers get properly typed handles instead of casting db back.
-function fakeDb(opts: { found?: { id: string; isDefault: boolean } | null; insertReturns?: { id: string }[]; clash?: { id: string } | null } = {}) {
-  const set = vi.fn(() => ({ where: async () => {} }));
+// `clash` is the rename collision probe row (null = no clash);
+// `defaultId` is the id the transaction's fallback-workspace probe returns
+// (undefined = not found, exercising the seed:admin guard).
+// Returns { db, set, del, order, updateWheres } rather than stashing the spies
+// on the db object itself, so callers get properly typed handles instead of
+// casting db back.
+function fakeDb(opts: { found?: { id: string; isDefault: boolean } | null; insertReturns?: { id: string }[]; clash?: { id: string } | null; defaultId?: string } = {}) {
+  // Captures every `.where(...)` condition an `update(...).set(...)` call was
+  // given, in call order. Without this, deleting the `.where(eq(conversations.
+  // workspaceId, id))` scope from deleteWorkspace's reassignment would leave
+  // every test in this file green — `set` having been called with the right
+  // PATCH says nothing about which rows it was applied to.
+  const updateWheres: unknown[] = [];
+  const set = vi.fn(() => ({
+    where: (w: unknown) => { updateWheres.push(w); return Promise.resolve(); },
+  }));
   const del = vi.fn(() => ({ where: async () => {} }));
+  // Which statement ran first. deleteWorkspace's correctness is an ordering
+  // property, and an assertion on two spies having both been called cannot
+  // tell the right order from the fatal one.
+  const order: string[] = [];
   let selectCall = 0;
   const db = {
     select: () => ({
@@ -31,10 +48,18 @@ function fakeDb(opts: { found?: { id: string; isDefault: boolean } | null; inser
     update: () => ({ set }),
     delete: del,
   };
+  // The transaction's own handle: the default-workspace probe is the only
+  // select it makes.
+  const tx = {
+    select: () => ({ from: () => ({ where: () => ({ limit: async () => (opts.defaultId ? [{ id: opts.defaultId }] : []) }) }) }),
+    update: () => { order.push("update"); return { set }; },
+    delete: (...args: unknown[]) => { order.push("delete"); return del(...(args as [])); },
+  };
+  const dbWithTx = { ...db, transaction: async (fn: (t: typeof tx) => Promise<void>) => fn(tx) };
   // Deliberate: this fake only implements the handful of Drizzle calls each
   // function under test actually makes, not the full `typeof defaultDb`
   // surface — `never` (not `any`) bridges it.
-  return { db: db as never, set, del };
+  return { db: dbWithTx as never, set, del, order, updateWheres };
 }
 
 describe("createWorkspace", () => {
@@ -76,9 +101,27 @@ describe("deleteWorkspace", () => {
     await expect(deleteWorkspace("w1", fakeDb({ found: { id: "w1", isDefault: true } }).db)).rejects.toBeInstanceOf(DefaultWorkspaceProtectedError);
   });
   it("deletes a normal workspace", async () => {
-    const { db, del } = fakeDb();
+    const { db, del } = fakeDb({ defaultId: "general" });
     await deleteWorkspace("w1", db);
     expect(del).toHaveBeenCalled();
+  });
+  it("moves the workspace's conversations to General before deleting it", async () => {
+    const { db, set, order, updateWheres } = fakeDb({ defaultId: "general" });
+    await deleteWorkspace("w1", db);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "general" }));
+    // The decisive part of the review finding: the reassignment must be scoped
+    // to THIS workspace's conversations, not every conversation in the table.
+    // `set` having been called with the right patch proves nothing about which
+    // rows it touched — only the captured WHERE does.
+    expect(updateWheres).toEqual([eq(conversations.workspaceId, "w1")]);
+    // The delete nulls the column through the FK, so a reassignment running
+    // after it would find nothing left to reassign.
+    expect(order).toEqual(["update", "delete"]);
+  });
+  it("refuses to delete when the default workspace is missing", async () => {
+    const { db, del } = fakeDb({}); // no defaultId => the probe returns []
+    await expect(deleteWorkspace("w1", db)).rejects.toThrow(/seed:admin/);
+    expect(del).not.toHaveBeenCalled();
   });
 });
 

@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { requirePageAdmin } from "../../guards";
 import {
   getFeedbackSummary,
   getRecentNegative,
@@ -14,8 +13,7 @@ import { DocumentQualityTable } from "@/components/admin/analytics/document-qual
 import { TrendBars } from "@/components/admin/analytics/trend-bars";
 
 export default async function AnalyticsPage() {
-  const session = await auth();
-  if (session?.user?.role !== "admin") redirect("/");
+  await requirePageAdmin();
   const [summary, negatives, docs, trend] = await Promise.all([
     getFeedbackSummary(),
     getRecentNegative(20),

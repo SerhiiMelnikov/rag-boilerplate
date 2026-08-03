@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { requirePageAdmin } from "../../guards";
 import { getUsageSummary, getUsageByUser, getUsageByWorkspace, getUsageTrend, USAGE_WINDOW_DAYS } from "@/lib/analytics/usage";
 import { PageHeader, PageBody } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -8,8 +7,7 @@ import { UsageTable } from "@/components/admin/usage/usage-table";
 import { UsageTrend } from "@/components/admin/usage/usage-trend";
 
 export default async function UsagePage() {
-  const session = await auth();
-  if (session?.user?.role !== "admin") redirect("/");
+  await requirePageAdmin();
   const [summary, byUser, byWorkspace, trend] = await Promise.all([
     getUsageSummary(), getUsageByUser(), getUsageByWorkspace(), getUsageTrend(),
   ]);

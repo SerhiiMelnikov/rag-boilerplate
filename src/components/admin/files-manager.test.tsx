@@ -8,6 +8,16 @@ const FILES = [
   { id: "d1", kind: "document", filename: "report.pdf", ext: "pdf", status: "ready", error: null, caption: null, createdAt: "2026-01-02T00:00:00Z", workspaces: [{ id: "w1", name: "General", isDefault: true }] },
   { id: "i1", kind: "image", filename: "bike.png", ext: "png", status: "ready", error: null, caption: "a red bicycle", createdAt: "2026-01-01T00:00:00Z", workspaces: [] },
 ];
+// Bigger than one page. Every other fixture here is under DEFAULT_PAGE_SIZE, so
+// nothing exercised a slice — the pagination could have been deleted with the
+// suite green.
+const PAGED_FILES = Array.from({ length: 25 }, (_, i) => ({
+  id: `p${i}`, kind: "document", filename: `paged${String(i).padStart(2, "0")}.pdf`, ext: "pdf",
+  status: "ready", error: null, caption: null,
+  createdAt: `2026-02-${String(i + 1).padStart(2, "0")}T00:00:00Z`,
+  workspaces: [{ id: "w1", name: "General", isDefault: true }],
+}));
+
 const WORKSPACES = [{ id: "w1", name: "General", description: null, isDefault: true, createdAt: "2026-01-01T00:00:00Z" }];
 
 beforeEach(() => {
@@ -327,5 +337,37 @@ describe("FilesManager", () => {
     expect((screen.getByLabelText("Search files") as HTMLInputElement).value).toBe("");
     expect(screen.getByLabelText("Filter by type")).toHaveTextContent("all");
     expect(screen.getByLabelText("Filter by workspace")).toHaveTextContent("all");
+  });
+
+  describe("pagination", () => {
+    beforeEach(() => {
+      global.fetch = vi.fn(async (url: string) => (String(url).includes("workspaces")
+        ? { ok: true, json: async () => ({ workspaces: WORKSPACES }) }
+        : { ok: true, json: async () => ({ files: PAGED_FILES }) })) as unknown as typeof fetch;
+    });
+
+    it("renders one page of ten and says how far through the list it is", async () => {
+      render(<FilesManager />);
+      expect(await screen.findByText("paged24.pdf")).toBeInTheDocument();
+      expect(screen.queryByText("paged14.pdf")).toBeNull();
+      expect(screen.getByText("1–10 of 25 files")).toBeInTheDocument();
+    });
+
+    it("pages forward over the same list", async () => {
+      render(<FilesManager />);
+      fireEvent.click(await screen.findByLabelText("Next page"));
+      expect(await screen.findByText("paged14.pdf")).toBeInTheDocument();
+      expect(screen.queryByText("paged24.pdf")).toBeNull();
+    });
+
+    // Asking to see MORE must never land on an emptier screen.
+    it("returns to the first page when the page size grows", async () => {
+      render(<FilesManager />);
+      fireEvent.click(await screen.findByLabelText("Next page"));
+      fireEvent.click(screen.getByLabelText("Rows per page"));
+      fireEvent.click(await screen.findByRole("option", { name: "50" }));
+      expect(await screen.findByText("paged24.pdf")).toBeInTheDocument();
+      expect(screen.getByText("1–25 of 25 files")).toBeInTheDocument();
+    });
   });
 });

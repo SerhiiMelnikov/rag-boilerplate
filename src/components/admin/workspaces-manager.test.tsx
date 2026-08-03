@@ -4,6 +4,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { WorkspacesManager, editIntent } from "./workspaces-manager";
 
+// Bigger than one page, for the same reason as the other two admin screens.
+const PAGED_WORKSPACES = Array.from({ length: 25 }, (_, i) => ({
+  id: `p${i}`, name: `Paged ${String(i).padStart(2, "0")}`, description: null,
+  isDefault: false, createdAt: `2026-02-${String(i + 1).padStart(2, "0")}T00:00:00Z`,
+}));
+
 const WORKSPACES = [
   { id: "w1", name: "General", description: null, isDefault: true, createdAt: "2026-01-01T00:00:00Z" },
   { id: "w2", name: "Marketing", description: "team space", isDefault: false, createdAt: "2026-01-02T00:00:00Z" },
@@ -240,5 +246,25 @@ describe("editIntent", () => {
   it("abandons a locked row whose description also did not change", () => {
     expect(editIntent({ name: "General", description: "" }, { name: "General", description: null }, { cancelled: false, nameLocked: true }))
       .toEqual({ kind: "abandon" });
+  });
+});
+
+describe("pagination", () => {
+  beforeEach(() => {
+    global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ workspaces: PAGED_WORKSPACES }) })) as unknown as typeof fetch;
+  });
+
+  it("renders one page of ten and says how far through the list it is", async () => {
+    render(<WorkspacesManager />);
+    expect(await screen.findByText("Paged 00")).toBeInTheDocument();
+    expect(screen.queryByText("Paged 10")).toBeNull();
+    expect(screen.getByText("1–10 of 25 workspaces")).toBeInTheDocument();
+  });
+
+  it("pages forward over the same list", async () => {
+    render(<WorkspacesManager />);
+    fireEvent.click(await screen.findByLabelText("Next page"));
+    expect(await screen.findByText("Paged 10")).toBeInTheDocument();
+    expect(screen.queryByText("Paged 00")).toBeNull();
   });
 });

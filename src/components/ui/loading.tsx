@@ -14,25 +14,28 @@ export function Loading({
   inline = false,
   className,
 }: {
-  /** Announced to screen readers, and shown beside the spinner when not inline. */
+  /** Announced to screen readers, and shown beside the spinner. */
   label?: string;
   /** For a modal body or a table cell, where a full block of padding would be absurd. */
   inline?: boolean;
   className?: string;
 }) {
+  // `role="status"` belongs on the wrapper, whose text content IS the label. The
+  // spinner is `decorative` for the same reason: left announcing, it would say the
+  // same words a second time. An earlier attempt passed `aria-hidden` to Spinner
+  // from here — that type-checks (JSX exempts `aria-*` from excess-property
+  // checking) and does nothing, because Spinner forwards no props.
   if (inline) {
     return (
-      <span className={cn("inline-flex items-center gap-2 text-sm text-ink-muted", className)}>
-        {/* The label is visible text right here, so the spinner must not announce it
-            too — otherwise every loading state on the branch says it twice. */}
-        <Spinner label={label} aria-hidden="true" />
+      <span role="status" className={cn("inline-flex items-center gap-2 text-sm text-ink-muted", className)}>
+        <Spinner decorative />
         {label}
       </span>
     );
   }
   return (
-    <div className={cn("flex items-center justify-center gap-2 px-6 py-14 text-sm text-ink-muted", className)}>
-      <Spinner label={label} aria-hidden="true" />
+    <div role="status" className={cn("flex items-center justify-center gap-2 px-6 py-14 text-sm text-ink-muted", className)}>
+      <Spinner decorative />
       {label}
     </div>
   );

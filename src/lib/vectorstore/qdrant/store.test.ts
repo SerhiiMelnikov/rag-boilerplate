@@ -1,21 +1,33 @@
 import { describe, it, expect, vi, type Mock } from "vitest";
+import type { QdrantClient } from "@qdrant/js-client-rest";
 import { createQdrantStore } from "./store";
 
+// QdrantClient["upsert"]'s parameter type is a batch-or-list union
+// (Schemas.PointInsertOperations) that doesn't narrow at the `arg.points`
+// assertion below, and its return type (Schemas.UpdateResult) requires a
+// `status` field the store never reads. Hand-written from the actual call
+// site in store.ts — `client.upsert(collection, { wait, points })` always
+// uses the "points" list variant, never the "batch" one.
+type FakeUpsert = (
+  collectionName: string,
+  args: { wait?: boolean; points: { id: string | number; vector: number[]; payload?: Record<string, unknown> }[] },
+) => Promise<{ status: string }>;
+
 // Deliberate: QdrantClient (the real param type) is the full third-party SDK
-// client; this fake only implements the four calls the store actually makes.
+// client; this fake only implements the five calls the store actually makes.
 // `never` (not `any`) bridges it at each call site below.
 interface FakeQdrantClient {
-  upsert: Mock;
-  delete: Mock;
-  query: Mock;
-  scroll: Mock;
-  count: Mock;
+  upsert: Mock<FakeUpsert>;
+  delete: Mock<QdrantClient["delete"]>;
+  query: Mock<QdrantClient["query"]>;
+  scroll: Mock<QdrantClient["scroll"]>;
+  count: Mock<QdrantClient["count"]>;
 }
 
 function fakeClient(over: Partial<FakeQdrantClient> = {}): FakeQdrantClient {
   return {
-    upsert: vi.fn(async () => ({})),
-    delete: vi.fn(async () => ({})),
+    upsert: vi.fn(async () => ({ status: "completed" as const })),
+    delete: vi.fn(async () => ({ status: "completed" as const })),
     query: vi.fn(async () => ({ points: [] })),
     scroll: vi.fn(async () => ({ points: [], next_page_offset: null })),
     count: vi.fn(async () => ({ count: 0 })),
@@ -44,7 +56,8 @@ describe("qdrant store", () => {
   it("searchVector maps query() points to RetrievedChunk (score = cosine)", async () => {
     const client = fakeClient({
       query: vi.fn(async () => ({ points: [
-        { id: "p1", score: 0.87, payload: { documentId: "d1", content: "hi", filename: "f.md", contentHash: "h1" } },
+        // version is required by the real ScoredPoint type but unused by toChunk.
+        { id: "p1", version: 1, score: 0.87, payload: { documentId: "d1", content: "hi", filename: "f.md", contentHash: "h1" } },
       ] })),
     });
     const out = await createQdrantStore(client as never, "c").searchVector([0.1], 5);
@@ -53,7 +66,8 @@ describe("qdrant store", () => {
 
   it("existingHashes scrolls by documentId and collects contentHash", async () => {
     const client = fakeClient({
-      scroll: vi.fn(async () => ({ points: [{ payload: { contentHash: "h1" } }, { payload: { contentHash: "h2" } }], next_page_offset: null })),
+      // id is required by the real Record (point) type but unused by existingHashes.
+      scroll: vi.fn(async () => ({ points: [{ id: "p1", payload: { contentHash: "h1" } }, { id: "p2", payload: { contentHash: "h2" } }], next_page_offset: null })),
     });
     const out = await createQdrantStore(client as never, "c").existingHashes("d1");
     expect([...out].sort()).toEqual(["h1", "h2"]);
@@ -85,7 +99,9 @@ describe("qdrant store", () => {
     const client = fakeClient({ query: vi.fn(async () => ({ points: [] })) });
     await createQdrantStore(client as never, "c").searchKeyword("hello", [0.1], 5, ["d1"]);
     const args = client.query.mock.calls[0][1];
-    expect(args.filter.must).toEqual(
+    // filter is optional on the real query() args type; this call site always
+    // supplies one, so `?.` merely satisfies that without loosening the check.
+    expect(args.filter?.must).toEqual(
       expect.arrayContaining([
         { key: "content", match: { text: "hello" } },
         { key: "documentId", match: { any: ["d1"] } },

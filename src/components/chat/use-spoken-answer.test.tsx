@@ -45,13 +45,25 @@ describe("useSpokenAnswer", () => {
     expect(engine.speak).not.toHaveBeenCalled();
   });
 
-  it("cancels and speaks nothing already on screen when switched on mid-answer", () => {
+  it("speaks nothing already on screen when switched on mid-answer, only what's new after", () => {
     const engine = fakeEngine();
     const { rerender } = render(<Host {...base} enabled={false} answer="One. Two." engine={engine} />);
     rerender(<Host {...base} enabled answer="One. Two." engine={engine} />);
     expect(engine.speak).not.toHaveBeenCalled();
     rerender(<Host {...base} enabled answer="One. Two. Three." engine={engine} />);
     expect(engine.speak.mock.calls.map((c) => c[0])).toEqual(["Three."]);
+  });
+
+  // Regression: the adopt branch must use the SAME flush flag as the speak loop.
+  // Adopting with flush:false while the speak loop below uses flush:!streaming
+  // (true here, since status is "ready") made the two disagree by exactly the
+  // trailing fragment — the adopt branch didn't count "Hello" as spoken, so the
+  // speak loop immediately spoke the whole answer that was already on screen.
+  it("adopts a flushed trailing fragment too when switched on while not streaming", () => {
+    const engine = fakeEngine();
+    const { rerender } = render(<Host {...base} status="ready" enabled={false} answer="Hello" engine={engine} />);
+    rerender(<Host {...base} status="ready" enabled answer="Hello" engine={engine} />);
+    expect(engine.speak).not.toHaveBeenCalled();
   });
 
   it("cancels the moment a new message is sent, before the next answer exists", () => {

@@ -398,7 +398,10 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("charged — so the available voices are whatever the operating system provides.");
   lines.push("The button is hidden entirely on a browser with no voice installed. The choice");
   lines.push("is remembered per device rather than per account, so enabling it on a phone");
-  lines.push("does not make a shared desktop start talking.");
+  lines.push("does not make a shared desktop start talking. A snap- or flatpak-confined");
+  lines.push("browser (Ubuntu's default Chromium install, notably) can't reach the system's");
+  lines.push("speech engine and reports no voices either — install a distribution-packaged");
+  lines.push("browser to get the button back.");
   lines.push("");
 
   return lines.join("\n");

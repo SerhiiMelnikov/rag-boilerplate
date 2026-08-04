@@ -60,7 +60,10 @@ The generated app includes:
   charged — so the available voices are whatever the operating system provides.
   The button is hidden entirely on a browser with no voice installed. The choice
   is remembered per device rather than per account, so enabling it on a phone
-  does not make a shared desktop start talking.
+  does not make a shared desktop start talking. A snap- or flatpak-confined
+  browser (Ubuntu's default Chromium install, notably) can't reach the system's
+  speech engine and reports no voices either — install a distribution-packaged
+  browser to get the button back.
 - Workspaces: group documents and images, grant users access, and scope the
   assistant's answers to the active workspace plus the always-available General
   one (a file can belong to several workspaces)

@@ -10,26 +10,44 @@ describe("completedSentences", () => {
     expect(completedSentences("One. Two", { flush: true })).toEqual(["One.", "Two"]);
   });
 
-  it("treats the end of input as an end when it terminates", () => {
-    expect(completedSentences("Only one.")).toEqual(["Only one."]);
+  // RETARGETED: this used to assert the opposite — that the end of arrived text
+  // WAS treated as a sentence end even without flush ("Only one." -> ["Only
+  // one."]). That was the bug: completedSentences is called on a growing prefix
+  // while streaming, and "end of arrived text" is indistinguishable from "a
+  // delta boundary landed here" — a URL cut off mid-domain looks identical at
+  // that instant. Now the end of arrived text is withheld unless the caller is
+  // flushing, matching the same rule the decimal/version case already relied on.
+  it("withholds the trailing sentence at end of input unless flushing", () => {
+    expect(completedSentences("Only one.")).toEqual([]);
+    expect(completedSentences("Only one.", { flush: true })).toEqual(["Only one."]);
   });
 
-  // The reason this function exists rather than a bare split on ".".
+  // The reason this function exists rather than a bare split on ".". flush: true
+  // here because the trailing sentence in each of these is at the very end of the
+  // input, and end-of-input is only a sentence end when the caller is flushing
+  // (see "withholds the trailing sentence at end of input" above) — these tests
+  // are about the decimal/version/abbreviation/initial logic, not about flush.
   it("does not end a sentence inside a decimal or a version", () => {
-    expect(completedSentences("It scored 3.5 today.")).toEqual(["It scored 3.5 today."]);
-    expect(completedSentences("Use v1.2 now.")).toEqual(["Use v1.2 now."]);
+    expect(completedSentences("It scored 3.5 today.", { flush: true })).toEqual(["It scored 3.5 today."]);
+    expect(completedSentences("Use v1.2 now.", { flush: true })).toEqual(["Use v1.2 now."]);
   });
 
   it("does not end a sentence at a known abbreviation", () => {
-    expect(completedSentences("Use it, e.g. here. Done.")).toEqual(["Use it, e.g. here.", "Done."]);
+    expect(completedSentences("Use it, e.g. here. Done.", { flush: true })).toEqual([
+      "Use it, e.g. here.",
+      "Done.",
+    ]);
   });
 
   it("does not end a sentence at a single-letter initial", () => {
-    expect(completedSentences("Ask A. Smith first. Then go.")).toEqual(["Ask A. Smith first.", "Then go."]);
+    expect(completedSentences("Ask A. Smith first. Then go.", { flush: true })).toEqual([
+      "Ask A. Smith first.",
+      "Then go.",
+    ]);
   });
 
   it("treats a blank line as an end, so a heading is spoken as its own unit", () => {
-    expect(completedSentences("Setup\n\nRun the script.")).toEqual(["Setup", "Run the script."]);
+    expect(completedSentences("Setup\n\nRun the script.", { flush: true })).toEqual(["Setup", "Run the script."]);
   });
 
   // The property the hook depends on: growth must not change what was already complete.
@@ -82,7 +100,7 @@ describe("completedSentences", () => {
   // far more common in a document-grounded assistant's answers; withholding it
   // until flush was the wrong tradeoff, so "no" was removed from the set.
   it("does not treat a sentence-ending 'No.' as the numero abbreviation", () => {
-    expect(completedSentences("Is it possible? No. Try again.")).toEqual([
+    expect(completedSentences("Is it possible? No. Try again.", { flush: true })).toEqual([
       "Is it possible?",
       "No.",
       "Try again.",

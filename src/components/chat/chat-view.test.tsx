@@ -365,22 +365,29 @@ describe("ChatView", () => {
     await waitFor(() => expect(historyCalls).toBe(1)); // the mount load settles first
 
     // A live turn: the question is sent, then the answer streams in under ai-sdk's
-    // own (never-persisted) id.
+    // own (never-persisted) id. Its only sentence sits at the very end of the
+    // arrived text, which sentences.ts now withholds while status is "streaming"
+    // (end of arrived text is indistinguishable from a delta boundary) — it is
+    // not spoken yet here, only once the turn finishes and flush picks it up below.
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
     chatState.status = "streaming";
     chatState.messages = liveMessages;
     rerender(<ChatView initialConversationId="c1" />);
+
+    // The turn finishes: status reaches "ready", which both flushes the withheld
+    // sentence above (legitimate — the turn is genuinely over) and, separately,
+    // fires ChatView's history refetch that swaps the live id for the database's.
+    // The two are asserted apart so the refetch's effect isn't mistaken for the
+    // flush's.
+    chatState.status = "ready";
+    rerender(<ChatView initialConversationId="c1" />);
     await waitFor(() => expect(speak).toHaveBeenCalled());
-    // Both calls so far are legitimate (the toggle turning on, the turn actually
-    // starting) — clear them so what's asserted below is only what happens because
-    // of the id swap itself, not noise from getting to that point.
+    // The call above is legitimate (the turn actually finishing) — clear it so
+    // what's asserted below is only what happens because of the id swap itself,
+    // not noise from getting to that point.
     speak.mockClear();
     cancel.mockClear();
 
-    // The turn finishes; ChatView's own effect refetches history, which swaps the
-    // live id for the database's.
-    chatState.status = "ready";
-    rerender(<ChatView initialConversationId="c1" />);
     await waitFor(() => expect(setMessagesMock).toHaveBeenCalledWith(persistedMessages));
 
     // The id swap must not look like a new turn: nothing gets cancelled, and the

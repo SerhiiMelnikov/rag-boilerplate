@@ -20,7 +20,9 @@ describe("useSpokenAnswer", () => {
   it("speaks each finished sentence exactly once as the answer grows", () => {
     const engine = fakeEngine();
     const { rerender } = render(<Host {...base} answer="One." engine={engine} />);
-    rerender(<Host {...base} answer="One. Two." engine={engine} />);
+    // "Th" trailing so "Two." is confirmed rather than sitting at the very end
+    // of arrived text (withheld while streaming; see sentences.ts).
+    rerender(<Host {...base} answer="One. Two. Th" engine={engine} />);
     expect(engine.speak.mock.calls.map((c) => c[0])).toEqual(["One.", "Two."]);
   });
 
@@ -28,7 +30,11 @@ describe("useSpokenAnswer", () => {
     const engine = fakeEngine();
     const { rerender } = render(<Host {...base} answer="One. Tw" engine={engine} />);
     expect(engine.speak.mock.calls.map((c) => c[0])).toEqual(["One."]);
-    rerender(<Host {...base} answer="One. Two." engine={engine} />);
+    // "One. Two." alone would leave "Two." at the very end of arrived text, which
+    // is now withheld while streaming (see sentences.ts): the end of arrived text
+    // is indistinguishable from a delta boundary, so growth has to confirm it —
+    // hence "Th" following, rather than the stream stopping right on the period.
+    rerender(<Host {...base} answer="One. Two. Th" engine={engine} />);
     expect(engine.speak.mock.calls.map((c) => c[0])).toEqual(["One.", "Two."]);
   });
 
@@ -45,12 +51,32 @@ describe("useSpokenAnswer", () => {
     expect(engine.speak).not.toHaveBeenCalled();
   });
 
+  // Regression: cancel() used to live in the effect keyed on [answer, status,
+  // enabled, active], so every streamed token re-ran it while disabled — a
+  // per-token browser-API call for a feature nobody enabled. It must now be its
+  // own effect keyed on [enabled, active], so it fires once for the toggle
+  // staying off across a whole streamed answer, not once per token.
+  it("does not call cancel per streamed token while disabled", () => {
+    const engine = fakeEngine();
+    const { rerender } = render(<Host {...base} enabled={false} answer="One." engine={engine} />);
+    engine.cancel.mockClear();
+    rerender(<Host {...base} enabled={false} answer="One. Tw" engine={engine} />);
+    rerender(<Host {...base} enabled={false} answer="One. Two." engine={engine} />);
+    rerender(<Host {...base} enabled={false} status="ready" answer="One. Two." engine={engine} />);
+    expect(engine.cancel).not.toHaveBeenCalled();
+  });
+
   it("speaks nothing already on screen when switched on mid-answer, only what's new after", () => {
     const engine = fakeEngine();
-    const { rerender } = render(<Host {...base} enabled={false} answer="One. Two." engine={engine} />);
-    rerender(<Host {...base} enabled answer="One. Two." engine={engine} />);
+    // "Th" trailing, not a bare "One. Two.": the toggle must land after "Two." is
+    // actually confirmed (a delta arrived past its period), not while it still
+    // sits at the very end of arrived text — that instant is withheld either way
+    // (see sentences.ts), so landing exactly there would make this test about
+    // the boundary rather than about the adopt-on-toggle behavior it names.
+    const { rerender } = render(<Host {...base} enabled={false} answer="One. Two. Th" engine={engine} />);
+    rerender(<Host {...base} enabled answer="One. Two. Th" engine={engine} />);
     expect(engine.speak).not.toHaveBeenCalled();
-    rerender(<Host {...base} enabled answer="One. Two. Three." engine={engine} />);
+    rerender(<Host {...base} enabled answer="One. Two. Three. Four" engine={engine} />);
     expect(engine.speak.mock.calls.map((c) => c[0])).toEqual(["Three."]);
   });
 
@@ -87,7 +113,9 @@ describe("useSpokenAnswer", () => {
     const engine = fakeEngine();
     const { rerender } = render(<Host {...base} answer="One. Two." engine={engine} />);
     engine.speak.mockClear();
-    rerender(<Host {...base} turnKey="m2" answer="Fresh." engine={engine} />);
+    // "More" trailing so "Fresh." is confirmed rather than sitting at the very
+    // end of arrived text (withheld while streaming; see sentences.ts).
+    rerender(<Host {...base} turnKey="m2" answer="Fresh. More" engine={engine} />);
     expect(engine.cancel).toHaveBeenCalled();
     expect(engine.speak.mock.calls.map((c) => c[0])).toEqual(["Fresh."]);
   });
@@ -101,7 +129,11 @@ describe("useSpokenAnswer", () => {
 
   it("strips markdown before speaking", () => {
     const engine = fakeEngine();
-    render(<Host {...base} answer="**Bold** and [a link](https://x.test)." engine={engine} />);
+    // status "ready": the answer's own trailing period sits at the very end of
+    // the text, which is withheld while streaming (see sentences.ts) — this test
+    // is about stripping, not about streaming, so it renders a stream that has
+    // already finished.
+    render(<Host {...base} status="ready" answer="**Bold** and [a link](https://x.test)." engine={engine} />);
     expect(engine.speak.mock.calls[0][0]).toBe("Bold and a link.");
   });
 

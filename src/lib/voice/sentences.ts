@@ -16,14 +16,27 @@
 // withholding it until flush was the wrong tradeoff.
 const ABBREVIATIONS = new Set(["e.g", "i.e", "etc", "vs", "dr", "mr", "mrs", "ms", "prof", "fig", "approx"]);
 
-function isSentenceEnd(text: string, i: number): boolean {
+function isSentenceEnd(text: string, i: number, flush: boolean): boolean {
   const ch = text[i];
   if (ch !== "." && ch !== "!" && ch !== "?" && ch !== "…") return false;
 
-  // "3.5" and "v1.2": a terminator glued to what follows is not one. End of input
-  // counts as whitespace — that is the common case when the answer is complete.
+  // "3.5" and "v1.2": a terminator glued to what follows is not one.
   const next = text[i + 1];
   if (next !== undefined && !/\s/.test(next)) return false;
+
+  // The end of arrived text is NOT a sentence end unless the caller is flushing.
+  // It is tempting to treat it as implicit whitespace (the common case when the
+  // answer is complete), but this function is called on a growing prefix while
+  // streaming, and "end of arrived text" is indistinguishable from "a delta
+  // boundary landed here" — the case that matters is a terminator glued to
+  // something that has not arrived yet, like a URL cut off mid-domain ("...
+  // docs." with ".example.com/x" still in flight) or a decimal/version number
+  // ("3." before "5" arrives). Guessing "sentence end" here and being wrong
+  // changes an already-returned element once the rest arrives, which is exactly
+  // the stability the caller depends on. This one rule subsumes the old
+  // digit-glued special case: withhold until flush, which still returns the
+  // tail via its own fallback below if the stream really did end here.
+  if (next === undefined && !flush) return false;
 
   if (ch === ".") {
     const before = text.slice(0, i);
@@ -32,17 +45,6 @@ function isSentenceEnd(text: string, i: number): boolean {
       const token = m[1].toLowerCase().replace(/\.$/, "");
       if (token.length === 1) return false; // an initial: "Ask A. Smith"
       if (ABBREVIATIONS.has(token)) return false; // "e.g." / "etc."
-    } else if (next === undefined && /\d$/.test(before)) {
-      // A digit sits right before the dot, and nothing has arrived after it yet.
-      // "End of input counts as whitespace" (above) cannot be trusted here: this
-      // is exactly what a decimal or version number looks like the instant the
-      // stream pauses between "3." and "3.5" — the digit-glued case a few lines
-      // up only catches it once the "5" has actually arrived. Treating this as a
-      // sentence end would let a growing "3." (withheld) turn into "3.5 today."
-      // (a single, different sentence), changing an already-returned element —
-      // exactly the stability the caller depends on. Withhold; flush's own
-      // tail-fallback below still returns it if the stream really did end here.
-      return false;
     }
   }
   return true;
@@ -51,9 +53,10 @@ function isSentenceEnd(text: string, i: number): boolean {
 export function completedSentences(text: string, opts: { flush?: boolean } = {}): string[] {
   const out: string[] = [];
   let start = 0;
+  const flush = opts.flush ?? false;
 
   for (let i = 0; i < text.length; i++) {
-    if (isSentenceEnd(text, i)) {
+    if (isSentenceEnd(text, i, flush)) {
       const piece = text.slice(start, i + 1).trim();
       if (piece) out.push(piece);
       start = i + 1;
@@ -70,7 +73,7 @@ export function completedSentences(text: string, opts: { flush?: boolean } = {})
 
   // Everything after the last boundary is the unfinished tail: withheld while the
   // answer streams, returned once the caller says the stream is over.
-  if (opts.flush) {
+  if (flush) {
     const tail = text.slice(start).trim();
     if (tail) out.push(tail);
   }

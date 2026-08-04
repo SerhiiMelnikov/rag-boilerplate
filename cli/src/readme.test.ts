@@ -93,6 +93,8 @@ describe("generateReadme guidance", () => {
     expect(full).toMatch(/no API key/i);
     expect(full).toMatch(/hidden entirely/i);          // no voice installed -> no button
     expect(full).toMatch(/per device/i);                // not per account
+    expect(full).toMatch(/flatpak-confined/i);          // snap/flatpak browsers can't reach the system voice
+    expect(full).toMatch(/distribution-packaged/i);     // the remedy: install a distro-packaged browser
 
     const api = generateReadme(opts({ appKind: "api" }));
     expect(api).not.toContain("## Voice");

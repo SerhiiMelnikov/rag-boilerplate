@@ -245,4 +245,24 @@ describe("ChatView", () => {
     // The composer is present with no conversation selected — that is the point.
     expect(screen.getByLabelText("Message")).toBeInTheDocument();
   });
+
+  it("does not offer the toggle when the browser has no voices", () => {
+    render(<ChatView initialConversationId="c1" />); // jsdom has no speechSynthesis
+    expect(screen.queryByRole("button", { name: /speak answers/i })).toBeNull();
+  });
+
+  it("remembers the choice across a remount", async () => {
+    vi.stubGlobal("speechSynthesis", {
+      getVoices: () => [{ name: "Alex" }],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      speak: vi.fn(),
+      cancel: vi.fn(),
+    });
+    const { unmount } = render(<ChatView initialConversationId="c1" />);
+    fireEvent.click(await screen.findByRole("button", { name: /speak answers aloud/i }));
+    unmount();
+    render(<ChatView initialConversationId="c1" />);
+    expect(await screen.findByRole("button", { name: /stop speaking answers/i })).toBeInTheDocument();
+  });
 });

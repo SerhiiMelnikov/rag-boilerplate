@@ -25,6 +25,11 @@ const API_ONLY_DELETE_PATHS = [
   "src/auth.ts",
   "src/auth.config.ts",
   "src/types/next-auth.d.ts",
+  // Browser-only speech-synthesis helpers. Their only caller is
+  // src/components/chat (the toggle, the streaming-speech hook), which is
+  // already deleted above — left in place, this directory would ship as dead
+  // code with nothing in an api-only build ever importing it.
+  "src/lib/voice",
 ];
 
 // Compute the ten settings defaults from the chosen default provider + manifest.

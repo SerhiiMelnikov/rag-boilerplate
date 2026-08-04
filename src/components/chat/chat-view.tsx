@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { EmptyState } from "@/components/ui/empty-state";
+import { readSpeakAnswers, writeSpeakAnswers } from "@/lib/voice/preference";
 import { MessageList } from "./message-list";
 import { Composer } from "./composer";
 import { humanizeChatError } from "./chat-error";
+import { useSpeechAvailable } from "./use-speech-available";
+import { useSpokenAnswer } from "./use-spoken-answer";
 import type { PersistedMessage } from "./types";
 
 const CREATE_FAILED = "Could not start a new conversation. Please try again.";
@@ -44,6 +47,19 @@ export function ChatView({
     api: "/api/chat",
   });
   const prevStatus = useRef(status);
+
+  const speechAvailable = useSpeechAvailable();
+  // Seeded false and read in an effect, never during render: the server cannot know
+  // what this device stored, and disagreeing with it is a hydration mismatch.
+  const [speakAnswers, setSpeakAnswers] = useState(false);
+  useEffect(() => setSpeakAnswers(readSpeakAnswers()), []);
+
+  function toggleSpeakAnswers() {
+    setSpeakAnswers((on) => {
+      writeSpeakAnswers(!on);
+      return !on;
+    });
+  }
 
   const loadHistory = useCallback(async () => {
     const id = conversationRef.current;
@@ -117,6 +133,14 @@ export function ChatView({
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
 
+  const lastAssistant = [...stream].reverse().find((m) => m.role === "assistant");
+  useSpokenAnswer({
+    answer: lastAssistant?.content ?? "",
+    status,
+    enabled: speakAnswers && speechAvailable,
+    turnKey: lastAssistant?.id ?? "",
+  });
+
   return (
     <>
       {stream.length === 0 && status === "ready" && !shownError ? (
@@ -145,6 +169,8 @@ export function ChatView({
         // from here is safe — triggerRequest clears the error and moves to
         // "submitted" itself.
         busy={status === "submitted" || status === "streaming" || starting}
+        speakAnswers={speakAnswers}
+        onToggleSpeakAnswers={speechAvailable ? toggleSpeakAnswers : undefined}
       />
     </>
   );

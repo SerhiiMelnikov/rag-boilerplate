@@ -391,6 +391,16 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("re-uploaded; the bytes already live in object storage.");
   lines.push("");
 
+  lines.push("## Voice", "");
+  lines.push("Answers can be read aloud. The speaker button in the composer turns it on, and");
+  lines.push("each answer is spoken sentence by sentence as it streams. It uses the browser's");
+  lines.push("own speech synthesis — no API key, no request leaves the page, nothing is");
+  lines.push("charged — so the available voices are whatever the operating system provides.");
+  lines.push("The button is hidden entirely on a browser with no voice installed. The choice");
+  lines.push("is remembered per device rather than per account, so enabling it on a phone");
+  lines.push("does not make a shared desktop start talking.");
+  lines.push("");
+
   return lines.join("\n");
 }
 

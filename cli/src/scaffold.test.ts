@@ -251,6 +251,8 @@ describe("appKind pruning", () => {
     await writeFile(join(templateDir, "src/auth.config.ts"), "export const authConfig = 1;");
     await mkdir(join(templateDir, "src/types"), { recursive: true });
     await writeFile(join(templateDir, "src/types/next-auth.d.ts"), "export {};");
+    await mkdir(join(templateDir, "src/lib/voice"), { recursive: true });
+    await writeFile(join(templateDir, "src/lib/voice/preference.ts"), "export const x = 1;");
     await mkdir(join(templateDir, "src/server"), { recursive: true });
     await writeFile(join(templateDir, "src/server/index.ts"), "export const server = 1;");
     await writeFile(join(templateDir, "Dockerfile"), 'FROM node:22-alpine\nRUN npm run build\nCMD ["node", "server.js"]\n');
@@ -264,6 +266,10 @@ describe("appKind pruning", () => {
     for (const rel of [
       "src/app", "middleware.ts", "next.config.ts", "next-env.d.ts", "tailwind.config.ts", "postcss.config.mjs",
       "src/components", "src/auth.ts", "src/auth.config.ts", "src/types/next-auth.d.ts",
+      // Pure string functions, but their only caller (the browser speech toggle in
+      // src/components/chat) is already gone in this build, so shipping them would
+      // be dead code.
+      "src/lib/voice",
     ]) {
       expect(existsSync(join(targetDir, rel))).toBe(false);
     }
@@ -309,6 +315,7 @@ describe("appKind pruning", () => {
     expect(existsSync(join(targetDir, "src/app"))).toBe(true);
     expect(existsSync(join(targetDir, "src/app/page.tsx"))).toBe(true);
     expect(existsSync(join(targetDir, "src/server"))).toBe(false);
+    expect(existsSync(join(targetDir, "src/lib/voice"))).toBe(true);
 
     const pkg = JSON.parse(await readFile(join(targetDir, "package.json"), "utf8"));
     expect(pkg.dependencies.next).toBeDefined();

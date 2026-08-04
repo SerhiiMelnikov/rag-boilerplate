@@ -25,6 +25,11 @@ const API_ONLY_DELETE_PATHS = [
   "src/auth.ts",
   "src/auth.config.ts",
   "src/types/next-auth.d.ts",
+  // sentences.ts and speakable-text.ts are plain string functions, not browser-only
+  // themselves — but this module exists solely to feed the browser speech toggle in
+  // src/components/chat, which is already deleted above. Left in place, it would
+  // ship as dead code with nothing in an api-only build ever importing it.
+  "src/lib/voice",
 ];
 
 // Compute the ten settings defaults from the chosen default provider + manifest.

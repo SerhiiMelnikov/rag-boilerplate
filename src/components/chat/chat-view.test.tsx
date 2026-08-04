@@ -5,17 +5,27 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatView } from "./chat-view";
 
-const chatState: { error?: Error; status: string; input: string } = { status: "ready", input: "" };
+type MockMessage = { id: string; role: string; content: string };
+const chatState: { error?: Error; status: string; input: string; messages: MockMessage[] } = {
+  status: "ready",
+  input: "",
+  messages: [],
+};
 // setMessages must be referentially stable across renders, like the real hook's
 // setter: loadHistory (a useCallback) depends on it, and the mount effect depends on
 // loadHistory. A fresh vi.fn() per call would re-trigger the mount effect forever.
-const setMessagesMock = vi.fn();
+// Given a real implementation, not left a no-op: the history-refetch tests below need
+// loadHistory's own setMessages call to actually change what the next render's
+// useChat() returns, the same way the real hook's setter does.
+const setMessagesMock = vi.fn((msgs: MockMessage[]) => {
+  chatState.messages = msgs;
+});
 const handleInputChangeMock = vi.fn();
 const handleSubmitMock = vi.fn();
 
 vi.mock("@ai-sdk/react", () => ({
   useChat: () => ({
-    messages: [],
+    messages: chatState.messages,
     input: chatState.input,
     handleInputChange: handleInputChangeMock,
     handleSubmit: handleSubmitMock,
@@ -29,15 +39,43 @@ beforeEach(() => {
   chatState.error = undefined;
   chatState.status = "ready";
   chatState.input = "";
+  chatState.messages = [];
   handleSubmitMock.mockClear();
+  setMessagesMock.mockClear();
   Element.prototype.scrollIntoView = vi.fn();
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  // The speak-answers toggle writes to the real jsdom localStorage (it is not
+  // mocked); left dirty, a test appended after one that turns the toggle on would
+  // start with it already on.
+  window.localStorage.clear();
+});
 
 function stubFetch(impl: (url: string, init?: RequestInit) => Promise<Response>) {
   const spy = vi.fn(impl);
   vi.stubGlobal("fetch", spy);
   return spy;
+}
+
+// jsdom implements neither speechSynthesis nor the utterance constructor
+// speech-engine.ts builds from it, so any test that reaches a real speak() call —
+// not just a rendered toggle — needs both stubbed.
+function stubSpeechSynthesis(overrides: { speak?: ReturnType<typeof vi.fn>; cancel?: ReturnType<typeof vi.fn> } = {}) {
+  vi.stubGlobal("speechSynthesis", {
+    getVoices: () => [{ name: "Alex" }],
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    speak: overrides.speak ?? vi.fn(),
+    cancel: overrides.cancel ?? vi.fn(),
+  });
+  vi.stubGlobal(
+    "SpeechSynthesisUtterance",
+    class {
+      lang = "";
+      constructor(public text: string) {}
+    },
+  );
 }
 
 describe("ChatView", () => {
@@ -244,5 +282,117 @@ describe("ChatView", () => {
     expect(await screen.findByText("Ask your documents a question")).toBeInTheDocument();
     // The composer is present with no conversation selected — that is the point.
     expect(screen.getByLabelText("Message")).toBeInTheDocument();
+  });
+
+  it("does not offer the toggle when the browser has no voices", async () => {
+    stubFetch(async () => new Response(JSON.stringify({ messages: [] }), { status: 200 }));
+    render(<ChatView initialConversationId="c1" />); // jsdom has no speechSynthesis
+    // waitFor, not a synchronous assertion: the mount effect's history fetch now
+    // resolves (stubFetch above), and its setPersisted/setMessages state update
+    // would otherwise land outside any act() boundary once the test has returned.
+    await waitFor(() => expect(screen.queryByRole("button", { name: /speak answers/i })).toBeNull());
+  });
+
+  it("remembers the choice across a remount", async () => {
+    stubFetch(async () => new Response(JSON.stringify({ messages: [] }), { status: 200 }));
+    stubSpeechSynthesis();
+    const { unmount } = render(<ChatView initialConversationId="c1" />);
+    fireEvent.click(await screen.findByRole("button", { name: /speak answers aloud/i }));
+    unmount();
+    render(<ChatView initialConversationId="c1" />);
+    expect(await screen.findByRole("button", { name: /stop speaking answers/i })).toBeInTheDocument();
+  });
+
+  it("does not read a conversation's last answer aloud just from opening it", async () => {
+    // The toggle was already on (a previous session, or another tab) and the
+    // conversation already has an answer sitting in the database. Opening it must
+    // not read that answer aloud — only a turn actually sent in *this* session may.
+    window.localStorage.setItem("speak_answers", "1");
+    const speak = vi.fn();
+    stubSpeechSynthesis({ speak });
+    const persistedAnswer: MockMessage = {
+      id: "db-1",
+      role: "assistant",
+      content: "Paris is the capital of France.",
+    };
+    stubFetch(async (url) =>
+      url === "/api/conversations/c1"
+        ? new Response(JSON.stringify({ messages: [persistedAnswer] }), { status: 200 })
+        : new Response(JSON.stringify({ messages: [] }), { status: 200 }),
+    );
+
+    render(<ChatView initialConversationId="c1" />);
+    // Confirms the toggle rendered "on" (localStorage was read) and that the history
+    // load actually landed before asserting nothing was spoken because of it.
+    await screen.findByRole("button", { name: /stop speaking answers/i });
+    await waitFor(() => expect(setMessagesMock).toHaveBeenCalledWith([persistedAnswer]));
+
+    expect(speak).not.toHaveBeenCalled();
+  });
+
+  it("keeps speaking through the history refetch that swaps a turn's live id for its database id", async () => {
+    // chat-view.tsx keys useSpokenAnswer's turnKey on the assistant-message count,
+    // not on the last assistant message's id, precisely because of what this test
+    // drives through: loadHistory (fired once a turn's status reaches "ready")
+    // replaces every message's ai-sdk id with the database's. An id-keyed turnKey
+    // reads that swap as a new turn and cancels an answer that is still being read
+    // aloud — synthesis is far slower than the refetch that triggers it.
+    chatState.input = "where is the Eiffel Tower?";
+    const speak = vi.fn();
+    const cancel = vi.fn();
+    stubSpeechSynthesis({ speak, cancel });
+    const liveMessages: MockMessage[] = [
+      { id: "user-1", role: "user", content: "where is the Eiffel Tower?" },
+      { id: "live-1", role: "assistant", content: "Paris is the capital of France." },
+    ];
+    const persistedMessages: MockMessage[] = [
+      { id: "db-user-1", role: "user", content: "where is the Eiffel Tower?" },
+      { id: "db-1", role: "assistant", content: "Paris is the capital of France." },
+    ];
+    let historyCalls = 0;
+    stubFetch(async (url) => {
+      if (url === "/api/conversations/c1") {
+        historyCalls += 1;
+        return new Response(JSON.stringify({ messages: historyCalls === 1 ? [] : persistedMessages }), {
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+    });
+
+    const { rerender } = render(<ChatView initialConversationId="c1" />);
+    fireEvent.click(await screen.findByRole("button", { name: /speak answers aloud/i }));
+    await waitFor(() => expect(historyCalls).toBe(1)); // the mount load settles first
+
+    // A live turn: the question is sent, then the answer streams in under ai-sdk's
+    // own (never-persisted) id. Its only sentence sits at the very end of the
+    // arrived text, which sentences.ts now withholds while status is "streaming"
+    // (end of arrived text is indistinguishable from a delta boundary) — it is
+    // not spoken yet here, only once the turn finishes and flush picks it up below.
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    chatState.status = "streaming";
+    chatState.messages = liveMessages;
+    rerender(<ChatView initialConversationId="c1" />);
+
+    // The turn finishes: status reaches "ready", which both flushes the withheld
+    // sentence above (legitimate — the turn is genuinely over) and, separately,
+    // fires ChatView's history refetch that swaps the live id for the database's.
+    // The two are asserted apart so the refetch's effect isn't mistaken for the
+    // flush's.
+    chatState.status = "ready";
+    rerender(<ChatView initialConversationId="c1" />);
+    await waitFor(() => expect(speak).toHaveBeenCalled());
+    // The call above is legitimate (the turn actually finishing) — clear it so
+    // what's asserted below is only what happens because of the id swap itself,
+    // not noise from getting to that point.
+    speak.mockClear();
+    cancel.mockClear();
+
+    await waitFor(() => expect(setMessagesMock).toHaveBeenCalledWith(persistedMessages));
+
+    // The id swap must not look like a new turn: nothing gets cancelled, and the
+    // already-spoken answer is not replayed.
+    expect(cancel).not.toHaveBeenCalled();
+    expect(speak).not.toHaveBeenCalled();
   });
 });

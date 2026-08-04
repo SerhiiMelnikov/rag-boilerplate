@@ -83,6 +83,24 @@ describe("generateReadme guidance", () => {
     expect(readme).toMatch(/re-uploaded/i);            // the point: bytes are already stored
   });
 
+  // scaffold.ts deletes src/lib/voice (the speech-synthesis helpers) for an api-only
+  // build along with the rest of src/components — the section documenting them must
+  // not appear in a README describing a project that does not ship them.
+  it("explains the spoken-answers toggle in the full app, and omits it from api-only", () => {
+    const full = generateReadme(opts({ appKind: "full" }));
+    expect(full).toContain("## Voice");
+    expect(full).toMatch(/speaker button/i);
+    expect(full).toMatch(/no API key/i);
+    expect(full).toMatch(/hidden entirely/i);          // no voice installed -> no button
+    expect(full).toMatch(/per device/i);                // not per account
+    expect(full).toMatch(/flatpak-confined/i);          // snap/flatpak browsers can't reach the system voice
+    expect(full).toMatch(/distribution-packaged/i);     // the remedy: install a distro-packaged browser
+
+    const api = generateReadme(opts({ appKind: "api" }));
+    expect(api).not.toContain("## Voice");
+    expect(api).not.toMatch(/speaker button/i);
+  });
+
   it("tells the admin to set provider keys before anything else", () => {
     expect(generateReadme(opts())).toMatch(/keys.*first|first.*keys/is);
   });

@@ -17,21 +17,33 @@ export function speakableText(markdown: string): string {
   s = s.replace(/```[\s\S]*$/, " code block. ");
 
   // A run of table rows. Named rather than read: pipes and dashes carry no meaning
-  // aloud, and the cell text out of order is worse than useless.
-  s = s.replace(/(?:^[ \t]*\|.*\n?)+/gm, " table. ");
+  // aloud, and the cell text out of order is worse than useless. The trailing
+  // newline of the LAST row is deliberately left unconsumed (only the newlines
+  // *between* rows are matched, via the lookahead-free repeat below): a table is
+  // followed by a blank line, and swallowing that row's own line terminator would
+  // eat one half of the blank line, merging "table." into the sentence after it.
+  s = s.replace(/^[ \t]*\|.*(?:\n[ \t]*\|.*)*/gm, " table. ");
 
   // Images before links — an image is a link with a leading "!", so the link rule
   // would otherwise strip the "!" and leave the alt text looking like link text.
   s = s.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1");
   s = s.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
-  s = s.replace(/https?:\/\/\S+/g, "link");
+  // \S+ alone would greedily swallow trailing sentence punctuation (a URL ending a
+  // sentence is ordinary in an answer that cites sources), merging that sentence
+  // with the next one under the sentence splitter. Requiring the match to end on a
+  // non-punctuation character makes it backtrack off any trailing '.', ',', '!',
+  // '?', ';', ':', quote, ellipsis or closing bracket instead of consuming it.
+  s = s.replace(/https?:\/\/\S*[^\s.,!?;:'"…)\]}]/g, "link");
 
-  // Block markers, at line start only.
+  // Block markers, at line start only. The horizontal-rule check runs before the
+  // list-marker check: a spaced rule ("- - -") also looks like a list item ("- ")
+  // followed by more text, so if the list-marker rule ran first it would strip
+  // the leading "- " and leave "- -" behind — text the HR rule no longer matches.
   s = s.replace(/^[ \t]*#{1,6}[ \t]+/gm, "");
   s = s.replace(/^[ \t]*>[ \t]?/gm, "");
+  s = s.replace(/^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$/gm, "");
   s = s.replace(/^[ \t]*[-*+][ \t]+/gm, "");
   s = s.replace(/^[ \t]*\d+[.)][ \t]+/gm, "");
-  s = s.replace(/^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$/gm, "");
 
   // Inline markers. `_` is matched only at a word boundary: JavaScript's \w
   // includes the underscore, so there is no boundary inside snake_case and an

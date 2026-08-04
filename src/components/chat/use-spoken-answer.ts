@@ -77,13 +77,22 @@ export function useSpokenAnswer({
   // first render, which is exactly the answer this hook exists to speak.
   const wasEnabled = useRef(enabled);
 
+  // Disabling stops speech immediately and resets wasEnabled, so a later re-enable
+  // adopts the answer as it then stands instead of replaying it. This is its own
+  // effect, keyed only on [enabled, active]: it used to live in the effect below
+  // (deps [answer, status, enabled, active]), which re-runs on every streamed
+  // token — for everyone who has the toggle off (the default), that meant a
+  // cancel() browser-API call once per token. Idempotent, but wasted, on every
+  // page load for a feature nobody enabled.
   useEffect(() => {
     if (!enabled) {
       active?.cancel();
       wasEnabled.current = false;
-      return;
     }
-    if (!active) return;
+  }, [enabled, active]);
+
+  useEffect(() => {
+    if (!enabled || !active) return;
 
     const streaming = status === "streaming" || status === "submitted";
     const sentences = completedSentences(speakableText(answer), { flush: !streaming });

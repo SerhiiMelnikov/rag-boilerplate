@@ -266,8 +266,9 @@ describe("appKind pruning", () => {
     for (const rel of [
       "src/app", "middleware.ts", "next.config.ts", "next-env.d.ts", "tailwind.config.ts", "postcss.config.mjs",
       "src/components", "src/auth.ts", "src/auth.config.ts", "src/types/next-auth.d.ts",
-      // Browser-only speech-synthesis helpers: their only caller (src/components/chat)
-      // is already gone in this build, so shipping them would be dead code.
+      // Pure string functions, but their only caller (the browser speech toggle in
+      // src/components/chat) is already gone in this build, so shipping them would
+      // be dead code.
       "src/lib/voice",
     ]) {
       expect(existsSync(join(targetDir, rel))).toBe(false);

@@ -53,12 +53,21 @@ export function ChatView({
   // what this device stored, and disagreeing with it is a hydration mismatch.
   const [speakAnswers, setSpeakAnswers] = useState(false);
   useEffect(() => setSpeakAnswers(readSpeakAnswers()), []);
+  // Whether a turn has actually been sent since this component mounted — distinct
+  // from whether the conversation already has messages. useSpokenAnswer's off->on
+  // logic adopts whatever answer is currently showing as "already spoken" the first
+  // time it becomes enabled; at mount, before loadHistory resolves, that answer is
+  // empty, and it is *replaced* by the loaded one moments later without `enabled`
+  // ever toggling again. Left ungated, opening an old conversation with the switch
+  // already on reads its last answer aloud, unprompted. Gating on a real turn having
+  // started in this session — set once, in submit(), and never unset — closes that
+  // without touching the adopt-on-toggle behavior mid-turn.
+  const [hasLiveTurn, setHasLiveTurn] = useState(false);
 
   function toggleSpeakAnswers() {
-    setSpeakAnswers((on) => {
-      writeSpeakAnswers(!on);
-      return !on;
-    });
+    const next = !speakAnswers;
+    writeSpeakAnswers(next);
+    setSpeakAnswers(next);
   }
 
   const loadHistory = useCallback(async () => {
@@ -123,6 +132,7 @@ export function ChatView({
       }
     }
     handleSubmit(undefined, { body: { conversationId: id } });
+    setHasLiveTurn(true);
   }
 
   // One error slot for the transcript, fed by both sources: a conversation that could
@@ -134,11 +144,18 @@ export function ChatView({
     .map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
 
   const lastAssistant = [...stream].reverse().find((m) => m.role === "assistant");
+  // Not lastAssistant?.id: finishing a turn triggers loadHistory above, which
+  // replaces every message's ai-sdk id with the database's — an identity change
+  // useSpokenAnswer would otherwise read as a new turn, cancelling an answer that is
+  // still being read aloud (synthesis is far slower than the refetch). The assistant
+  // turn count is stable across that swap (same position, same count either side of
+  // it) and still advances the moment ai-sdk appends a genuinely new one.
+  const assistantTurns = stream.filter((m) => m.role === "assistant").length;
   useSpokenAnswer({
     answer: lastAssistant?.content ?? "",
     status,
-    enabled: speakAnswers && speechAvailable,
-    turnKey: lastAssistant?.id ?? "",
+    enabled: speakAnswers && speechAvailable && hasLiveTurn,
+    turnKey: String(assistantTurns),
   });
 
   return (

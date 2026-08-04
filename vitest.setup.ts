@@ -32,7 +32,13 @@ if (typeof globalThis.matchMedia === "undefined") {
 // though jsdom does implement one internally. Repair it from jsdom's own window so
 // tests exercise the real thing. First needed by src/lib/voice/preference.ts, the
 // first module in the repo to touch localStorage.
-if (typeof window !== "undefined" && typeof window.localStorage === "undefined") {
+//
+// Do not probe `window.localStorage` to decide whether to do this: reading it — even
+// via `typeof` — invokes Node's getter and prints an ExperimentalWarning, which would
+// then fire for every jsdom test file in the repo, not just ones that touch storage.
+// Read `jsdom.window.localStorage` instead: that is jsdom's own Storage, unrelated to
+// Node's global, so checking it is silent.
+if (typeof window !== "undefined") {
   const jsdomInstance = (globalThis as { jsdom?: { window?: Window } }).jsdom;
   if (jsdomInstance?.window?.localStorage) {
     Object.defineProperty(window, "localStorage", {

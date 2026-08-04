@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Volume2, VolumeX } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -14,6 +14,8 @@ export function Composer({
   busy,
   focusSignal = 0,
   placeholder = "Ask your documents a question…",
+  speakAnswers,
+  onToggleSpeakAnswers,
 }: {
   value: string;
   onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
@@ -23,6 +25,12 @@ export function Composer({
   // boolean, so a second request focuses again.
   focusSignal?: number;
   placeholder?: string;
+  // Whether spoken answers are currently on. Undefined and no-handler are treated
+  // the same as "off" for rendering the icon, but the toggle itself only renders at
+  // all when onToggleSpeakAnswers is supplied — an unavailable browser gets no
+  // handler from its caller, and so sees no switch at all.
+  speakAnswers?: boolean;
+  onToggleSpeakAnswers?: () => void;
 }) {
   // Enter sends only where a real keyboard and a pointer exist. On a touch keyboard
   // the return key is the only way to start a new paragraph — there is no Shift to
@@ -92,6 +100,18 @@ export function Composer({
           aria-label="Message"
           className="max-h-[200px] overflow-y-auto"
         />
+        {onToggleSpeakAnswers && (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onToggleSpeakAnswers}
+            aria-pressed={speakAnswers === true}
+            aria-label={speakAnswers ? "Stop speaking answers" : "Speak answers aloud"}
+            className="flex-none px-3"
+          >
+            {speakAnswers ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+          </Button>
+        )}
         <Button type="submit" aria-label="Send" disabled={!canSend} className="flex-none px-3">
           {busy ? <Spinner label="Sending" /> : <ArrowUp className="h-4 w-4" />}
         </Button>

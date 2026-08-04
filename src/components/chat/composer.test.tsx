@@ -113,4 +113,51 @@ describe("Composer", () => {
       expect(screen.getByLabelText("Message")).toHaveFocus();
     });
   });
+
+  describe("speak-answers toggle", () => {
+    const props = { value: "", onChange: () => {}, onSubmit: () => {}, busy: false };
+
+    it("does not render without a handler, so an unsupported browser sees no switch", () => {
+      render(<Composer {...props} />);
+      expect(screen.queryByRole("button", { name: /speak/i })).toBeNull();
+    });
+
+    it("renders pressed when answers are spoken", () => {
+      render(<Composer {...props} speakAnswers onToggleSpeakAnswers={() => {}} />);
+      const button = screen.getByRole("button", { name: /stop speaking answers/i });
+      expect(button).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("renders unpressed when they are not", () => {
+      render(<Composer {...props} speakAnswers={false} onToggleSpeakAnswers={() => {}} />);
+      const button = screen.getByRole("button", { name: /speak answers aloud/i });
+      expect(button).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("calls back on click without submitting the form", () => {
+      const onToggleSpeakAnswers = vi.fn();
+      const onSubmit = vi.fn();
+      render(
+        <Composer
+          {...props}
+          // Non-empty, so a wrongly-typed toggle button would actually reach
+          // onSubmit via the form's submit event — an empty value makes send()
+          // a no-op regardless of whether the click submitted the form, which
+          // would let this test pass even with the bug it exists to catch.
+          value="hello"
+          onSubmit={onSubmit}
+          speakAnswers={false}
+          onToggleSpeakAnswers={onToggleSpeakAnswers}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: /speak answers aloud/i }));
+      expect(onToggleSpeakAnswers).toHaveBeenCalledTimes(1);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it("stays usable while a message is in flight", () => {
+      render(<Composer {...props} busy speakAnswers={false} onToggleSpeakAnswers={() => {}} />);
+      expect(screen.getByRole("button", { name: /speak answers aloud/i })).not.toBeDisabled();
+    });
+  });
 });

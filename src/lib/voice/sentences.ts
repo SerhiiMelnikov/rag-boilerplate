@@ -10,7 +10,11 @@
 
 // Deliberately short, and English-only. Ukrainian prose rarely uses these forms,
 // and a longer list buys accuracy nobody will measure.
-const ABBREVIATIONS = new Set(["e.g", "i.e", "etc", "vs", "dr", "mr", "mrs", "ms", "prof", "fig", "approx", "no"]);
+// "no" (the numero abbreviation, "No. 5") was deliberately left out: a sentence
+// genuinely ending in the word "No." is ordinary conversation, and far more
+// common in a document-grounded assistant's answers than the numero sense —
+// withholding it until flush was the wrong tradeoff.
+const ABBREVIATIONS = new Set(["e.g", "i.e", "etc", "vs", "dr", "mr", "mrs", "ms", "prof", "fig", "approx"]);
 
 function isSentenceEnd(text: string, i: number): boolean {
   const ch = text[i];

@@ -57,16 +57,35 @@ describe("completedSentences", () => {
   // (its regex only matches letters, not digits) — so it fired immediately on
   // "It scored 3." well before the "5" of "3.5" ever arrived, and the sentence
   // it emitted then does not appear anywhere in the eventual full-text parse.
-  // That is exactly the stability property the previous test guards, just with
-  // a decimal instead of plain words: a growing decimal must never cause an
-  // already-returned element to have been the wrong text.
+  // This is the reversion guard: a bare digit-dot must not be returned early.
   it("withholds a bare trailing digit-dot instead of guessing it is not a decimal", () => {
-    const a = completedSentences("It scored 3.");
-    const b = completedSentences("It scored 3.5 today.");
+    expect(completedSentences("It scored 3.")).toEqual([]);
+  });
+
+  // The actual stability proof for the case above: unlike the reversion guard,
+  // this has a confirmed sentence ahead of the ambiguous digit-dot, so `a` is
+  // non-empty and `b.slice(0, a.length)).toEqual(a)` is a real assertion that
+  // "Intro." survived unchanged — not `[] === []`, which would pass no matter
+  // what the fix did.
+  it("keeps a confirmed sentence stable while a later decimal is still ambiguous", () => {
+    const a = completedSentences("Intro. It scored 3.");
+    const b = completedSentences("Intro. It scored 3.5 today.");
     expect(b.slice(0, a.length)).toEqual(a);
   });
 
   it("still flushes a sentence that genuinely ends on a bare number", () => {
     expect(completedSentences("It scored 3.", { flush: true })).toEqual(["It scored 3."]);
+  });
+
+  // ABBREVIATIONS previously included "no" for the numero sense ("No. 5"), but
+  // a sentence genuinely ending in the word "No." is ordinary conversation and
+  // far more common in a document-grounded assistant's answers; withholding it
+  // until flush was the wrong tradeoff, so "no" was removed from the set.
+  it("does not treat a sentence-ending 'No.' as the numero abbreviation", () => {
+    expect(completedSentences("Is it possible? No. Try again.")).toEqual([
+      "Is it possible?",
+      "No.",
+      "Try again.",
+    ]);
   });
 });

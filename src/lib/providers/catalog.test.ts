@@ -3,6 +3,7 @@ import {
   PROVIDERS,
   CHAT_PROVIDER_IDS,
   EMBEDDING_PROVIDER_IDS,
+  SPEECH_PROVIDER_IDS,
   KEYED_PROVIDERS,
   HAS_OLLAMA,
   keyNameOf,
@@ -66,5 +67,19 @@ describe("provider catalog", () => {
 
   it("returns null for a provider that is not in the catalog", () => {
     expect(keyNameOf("mistral")).toBeNull();
+  });
+});
+
+describe("SPEECH_PROVIDER_IDS", () => {
+  it("lists exactly the speech-capable providers", () => {
+    expect(SPEECH_PROVIDER_IDS).toEqual(["google", "openai"]);
+  });
+
+  it("derives from PROVIDERS rather than being hardcoded", () => {
+    // Every id in the list must be present in the catalog with speech: true.
+    for (const id of SPEECH_PROVIDER_IDS) {
+      expect(PROVIDERS.find((p) => p.id === id)?.speech).toBe(true);
+    }
+    expect(SPEECH_PROVIDER_IDS.length).toBe(PROVIDERS.filter((p) => p.speech).length);
   });
 });

@@ -8,10 +8,12 @@ const MASKED = {
   embeddingProvider: "google", embeddingModel: "gemini-embedding-2",
   parserProvider: "google", parserModel: "gemini-2.5-flash",
   imageProvider: "google", imageModel: "gemini-2.5-flash",
+  speechProvider: "google", speechModel: "gemini-2.5-flash",
   unifiedMode: false, unifiedProvider: "google", unifiedModel: "gemini-2.5-flash",
   temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
   chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200,
+  transcribeRateLimitPerMinute: 10, transcribeRateLimitPerDay: 100,
   allowedEmailDomains: "", smtpHost: "", smtpPort: 587, smtpUser: "", smtpFrom: "",
   keys: { google: { set: true, last4: "1234" }, openai: { set: false, last4: null }, anthropic: { set: false, last4: null } },
   smtpPassword: { set: false, last4: null },
@@ -54,7 +56,7 @@ describe("AnsweringForm", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Save" }));
     await waitFor(() => expect(putBody()).toHaveProperty("topK"));
     const body = putBody();
-    for (const owned of ["temperature", "topK", "minSimilarity", "contextTokenBudget", "systemPrompt", "chatRateLimitPerMinute", "chatRateLimitPerDay"]) {
+    for (const owned of ["temperature", "topK", "minSimilarity", "contextTokenBudget", "systemPrompt", "chatRateLimitPerMinute", "chatRateLimitPerDay", "transcribeRateLimitPerMinute", "transcribeRateLimitPerDay"]) {
       expect(body, `${owned} belongs to this page`).toHaveProperty(owned);
     }
     for (const foreign of ["chatProvider", "chatModel", "embeddingProvider", "unifiedMode", "ollamaBaseUrl", "googleKey", "allowedEmailDomains", "smtpHost"]) {

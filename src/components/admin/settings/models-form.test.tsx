@@ -2,17 +2,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { ModelsForm } from "./models-form";
-import { EMBEDDING_PROVIDER_IDS } from "@/lib/providers/catalog";
+import { EMBEDDING_PROVIDER_IDS, SPEECH_PROVIDER_IDS } from "@/lib/providers/catalog";
 
 const MASKED = {
   chatProvider: "openai", chatModel: "gpt-4o",
   embeddingProvider: "google", embeddingModel: "gemini-embedding-2",
   parserProvider: "google", parserModel: "gemini-2.5-flash",
   imageProvider: "google", imageModel: "gemini-2.5-flash",
+  speechProvider: "google", speechModel: "gemini-2.5-flash",
   unifiedMode: false, unifiedProvider: "google", unifiedModel: "gemini-2.5-flash",
   temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
   chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200,
+  transcribeRateLimitPerMinute: 10, transcribeRateLimitPerDay: 100,
   allowedEmailDomains: "", smtpHost: "", smtpPort: 587, smtpUser: "", smtpFrom: "",
   keys: { google: { set: true, last4: "1234" }, openai: { set: false, last4: null }, anthropic: { set: false, last4: null } },
   smtpPassword: { set: false, last4: null },
@@ -103,6 +105,10 @@ describe("ModelsForm", () => {
     for (const foreign of ["temperature", "topK", "systemPrompt", "chatRateLimitPerMinute", "allowedEmailDomains", "smtpHost", "smtpPassword"]) {
       expect(body, `${foreign} belongs to another page`).not.toHaveProperty(foreign);
     }
+    // Speech, like the other model pairs, must survive a save even though its
+    // own row is not always shown (SPEECH_PROVIDER_IDS can be empty).
+    expect(body).toHaveProperty("speechProvider");
+    expect(body).toHaveProperty("speechModel");
   });
 
   it("keeps the typed keys when the save is rejected", async () => {
@@ -144,7 +150,7 @@ describe("ModelsForm", () => {
     expect(Object.keys(body).sort()).toEqual([
       "chatModel", "chatProvider", "embeddingModel", "embeddingProvider", "googleKey",
       "imageModel", "imageProvider", "ollamaBaseUrl", "parserModel", "parserProvider",
-      "unifiedMode", "unifiedModel", "unifiedProvider",
+      "speechModel", "speechProvider", "unifiedMode", "unifiedModel", "unifiedProvider",
     ]);
   });
 
@@ -195,5 +201,24 @@ describe("ModelsForm", () => {
   it("shows the Ollama base URL because ollama is in the catalog", async () => {
     render(<ModelsForm />);
     expect(await screen.findByLabelText("Ollama base URL")).toBeInTheDocument();
+  });
+
+  // This is the only row gated on a catalog list that can be empty
+  // (SPEECH_PROVIDER_IDS), the way EMBEDDING_PROVIDER_IDS is checked above.
+  it("renders the speech row with only speech-capable providers", async () => {
+    render(<ModelsForm />);
+    fireEvent.click(await screen.findByLabelText("Speech to text provider"));
+    const options = await screen.findAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(SPEECH_PROVIDER_IDS);
+  });
+
+  it("sends the speech pair on save", async () => {
+    // Without this the Models page would adopt the server's response and drop a
+    // speech change the admin had just made alongside another edit.
+    render(<ModelsForm />);
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await waitFor(() => expect(putBody()).toHaveProperty("chatProvider"));
+    const body = putBody();
+    expect(body).toMatchObject({ speechProvider: "google", speechModel: "gemini-2.5-flash" });
   });
 });

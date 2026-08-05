@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   CHAT_PROVIDER_IDS,
   EMBEDDING_PROVIDER_IDS,
+  SPEECH_PROVIDER_IDS,
   KEYED_PROVIDERS,
   HAS_OLLAMA,
   keyNameOf,
@@ -138,6 +139,7 @@ export function ModelsForm() {
     embeddingProvider: s.embeddingProvider, embeddingModel: s.embeddingModel,
     parserProvider: s.parserProvider, parserModel: s.parserModel,
     imageProvider: s.imageProvider, imageModel: s.imageModel,
+    speechProvider: s.speechProvider, speechModel: s.speechModel,
     unifiedMode: s.unifiedMode, unifiedProvider: s.unifiedProvider, unifiedModel: s.unifiedModel,
     ollamaBaseUrl: s.ollamaBaseUrl,
   });
@@ -213,6 +215,18 @@ export function ModelsForm() {
                 onProvider={(v) => patch({ embeddingProvider: v })} onModel={(v) => patch({ embeddingModel: v })}
                 missingKey={providerMissingKey(s.embeddingProvider, s.keys)}
               />
+              {/* Speech, like embedding, is never folded into unified mode:
+                  anthropic and ollama cannot transcribe, so "one provider for
+                  everything" would silently take the microphone away. The guard
+                  is what keeps a project scaffolded without google or openai
+                  from showing a picker with no options. */}
+              {SPEECH_PROVIDER_IDS.length > 0 && (
+                <ModelRow
+                  label="Speech to text" provider={s.speechProvider} model={s.speechModel} providers={SPEECH_PROVIDER_IDS}
+                  onProvider={(v) => patch({ speechProvider: v })} onModel={(v) => patch({ speechModel: v })}
+                  missingKey={providerMissingKey(s.speechProvider, s.keys)}
+                />
+              )}
             </div>
           </Card>
 

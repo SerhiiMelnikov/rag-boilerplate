@@ -51,6 +51,8 @@ export function AnsweringForm() {
       contextTokenBudget: s.contextTokenBudget, systemPrompt: s.systemPrompt,
       chatRateLimitPerMinute: s.chatRateLimitPerMinute,
       chatRateLimitPerDay: s.chatRateLimitPerDay,
+      transcribeRateLimitPerMinute: s.transcribeRateLimitPerMinute,
+      transcribeRateLimitPerDay: s.transcribeRateLimitPerDay,
     });
   }
 
@@ -83,6 +85,12 @@ export function AnsweringForm() {
               </Field>
               <Field label="Chat requests / day" description="0 turns the limit off.">
                 {(control) => <Input {...control} type="number" value={s.chatRateLimitPerDay} onChange={num("chatRateLimitPerDay")} />}
+              </Field>
+              <Field label="Voice transcriptions / minute" description="0 turns the limit off.">
+                {(control) => <Input {...control} type="number" value={s.transcribeRateLimitPerMinute} onChange={num("transcribeRateLimitPerMinute")} />}
+              </Field>
+              <Field label="Voice transcriptions / day" description="0 turns the limit off.">
+                {(control) => <Input {...control} type="number" value={s.transcribeRateLimitPerDay} onChange={num("transcribeRateLimitPerDay")} />}
               </Field>
             </div>
           </Card>

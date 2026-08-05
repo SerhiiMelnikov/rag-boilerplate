@@ -231,6 +231,7 @@ describe("rewriteSettingsDefaults", () => {
       parserProvider: "openai", parserModel: "gpt-4o-mini",
       imageProvider: "openai", imageModel: "gpt-4o-mini",
       unifiedProvider: "openai", unifiedModel: "gpt-4o-mini",
+      speechProvider: "openai", speechModel: "gpt-4o-mini-transcribe",
     });
     const text = project.getSourceFileOrThrow("src/lib/db/schema.ts").getFullText();
     expect(text).toContain('.default("openai")');
@@ -248,11 +249,29 @@ describe("rewriteSettingsDefaults", () => {
       parserProvider: "openai", parserModel: "gpt-4o",
       imageProvider: "openai", imageModel: "gpt-4o",
       unifiedProvider: "openai", unifiedModel: "gpt-4o-mini",
+      speechProvider: "openai", speechModel: "gpt-4o-mini-transcribe",
     });
     const text = project.getSourceFileOrThrow("src/lib/db/schema.ts").getFullText();
     expect(text).toContain('.default("gpt-4o")'); // image_model
     expect(text).toContain('"image_provider"'); // column still present
     expect(text).not.toContain('.default("google")'); // no stale google default remains for the rewritten columns
+  });
+
+  it("leaves the speech default alone when the selection has no speech-capable provider", () => {
+    const project = projectWith("src/lib/db/schema.ts", read("schema.ts"));
+    rewriteSettingsDefaults(project, {
+      chatProvider: "ollama", chatModel: "llama3.1",
+      embeddingProvider: "ollama", embeddingModel: "nomic-embed-text",
+      parserProvider: "ollama", parserModel: "llava",
+      imageProvider: "ollama", imageModel: "llava",
+      unifiedProvider: "ollama", unifiedModel: "llama3.1",
+      speechProvider: null, speechModel: null,
+    });
+    const text = project.getSourceFileOrThrow("src/lib/db/schema.ts").getFullText();
+    // A null pair leaves the schema's own speech_provider default untouched
+    // rather than writing the string "null".
+    expect(text).toContain('.default("google")');
+    expect(text).not.toContain('.default("null")');
   });
 });
 

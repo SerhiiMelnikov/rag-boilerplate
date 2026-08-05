@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db as defaultDb } from "@/lib/db/client";
 import { settings } from "@/lib/db/schema";
 import { encryptSecret, decryptSecret, maskSecret } from "@/lib/config/crypto";
+import { SPEECH_PROVIDER_IDS } from "@/lib/providers/catalog";
 
 export type ProviderId = "google" | "openai" | "anthropic" | "ollama";
 export type EmbeddingProviderId = "google" | "openai" | "ollama";
@@ -20,6 +21,8 @@ interface BaseSettings {
   parserModel: string;
   imageProvider: string;
   imageModel: string;
+  speechProvider: string;
+  speechModel: string;
   unifiedMode: boolean;
   unifiedProvider: string;
   unifiedModel: string;
@@ -31,6 +34,8 @@ interface BaseSettings {
   ollamaBaseUrl: string;
   chatRateLimitPerMinute: number;
   chatRateLimitPerDay: number;
+  transcribeRateLimitPerMinute: number;
+  transcribeRateLimitPerDay: number;
   allowedEmailDomains: string;
   smtpHost: string;
   smtpPort: number;
@@ -58,6 +63,8 @@ const BASE_COLUMNS = {
   parserModel: settings.parserModel,
   imageProvider: settings.imageProvider,
   imageModel: settings.imageModel,
+  speechProvider: settings.speechProvider,
+  speechModel: settings.speechModel,
   unifiedMode: settings.unifiedMode,
   unifiedProvider: settings.unifiedProvider,
   unifiedModel: settings.unifiedModel,
@@ -69,6 +76,8 @@ const BASE_COLUMNS = {
   ollamaBaseUrl: settings.ollamaBaseUrl,
   chatRateLimitPerMinute: settings.chatRateLimitPerMinute,
   chatRateLimitPerDay: settings.chatRateLimitPerDay,
+  transcribeRateLimitPerMinute: settings.transcribeRateLimitPerMinute,
+  transcribeRateLimitPerDay: settings.transcribeRateLimitPerDay,
   allowedEmailDomains: settings.allowedEmailDomains,
   smtpHost: settings.smtpHost,
   smtpPort: settings.smtpPort,
@@ -94,6 +103,15 @@ export const settingsPatchSchema = z
     parserModel: z.string().min(1),
     imageProvider: z.enum(CHAT_PROVIDERS),
     imageModel: z.string().min(1),
+    // NOT z.enum over a pruned literal tuple, the way embeddingProvider is: the
+    // CLI requires an embedding-capable provider but not a speech-capable one,
+    // so `--providers ollama` would leave that tuple empty and z.enum([]) does
+    // not compile. Refining against the catalog is equivalent at runtime and
+    // cannot collapse. Do not "fix" this for symmetry.
+    speechProvider: z.string().refine((id) => SPEECH_PROVIDER_IDS.includes(id), {
+      message: "Not a speech-capable provider",
+    }),
+    speechModel: z.string().min(1),
     unifiedMode: z.boolean(),
     unifiedProvider: z.enum(CHAT_PROVIDERS),
     unifiedModel: z.string().min(1),
@@ -105,6 +123,8 @@ export const settingsPatchSchema = z
     ollamaBaseUrl: z.string().url(),
     chatRateLimitPerMinute: z.number().int().min(0).max(100000),
     chatRateLimitPerDay: z.number().int().min(0).max(1000000),
+    transcribeRateLimitPerMinute: z.number().int().min(0).max(100000),
+    transcribeRateLimitPerDay: z.number().int().min(0).max(1000000),
     allowedEmailDomains: z.string(),
     smtpHost: z.string(),
     smtpPort: z.number().int().min(1).max(65535),

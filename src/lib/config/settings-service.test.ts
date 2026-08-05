@@ -88,6 +88,15 @@ describe("settings service", () => {
     expect(s.embeddingProvider).toBe("google"); // never overridden
   });
 
+  it("does not fold speech into unified mode", async () => {
+    // anthropic cannot transcribe; if unified mode reached speechProvider the
+    // microphone would disappear from a switch that says nothing about voice.
+    const { db } = fakeDb({ unifiedMode: true, unifiedProvider: "anthropic", speechProvider: "google" });
+    const s = await getRuntimeSettings(db);
+    expect(s.chatProvider).toBe("anthropic");
+    expect(s.speechProvider).toBe("google");
+  });
+
   it("getAdminSettings returns the raw per-task values + unifiedMode", async () => {
     const { db } = fakeDb({ ...baseRow, unifiedMode: true, unifiedProvider: "openai", unifiedModel: "gpt-4o" });
     const s = await getAdminSettings(db);
@@ -181,5 +190,29 @@ describe("the settings schema agrees with the provider catalog", () => {
     for (const id of enumOptions(settingsPatchSchema.shape.embeddingProvider)) {
       expect(EMBEDDING_PROVIDER_IDS, `embeddingProvider accepts "${id}", which the catalog does not mark embedding-capable`).toContain(id);
     }
+  });
+});
+
+describe("speech settings", () => {
+  it("accepts a speech-capable provider", () => {
+    const parsed = settingsPatchSchema.safeParse({ speechProvider: "openai", speechModel: "whisper-1" });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects a provider that cannot transcribe", () => {
+    const parsed = settingsPatchSchema.safeParse({ speechProvider: "ollama" });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects a blank speech model", () => {
+    expect(settingsPatchSchema.safeParse({ speechModel: "" }).success).toBe(false);
+  });
+
+  it("accepts 0 for either transcription limit — 0 turns the rule off", () => {
+    expect(settingsPatchSchema.safeParse({ transcribeRateLimitPerMinute: 0, transcribeRateLimitPerDay: 0 }).success).toBe(true);
+  });
+
+  it("rejects a negative transcription limit", () => {
+    expect(settingsPatchSchema.safeParse({ transcribeRateLimitPerMinute: -1 }).success).toBe(false);
   });
 });

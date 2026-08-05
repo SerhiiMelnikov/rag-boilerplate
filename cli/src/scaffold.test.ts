@@ -66,6 +66,24 @@ describe("settingsDefaultsFor", () => {
     expect(d.chatProvider).toBe("anthropic");
     expect(d.embeddingProvider).toBe("google"); // anthropic can't embed
   });
+
+  it("writes the default provider's speech model when it can transcribe", () => {
+    const d = settingsDefaultsFor(opts({ providers: ["google"], defaultProvider: "google" }));
+    expect(d.speechProvider).toBe("google");
+    expect(d.speechModel).toBe("gemini-2.5-flash");
+  });
+
+  it("falls back to another selected capable provider", () => {
+    const d = settingsDefaultsFor(opts({ providers: ["ollama", "openai"], defaultProvider: "ollama" }));
+    expect(d.speechProvider).toBe("openai");
+    expect(d.speechModel).toBe("gpt-4o-mini-transcribe");
+  });
+
+  it("leaves both null when nothing selected can transcribe", () => {
+    const d = settingsDefaultsFor(opts({ providers: ["ollama"], defaultProvider: "ollama" }));
+    expect(d.speechProvider).toBeNull();
+    expect(d.speechModel).toBeNull();
+  });
 });
 
 describe("scaffold", () => {

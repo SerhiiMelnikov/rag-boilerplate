@@ -71,7 +71,8 @@ export function narrowProviderUnions(project: Project, kept: ProviderId[]): void
   sf.saveSync();
 }
 
-// schema.ts: rewrite the ten settings default("...") calls for provider/model.
+// schema.ts: rewrite the up-to-twelve settings default("...") calls for
+// provider/model.
 export function rewriteSettingsDefaults(
   project: Project,
   d: {
@@ -80,6 +81,7 @@ export function rewriteSettingsDefaults(
     parserProvider: ProviderId; parserModel: string;
     imageProvider: ProviderId; imageModel: string;
     unifiedProvider: ProviderId; unifiedModel: string;
+    speechProvider: ProviderId | null; speechModel: string | null;
   },
 ): void {
   const sf = resolveSourceFile(project, "src/lib/db/schema.ts");
@@ -90,6 +92,14 @@ export function rewriteSettingsDefaults(
     image_provider: d.imageProvider, image_model: d.imageModel,
     unified_provider: d.unifiedProvider, unified_model: d.unifiedModel,
   };
+  // Speech is the one pair that can be absent: a selection with no
+  // speech-capable provider (e.g. --providers ollama) leaves the schema's own
+  // defaults in place, unread — SPEECH_PROVIDER_IDS is empty there, the admin
+  // form's row does not render and the endpoint answers 503.
+  if (d.speechProvider && d.speechModel) {
+    map.speech_provider = d.speechProvider;
+    map.speech_model = d.speechModel;
+  }
   // Each settings column is built as `text("<col>")...default("<old>")` inside a
   // single PropertyAssignment (`colName: text(...).notNull().default(...)`).
   // Find the column's PropertyAssignment, then locate the .default(...) call
@@ -267,6 +277,7 @@ export async function applySourceTransforms(
       parserProvider: ProviderId; parserModel: string;
       imageProvider: ProviderId; imageModel: string;
       unifiedProvider: ProviderId; unifiedModel: string;
+      speechProvider: ProviderId | null; speechModel: string | null;
     };
     cutPgvector: boolean;
   },

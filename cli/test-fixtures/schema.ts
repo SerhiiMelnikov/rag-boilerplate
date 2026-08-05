@@ -90,6 +90,8 @@ export const settings = pgTable("settings", {
   parserModel: text("parser_model").notNull().default("gemini-2.5-flash"),
   imageProvider: text("image_provider").notNull().default("google"),
   imageModel: text("image_model").notNull().default("gemini-2.5-flash"),
+  speechProvider: text("speech_provider").notNull().default("google"),
+  speechModel: text("speech_model").notNull().default("gemini-2.5-flash"),
   // When on, chat/parser/image all use unifiedProvider/unifiedModel instead of
   // their individual columns above (embedding is never affected).
   unifiedMode: boolean("unified_mode").notNull().default(false),

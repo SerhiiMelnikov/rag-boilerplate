@@ -105,6 +105,11 @@ export const settings = pgTable("settings", {
   parserModel: text("parser_model").notNull().default("gemini-2.5-flash"),
   imageProvider: text("image_provider").notNull().default("google"),
   imageModel: text("image_model").notNull().default("gemini-2.5-flash"),
+  // Speech-to-text is NOT part of unified mode: anthropic and ollama cannot
+  // transcribe at all, so folding it in would let a unified switch silently
+  // remove the microphone. Same reasoning as embedding, one line above.
+  speechProvider: text("speech_provider").notNull().default("google"),
+  speechModel: text("speech_model").notNull().default("gemini-2.5-flash"),
   // When on, chat/parser/image all use unifiedProvider/unifiedModel instead of
   // their individual columns above (embedding is never affected).
   unifiedMode: boolean("unified_mode").notNull().default(false),
@@ -120,6 +125,8 @@ export const settings = pgTable("settings", {
   // for a real person and far too tight for a script.
   chatRateLimitPerMinute: integer("chat_rate_limit_per_minute").notNull().default(20),
   chatRateLimitPerDay: integer("chat_rate_limit_per_day").notNull().default(200),
+  transcribeRateLimitPerMinute: integer("transcribe_rate_limit_per_minute").notNull().default(10),
+  transcribeRateLimitPerDay: integer("transcribe_rate_limit_per_day").notNull().default(100),
   // Comma-separated, lowercase. EMPTY MEANS NOBODY: an empty list denies every
   // registration. seed:admin seeds it from ADMIN_EMAIL's domain so a fresh install
   // is not a dead end.

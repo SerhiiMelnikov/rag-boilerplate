@@ -32,14 +32,23 @@ function fakeRecorder() {
 
 type Handle = ReturnType<typeof useMicrophone>;
 
-function mount(opts: Partial<Parameters<typeof useMicrophone>[0]> & { recorder: Recorder | null }) {
+type MountOpts = Partial<Parameters<typeof useMicrophone>[0]> & { recorder: Recorder | null };
+
+function mount(opts: MountOpts) {
   const handle: { current: Handle | null } = { current: null };
-  function Host() {
-    handle.current = useMicrophone({ onTranscript: vi.fn(), disabled: false, ...opts });
+  function Host(props: MountOpts) {
+    handle.current = useMicrophone({ onTranscript: vi.fn(), disabled: false, ...props });
     return null;
   }
-  const view = render(<Host />);
-  return { handle, view };
+  const view = render(<Host {...opts} />);
+  return {
+    handle,
+    view,
+    /** Re-renders with new opts merged over the original — for tests that flip a prop like `disabled` mid-flight. */
+    update(next: Partial<MountOpts>) {
+      view.rerender(<Host {...opts} {...next} />);
+    },
+  };
 }
 
 afterEach(cleanup);
@@ -59,6 +68,20 @@ describe("useMicrophone", () => {
     await act(async () => handle.current!.toggle());
     expect(rec.api.start).not.toHaveBeenCalled();
     expect(handle.current!.state).toBe<MicState>("idle");
+  });
+
+  it("still allows a manual stop while disabled mid-recording", async () => {
+    // The asymmetry that makes the alternative a bug: the VAD's own auto-stop
+    // calls finish() directly and is never blocked by `disabled`. A manual
+    // stop must be just as reachable — otherwise submitting a typed message
+    // while recording strands a live microphone with no way to end it.
+    const rec = fakeRecorder();
+    const { handle, update } = mount({ recorder: rec.api });
+    await act(async () => handle.current!.toggle());
+    expect(handle.current!.state).toBe<MicState>("recording");
+    update({ disabled: true });
+    await act(async () => handle.current!.toggle());
+    await waitFor(() => expect(rec.api.stop).toHaveBeenCalledTimes(1));
   });
 
   it("stops and sends the transcript on a second toggle", async () => {
@@ -102,6 +125,50 @@ describe("useMicrophone", () => {
     await act(async () => handle.current!.toggle());
     await waitFor(() => expect(handle.current!.error).toMatch(/refused/i));
     expect(handle.current!.state).toBe<MicState>("idle");
+  });
+
+  it("cancels the recorder when start() throws after acquiring something", async () => {
+    // Models recorder.ts's own scenario: getUserMedia succeeds and the
+    // MediaRecorder is started, and only THEN does AudioContext construction
+    // throw (Chrome's per-document cap). "acquired" and "released" are kept as
+    // distinct states from "never" so this test cannot pass on a recorder that
+    // was simply never touched — it must specifically observe a release.
+    let status: "never" | "acquired" | "released" = "never";
+    const recorder: Recorder = {
+      start: vi.fn(async () => {
+        status = "acquired";
+        throw new Error("AudioContext construction failed");
+      }),
+      stop: vi.fn(async () => AUDIO),
+      cancel: vi.fn(() => { status = "released"; }),
+    };
+    const { handle } = mount({ recorder });
+    await act(async () => handle.current!.toggle());
+    expect(status).toBe("released");
+    expect(handle.current!.error).toBeTruthy();
+    expect(handle.current!.state).toBe<MicState>("idle");
+  });
+
+  it("cancels the recorder and stops the frame loop when stop() rejects", async () => {
+    // A device can disappear on its own (unplugged, track ended) between the
+    // VAD deciding to stop and stop() actually running, so stop() can reject
+    // without having released anything. Without a cancel() here, the frame
+    // loop survives and every later silent frame trips the VAD's "silence"
+    // stop again, calling finish() -> stop() again forever.
+    const rec = fakeRecorder();
+    rec.api.stop.mockRejectedValueOnce(new Error("InvalidStateError"));
+    const { handle } = mount({ recorder: rec.api });
+    await act(async () => handle.current!.toggle());
+    rec.feed(8, 0.2);   // 400ms of speech, clears the floor
+    rec.feed(30, 0.0);  // 1500ms of silence: trips the auto-stop -> finish() -> stop() rejects
+    await waitFor(() => expect(handle.current!.error).toBeTruthy());
+    expect(rec.api.stop).toHaveBeenCalledTimes(1);
+    expect(rec.api.cancel).toHaveBeenCalledTimes(1);
+    // fakeRecorder's cancel() nulls the installed frame callback, exactly what
+    // the real recorder's release() does by clearing its interval. Further
+    // frames must therefore have nowhere left to go.
+    rec.feed(5, 0.0);
+    expect(rec.api.stop).toHaveBeenCalledTimes(1);
   });
 
   it("maps a 429 to the voice limit message", async () => {

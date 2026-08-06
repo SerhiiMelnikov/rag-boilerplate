@@ -100,6 +100,11 @@ export function useMicrophone({
       // a model request, and it must not look like a failure either.
       if (text !== "") onTranscriptRef.current(text);
     } catch (err) {
+      // active.stop() can reject without having released anything (the device
+      // went away, or the recorder was already inactive). Without cancelling
+      // here, the frame loop survives and every subsequent silent frame trips
+      // the VAD's "silence" stop again, calling finish() again forever.
+      active.cancel();
       setError(messageFor(err));
     } finally {
       finishing.current = false;
@@ -109,9 +114,14 @@ export function useMicrophone({
   }, [active]);
 
   const toggle = useCallback(() => {
-    if (!active || disabled) return;
+    if (!active) return;
+    // A manual stop must always be reachable, disabled or not: the VAD auto-stop
+    // (above) calls finish() directly and is never blocked by `disabled`, so a
+    // press that starts a turn while recording must be just as unblocked —
+    // otherwise submitting a typed message strands a live microphone with no
+    // way for the user to end it.
     if (state === "recording") { void finish(); return; }
-    if (state !== "idle") return;
+    if (disabled || state !== "idle") return;
 
     setError(null);
     setState("requesting");
@@ -127,6 +137,13 @@ export function useMicrophone({
         }, FRAME_MS);
         setState("recording");
       } catch (err) {
+        // start() can throw after it has already acquired something (a stream,
+        // an already-started MediaRecorder) — see recorder.ts's own rollback.
+        // cancel() is documented safe when idle, so this costs nothing on the
+        // plain permission-refused path where nothing was acquired at all; it
+        // is the defence in depth that holds even if a future recorder
+        // implementation forgets its own cleanup.
+        active.cancel();
         setError(messageFor(err));
         setState("idle");
       }

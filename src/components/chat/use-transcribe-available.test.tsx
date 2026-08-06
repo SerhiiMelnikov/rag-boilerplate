@@ -35,6 +35,9 @@ describe("useTranscribeAvailable", () => {
   });
 
   it("is false when the probe 401s", async () => {
-    expect(await lastValue((async () => Response.json({ error: "no" }, { status: 401 })) as typeof fetch)).toBe(false);
+    // The body says available: true — if the !res.ok guard were ever deleted,
+    // data.available === true would make this pass for the wrong reason. The
+    // status alone must be what turns this false.
+    expect(await lastValue((async () => Response.json({ available: true }, { status: 401 })) as typeof fetch)).toBe(false);
   });
 });

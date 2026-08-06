@@ -52,42 +52,77 @@ export function browserRecorder(): Recorder | null {
 
   return {
     async start(onFrame, frameMs) {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      chunks.length = 0;
-      recorder = new MediaRecorder(stream, { mimeType });
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-      recorder.start(frameMs);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        chunks.length = 0;
+        recorder = new MediaRecorder(stream, { mimeType });
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+        recorder.start(frameMs);
 
-      context = new AudioCtx();
-      const analyser = context.createAnalyser();
-      analyser.fftSize = 2048;
-      context.createMediaStreamSource(stream).connect(analyser);
-      const buffer = new Uint8Array(analyser.fftSize);
+        context = new AudioCtx();
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 2048;
+        context.createMediaStreamSource(stream).connect(analyser);
+        const buffer = new Uint8Array(analyser.fftSize);
 
-      // setInterval, not requestAnimationFrame: rAF stalls in a background tab,
-      // which would freeze both the silence detector and the 60-second cap and
-      // leave a microphone live indefinitely.
-      timer = setInterval(() => {
-        analyser.getByteTimeDomainData(buffer);
-        let sum = 0;
-        for (const sample of buffer) {
-          const centred = (sample - 128) / 128;
-          sum += centred * centred;
+        // setInterval, not requestAnimationFrame: rAF stalls in a background tab,
+        // which would freeze both the silence detector and the 60-second cap and
+        // leave a microphone live indefinitely.
+        timer = setInterval(() => {
+          analyser.getByteTimeDomainData(buffer);
+          let sum = 0;
+          for (const sample of buffer) {
+            const centred = (sample - 128) / 128;
+            sum += centred * centred;
+          }
+          onFrame(Math.sqrt(sum / buffer.length));
+        }, frameMs);
+      } catch (err) {
+        // isTypeSupported is a generic query, not a per-stream guarantee, and
+        // Chrome hard-caps AudioContexts per document — either can throw AFTER
+        // getUserMedia already granted a live stream, and in the AudioContext
+        // case the MediaRecorder may already be recording. A throw here must
+        // not abandon either: the next start() would overwrite these locals
+        // and orphan whatever was already acquired, leaving the browser's
+        // recording indicator lit with no way for the caller to reach it.
+        if (recorder && recorder.state !== "inactive") {
+          recorder.onstop = null;
+          recorder.stop();
         }
-        onFrame(Math.sqrt(sum / buffer.length));
-      }, frameMs);
+        recorder = null;
+        chunks.length = 0;
+        release();
+        throw err;
+      }
     },
 
     stop() {
       return new Promise<RecordedAudio>((resolve, reject) => {
         const active = recorder;
         if (!active) { reject(new Error("not recording")); return; }
-        active.onstop = () => {
-          release();
+        if (active.state === "inactive") {
+          // The device can go away on its own (unplugged, track ended) before
+          // we ask it to stop. Release everything anyway: an interval left
+          // running with no recorder left to stop would keep feeding frames
+          // into the caller's VAD loop, which would call stop() again on
+          // every subsequent silent frame forever.
           recorder = null;
-          resolve({ blob: new Blob(chunks, { type: mimeType }), mimeType });
-        };
-        active.stop();
+          release();
+          reject(new Error("recorder already inactive"));
+          return;
+        }
+        try {
+          active.onstop = () => {
+            release();
+            recorder = null;
+            resolve({ blob: new Blob(chunks, { type: mimeType }), mimeType });
+          };
+          active.stop();
+        } catch (err) {
+          recorder = null;
+          release();
+          reject(err);
+        }
       });
     },
 

@@ -142,6 +142,22 @@ describe("useMicrophone", () => {
     expect(onTranscript).not.toHaveBeenCalled();
   });
 
+  it("does not transcribe a recording with only a brief noise below the speech floor", async () => {
+    // Pins the THRESHOLD, not just the gate's existence: a cough or a door
+    // slam can clear the energy threshold (this is not literally 0.0) for a
+    // moment far short of a real word. A gate that fires on any speech at
+    // all — e.g. a mutated `spokeMs <= 0` — would let this through; only one
+    // that compares against the real minSpeechMs floor drops it.
+    const rec = fakeRecorder();
+    const transcribeFn = vi.fn(async () => "should never be called");
+    const { handle } = mount({ recorder: rec.api, transcribeFn });
+    await act(async () => handle.current!.toggle());
+    rec.feed(4, 0.2);                        // 200ms of speech: energy clears the threshold but stays under the 300ms floor
+    await act(async () => handle.current!.toggle());
+    await waitFor(() => expect(handle.current!.state).toBe<MicState>("idle"));
+    expect(transcribeFn).not.toHaveBeenCalled();
+  });
+
   it("still releases the microphone when it drops a silent recording", async () => {
     // Dropping the request must not skip the teardown: an unreleased MediaStream
     // keeps the browser's recording indicator lit.

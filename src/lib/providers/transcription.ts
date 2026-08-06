@@ -12,9 +12,16 @@ import { googleChat } from "./google";
 // transcribe — without an escape hatch, a model handed silence and told
 // "output only the transcript" has no valid output and echoes the instruction
 // back instead, which is exactly what shipped to a real user.
+//
+// ECHO_ANCHOR_TEXT is the opening clause, held out as its own constant and
+// spliced INTO the prompt below (rather than the prompt's wording being
+// duplicated separately as an anchor to match echoes against) so the two can
+// truly never drift apart: there is only one place that spells out how the
+// instruction begins.
 const NO_SPEECH_SENTINEL = "NO_SPEECH";
+const ECHO_ANCHOR_TEXT = "Transcribe this audio verbatim. Output only the transcript";
 const TRANSCRIBE_PROMPT =
-  "Transcribe this audio verbatim. Output only the transcript, with no preamble, " +
+  `${ECHO_ANCHOR_TEXT}, with no preamble, ` +
   "commentary or translation. If the audio contains no discernible speech, reply " +
   `with exactly: ${NO_SPEECH_SENTINEL}`;
 
@@ -27,11 +34,28 @@ function normalize(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-// The opening clause of TRANSCRIBE_PROMPT, with no trailing punctuation. This
-// is the anchor an echo is matched against below — kept as a slice of the
-// literal prompt text (not a separately maintained string) so the two can
-// never drift out of sync.
-const ECHO_ANCHOR = normalize("Transcribe this audio verbatim. Output only the transcript");
+// Normalised, with no trailing punctuation — the anchor an echo is matched
+// against below.
+const ECHO_ANCHOR = normalize(ECHO_ANCHOR_TEXT);
+
+// The floor for direction 1 below, derived from ECHO_ANCHOR_TEXT rather than
+// written as its own literal: the length of just its first sentence,
+// "Transcribe this audio verbatim." — the shortest fragment of the
+// instruction that is a complete clause on its own (per the file-level
+// comment, the one that forbids answering). Below this length a match is a
+// coincidental handful of shared words, not identifiably an echo; at or above
+// it, matching the instruction's own wording character-for-character is not
+// a coincidence a real, unrelated utterance would produce.
+const ECHO_FIRST_SENTENCE_LEN = normalize(ECHO_ANCHOR_TEXT.slice(0, ECHO_ANCHOR_TEXT.indexOf(".") + 1)).length;
+
+// A model asked to emit the sentinel can still fence it, punctuate it, or
+// otherwise decorate it instead of returning it bare — exactly the kind of
+// deviation that produced the shipped bug in the first place, so an exact
+// string match is not enough. Tolerates a trailing "." or "!" and a wrap in
+// backticks (single-token answers get fenced constantly); nothing looser than
+// that, since the sentinel is a fixed word the model was told verbatim, not
+// free text where a fuzzier match would be justified.
+const NO_SPEECH_PATTERN = /^`?no[_ ]speech`?[.!]?$/;
 
 // The sentinel makes an echo less likely but not impossible (a model can
 // still ignore the escape hatch and repeat the instruction instead), and what
@@ -39,22 +63,38 @@ const ECHO_ANCHOR = normalize("Transcribe this audio verbatim. Output only the t
 // matched on a PREFIX of the normalised instruction, never on a keyword: a
 // prefix match can only fire on text that begins the way the instruction
 // begins, so a genuine question that merely mentions "transcript" — e.g. "How
-// do I transcribe an audio file with this app?" — cannot start with
-// "transcribe this audio verbatim..." and is left alone. Two directions are
-// checked because an echo can end two different ways: a short echo that cuts
-// off is a true prefix of the instruction (direction 1), while a longer one
-// can diverge at the trailing punctuation the model chose to close its own
-// sentence with instead of continuing the original one (direction 2, matched
-// against the anchor rather than the full instruction). A false positive here
-// — dropping one real question that happens to open with those exact words —
-// is the acceptable side to err on: the alternative is a repeat of the bug
-// this guards against, a fabricated answer posted as the user's own message.
+// do I transcribe an audio file with this app?" — or that merely quotes the
+// instruction mid-sentence — e.g. "I need you to transcribe this audio
+// verbatim..." — cannot start with "transcribe this audio verbatim..." and is
+// left alone. Both directions below use startsWith, never includes, for
+// exactly that reason: a substring match would also catch that second
+// example, which an opening-anchored prefix match cannot.
+//
+// Two directions are checked because an echo can end two different ways:
+//   - direction 1: a short echo that cuts off partway through, e.g.
+//     "Transcribe this audio verbatim." with no continuation. This is a true
+//     prefix of the instruction, floored at ECHO_FIRST_SENTENCE_LEN so it can
+//     only fire once the match reaches a complete clause — below that floor
+//     a match is as likely to be a coincidence as an echo.
+//   - direction 2: a longer echo that diverges from the instruction only at
+//     the trailing punctuation the model chose to close its own sentence
+//     with (e.g. "..." transcript." instead of continuing "..." transcript,
+//     with no preamble..."), matched against ECHO_ANCHOR rather than the
+//     full instruction since the two texts no longer agree past that point.
+//
+// A false positive here — dropping one real question that happens to open
+// with those exact words — is the acceptable side to err on: the alternative
+// is a repeat of the bug this guards against, a fabricated answer posted as
+// the user's own message.
 function looksLikeEcho(reply: string): boolean {
   const normalized = normalize(reply);
   if (normalized === "") return false;
-  if (normalized === normalize(NO_SPEECH_SENTINEL)) return true;
+  if (NO_SPEECH_PATTERN.test(normalized)) return true;
   const instruction = normalize(TRANSCRIBE_PROMPT);
-  return instruction.startsWith(normalized) || normalized.startsWith(ECHO_ANCHOR);
+  return (
+    (normalized.length >= ECHO_FIRST_SENTENCE_LEN && instruction.startsWith(normalized)) ||
+    normalized.startsWith(ECHO_ANCHOR)
+  );
 }
 
 // Whether a transcription request can be served at all: a speech-capable

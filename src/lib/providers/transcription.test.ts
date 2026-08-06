@@ -62,6 +62,9 @@ describe("transcribe", () => {
     expect(parts[0]).toEqual({ type: "file", data: AUDIO, mimeType: "audio/webm" });
     expect(parts[1].type).toBe("text");
     expect(String(parts[1].text)).toMatch(/verbatim/i);
+    // The escape hatch is its own clause, not just "the prompt mentions
+    // verbatim somewhere" — deleting it must be visible to this test.
+    expect(String(parts[1].text)).toMatch(/NO_SPEECH/);
   });
 
   it("passes the recorded mime type through rather than a fixed one", async () => {
@@ -110,6 +113,45 @@ describe("a prompt echo is not a transcript", () => {
   it("maps the no-speech sentinel to an empty string", async () => {
     generateTextSpy.mockResolvedValue({ text: "NO_SPEECH" });
     expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
+  });
+
+  it("maps the sentinel to an empty string with a trailing full stop", async () => {
+    // A cough or a door slam clears the Layer 1 energy gate while containing
+    // no discernible speech, which is exactly when the model is asked to
+    // emit the sentinel — and a model asked for one fixed word still
+    // punctuates it like a sentence often enough that an exact match alone
+    // would repeat the shipped bug on this path.
+    generateTextSpy.mockResolvedValue({ text: "NO_SPEECH." });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
+  });
+
+  it("maps a backtick-fenced sentinel to an empty string", async () => {
+    // Models fence single-token answers constantly.
+    generateTextSpy.mockResolvedValue({ text: "`NO_SPEECH`" });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
+  });
+
+  it("drops a short echo that stops after the instruction's first sentence", async () => {
+    // A truncated echo need not run all the way to the anchor's end to be
+    // identifiable as one: "Transcribe this audio verbatim." is a complete
+    // clause and an exact, character-for-character prefix of the
+    // instruction — not a coincidence a real, unrelated utterance would
+    // produce.
+    generateTextSpy.mockResolvedValue({ text: "Transcribe this audio verbatim." });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
+  });
+
+  it("does NOT drop a real sentence that merely quotes the instruction mid-thought", async () => {
+    // Pins prefix semantics as distinct from substring semantics: this reply
+    // contains the instruction's exact wording, just not at its start, so an
+    // opening-anchored prefix match must leave it alone even though a
+    // substring match would not.
+    generateTextSpy.mockResolvedValue({
+      text: "I need you to transcribe this audio verbatim. Output only the transcript, please.",
+    });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe(
+      "I need you to transcribe this audio verbatim. Output only the transcript, please.",
+    );
   });
 
   it("does NOT drop a real transcript that happens to talk about transcription", async () => {

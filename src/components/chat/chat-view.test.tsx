@@ -512,6 +512,12 @@ describe("ChatView", () => {
     // effect adding a second, illegitimate call is what this must now catch.)
     expect(cancel).not.toHaveBeenCalled();
     expect(speak).toHaveBeenCalledTimes(1);
+    // Count alone would not notice a bug that suppressed the legitimate flush call
+    // while substituting a different, single illegitimate one — content matters too.
+    // speechSynthesis.speak takes a single SpeechSynthesisUtterance-shaped argument
+    // (stubSpeechSynthesis's fake constructor sets .text and .lang on it), not the
+    // (text, lang) pair SpeechEngine.speak takes in use-spoken-answer.test.tsx.
+    expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: "Paris is the capital of France." }));
   });
 
   it("sends a voice transcript through append, not handleSubmit", async () => {

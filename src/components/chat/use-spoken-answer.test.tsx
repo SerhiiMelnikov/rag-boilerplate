@@ -179,9 +179,19 @@ describe("useSpokenAnswer", () => {
 
   it("still adopts when only the toggle flips, with no turn change", () => {
     // The behaviour the fix must NOT break.
+    //
+    // "Th" trailing on both renders, not a bare "Already showing.": base's default
+    // status is "streaming" (flush: false), and a terminator sitting at the very
+    // end of arrived text is withheld until flush (see sentences.ts) because it is
+    // indistinguishable from a delta boundary. Without the trailing fragment,
+    // completedSentences returns [] on every render regardless of whether adopt
+    // logic runs at all, so engine.speak is never called under ANY implementation
+    // — this test could not fail. Confirmed by disabling the adopt branch outright
+    // and re-running: this test still passed while the two pre-existing adopt
+    // tests earlier in this file correctly failed.
     const engine = fakeEngine();
-    const view = render(<Host {...base} enabled={false} answer="Already showing." turnKey="m1" engine={engine} />);
-    view.rerender(<Host {...base} enabled={true} answer="Already showing." turnKey="m1" engine={engine} />);
+    const view = render(<Host {...base} enabled={false} answer="Already showing. Th" turnKey="m1" engine={engine} />);
+    view.rerender(<Host {...base} enabled={true} answer="Already showing. Th" turnKey="m1" engine={engine} />);
     expect(engine.speak).not.toHaveBeenCalled();
   });
 });

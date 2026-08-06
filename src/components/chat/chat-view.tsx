@@ -9,6 +9,8 @@ import { Composer } from "./composer";
 import { humanizeChatError } from "./chat-error";
 import { useSpeechAvailable } from "./use-speech-available";
 import { useSpokenAnswer } from "./use-spoken-answer";
+import { useMicrophone } from "./use-microphone";
+import { useTranscribeAvailable } from "./use-transcribe-available";
 import type { PersistedMessage } from "./types";
 
 const CREATE_FAILED = "Could not start a new conversation. Please try again.";
@@ -43,12 +45,27 @@ export function ChatView({
   // Failures that happen before useChat is ever involved, and which its own `error`
   // therefore cannot report: creating the conversation the first message needs.
   const [startError, setStartError] = useState<string | null>(null);
-  const { messages, input, handleInputChange, handleSubmit, status, setMessages, error } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, status, setMessages, error, append } = useChat({
     api: "/api/chat",
   });
   const prevStatus = useRef(status);
 
   const speechAvailable = useSpeechAvailable();
+  const transcribeAvailable = useTranscribeAvailable();
+  const busy = status === "submitted" || status === "streaming" || starting;
+  const mic = useMicrophone({
+    onTranscript: (text) => void submitVoice(text),
+    disabled: busy,
+  });
+  // useMicrophone's `supported` is computed during render (browserRecorder() runs
+  // inside a useState lazy initialiser), so it is null/false on the server and on
+  // the client's own first (hydration) render, then a real Recorder from the next
+  // client render on — a hydration mismatch on its own, same shape as the one
+  // use-speech-available.ts defers to an effect. The microphone is safe only
+  // because transcribeAvailable is *also* seeded false on that first client
+  // render, so ANDing it in keeps the first client render's markup matching the
+  // server's. Do not drop this gate to "simplify" it away.
+  const micReady = mic.supported && transcribeAvailable;
   // Seeded false and read in an effect, never during render: the server cannot know
   // what this device stored, and disagreeing with it is a hydration mismatch.
   const [speakAnswers, setSpeakAnswers] = useState(false);
@@ -96,48 +113,63 @@ export function ChatView({
     prevStatus.current = status;
   }, [status, loadHistory, onTurnComplete]);
 
-  async function submit() {
+  // The creation branch, shared by both send paths. Null means the caller must
+  // not send: either creation failed, or another submit is already creating one
+  // and this call is ignored outright rather than queued — it can neither send
+  // into a conversation that does not exist yet nor create a duplicate.
+  async function ensureConversation(): Promise<string | null> {
     // A new attempt is under way, so the last one's message no longer describes
     // anything. useChat clears its own `error` the same way, inside triggerRequest.
     setStartError(null);
-    let id = conversationRef.current;
-    if (!id) {
-      // The conversation is born from the first question rather than from a
-      // button. Creation happens once per conversation: a second submit that
-      // lands while the first is still creating one is ignored outright, not
-      // queued, so it can neither send into a conversation that doesn't exist
-      // yet nor create a duplicate.
-      if (creating.current) return;
-      creating.current = true;
-      setStarting(true);
-      try {
-        const res = await fetch("/api/conversations", { method: "POST" });
-        if (!res.ok) {
-          setStartError(CREATE_FAILED);
-          return;
-        }
-        id = (await res.json()).id as string;
-        conversationRef.current = id;
-        onStarted?.(id);
-      } catch {
-        // A dropped connection rejects the fetch. Caught here for two reasons: the
-        // failure has to reach the transcript like any other, and submit() is called
-        // from an event handler that cannot await it — anything thrown past this
-        // point is an unhandled rejection.
+    const existing = conversationRef.current;
+    if (existing) return existing;
+    if (creating.current) return null;
+    creating.current = true;
+    setStarting(true);
+    try {
+      const res = await fetch("/api/conversations", { method: "POST" });
+      if (!res.ok) {
         setStartError(CREATE_FAILED);
-        return;
-      } finally {
-        creating.current = false;
-        setStarting(false);
+        return null;
       }
+      const id = (await res.json()).id as string;
+      conversationRef.current = id;
+      onStarted?.(id);
+      return id;
+    } catch {
+      // A dropped connection rejects the fetch. Caught here because the failure
+      // has to reach the transcript like any other, and because the callers are
+      // event handlers that cannot await this.
+      setStartError(CREATE_FAILED);
+      return null;
+    } finally {
+      creating.current = false;
+      setStarting(false);
     }
+  }
+
+  async function submit() {
+    const id = await ensureConversation();
+    if (!id) return;
     handleSubmit(undefined, { body: { conversationId: id } });
     setHasLiveTurn(true);
   }
 
-  // One error slot for the transcript, fed by both sources: a conversation that could
-  // not be created, and a turn that failed once one exists.
-  const shownError = startError ?? (error ? humanizeChatError(error) : undefined);
+  // Voice cannot go through handleSubmit: it reads `input` from state, which is
+  // still stale in the tick a transcript arrives. append() takes the text directly.
+  async function submitVoice(text: string) {
+    const id = await ensureConversation();
+    if (!id) return;
+    void append({ role: "user", content: text }, { body: { conversationId: id } });
+    // Must be set here too, or a spoken question's answer is never read aloud —
+    // the two halves of this feature meet exactly at this line.
+    setHasLiveTurn(true);
+  }
+
+  // One error slot for the transcript, fed by all three sources: a conversation
+  // that could not be created, the microphone itself, and a turn that failed once
+  // a conversation exists.
+  const shownError = startError ?? mic.error ?? (error ? humanizeChatError(error) : undefined);
   const persistedById = new Map(persisted.map((m) => [m.id, m]));
   const stream = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
@@ -185,9 +217,12 @@ export function ChatView({
         // "ready" as busy left Send disabled forever after one failed turn. Retrying
         // from here is safe — triggerRequest clears the error and moves to
         // "submitted" itself.
-        busy={status === "submitted" || status === "streaming" || starting}
+        busy={busy}
         speakAnswers={speakAnswers}
         onToggleSpeakAnswers={speechAvailable ? toggleSpeakAnswers : undefined}
+        onMicrophone={micReady ? mic.toggle : undefined}
+        micState={mic.state}
+        micElapsedMs={mic.elapsedMs}
       />
     </>
   );

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatView } from "./chat-view";
+import type { Recorder, RecordedAudio } from "./recorder";
 
 type MockMessage = { id: string; role: string; content: string };
 const chatState: { error?: Error; status: string; input: string; messages: MockMessage[] } = {
@@ -22,6 +23,7 @@ const setMessagesMock = vi.fn((msgs: MockMessage[]) => {
 });
 const handleInputChangeMock = vi.fn();
 const handleSubmitMock = vi.fn();
+const appendMock = vi.fn();
 
 vi.mock("@ai-sdk/react", () => ({
   useChat: () => ({
@@ -32,8 +34,29 @@ vi.mock("@ai-sdk/react", () => ({
     status: chatState.status,
     setMessages: setMessagesMock,
     error: chatState.error,
+    append: appendMock,
   }),
 }));
+
+// The voice tests below need the microphone to actually render, which takes two
+// more mocks: useTranscribeAvailable must report the server as ready, and
+// ./recorder's browserRecorder (what useMicrophone's own fallback calls when no
+// recorder is injected) must hand back something that behaves like one. Bindings
+// referenced from a vi.mock() factory have to go through vi.hoisted, since the
+// mock calls themselves are hoisted above every other top-level declaration.
+const { fakeRecorderApi } = vi.hoisted(() => {
+  const AUDIO: RecordedAudio = { blob: new Blob(["audio"], { type: "audio/webm" }), mimeType: "audio/webm;codecs=opus" };
+  return {
+    fakeRecorderApi: {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => AUDIO),
+      cancel: vi.fn(),
+    },
+  };
+});
+
+vi.mock("./use-transcribe-available", () => ({ useTranscribeAvailable: () => true }));
+vi.mock("./recorder", () => ({ browserRecorder: () => fakeRecorderApi as unknown as Recorder }));
 
 beforeEach(() => {
   chatState.error = undefined;
@@ -42,6 +65,10 @@ beforeEach(() => {
   chatState.messages = [];
   handleSubmitMock.mockClear();
   setMessagesMock.mockClear();
+  appendMock.mockClear();
+  fakeRecorderApi.start.mockClear();
+  fakeRecorderApi.stop.mockClear();
+  fakeRecorderApi.cancel.mockClear();
   Element.prototype.scrollIntoView = vi.fn();
 });
 afterEach(() => {
@@ -76,6 +103,75 @@ function stubSpeechSynthesis(overrides: { speak?: ReturnType<typeof vi.fn>; canc
       constructor(public text: string) {}
     },
   );
+}
+
+// --- Harness for the microphone-wiring tests below --------------------------
+//
+// None of mountWithVoice/transcriptArrives/typeAndSend/createCalls pre-existed in
+// this file; the brief named them as placeholders for "whatever this file already
+// has", but there was no render helper here at all (every test above calls
+// `render(<ChatView ... />)` directly). These are new, built on the same
+// chatState/stubFetch/appendMock/handleSubmitMock mocks the rest of the file uses,
+// and on the rerender-after-mutating-chatState idiom the history-refetch tests
+// above already establish.
+
+// Set by transcriptArrives before the recorder "hears" anything; read by the
+// stubbed POST to /api/chat/transcribe that mountWithVoice installs.
+let nextTranscript = "";
+// The `rerender` of whichever tree mountWithVoice most recently rendered — what
+// lets transcriptArrives/typeAndSend force ChatView to notice a chatState mutation
+// made from outside React, exactly like the existing history-refetch tests do.
+let rerenderChatView: (() => void) | null = null;
+
+function mountWithVoice() {
+  let createCalls = 0;
+  stubFetch(async (url, init) => {
+    if (url === "/api/conversations" && init?.method === "POST") {
+      createCalls += 1;
+      return new Response(JSON.stringify({ id: `voice-${createCalls}` }), { status: 201 });
+    }
+    if (url === "/api/chat/transcribe") {
+      return new Response(JSON.stringify({ text: nextTranscript }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+  });
+  const { rerender } = render(<ChatView initialConversationId={null} />);
+  rerenderChatView = () => rerender(<ChatView initialConversationId={null} />);
+  return {
+    append: appendMock,
+    handleSubmit: handleSubmitMock,
+    createCalls: () => createCalls,
+  };
+}
+
+// Presses the mic, lets useMicrophone's own start() settle into "recording", then
+// presses it again to stop — driving a transcript through the real hook exactly as
+// a user would, down to the fetch to /api/chat/transcribe. Waits for append() to
+// have actually landed before returning, so a caller that immediately does
+// something else (typeAndSend, an assertion on createCalls) is not racing
+// submitVoice's still-pending ensureConversation().
+async function transcriptArrives(text: string) {
+  nextTranscript = text;
+  const before = appendMock.mock.calls.length;
+  fireEvent.click(screen.getByLabelText("Ask by voice"));
+  await waitFor(() => expect(screen.getByLabelText("Stop recording")).toBeTruthy());
+  fireEvent.click(screen.getByLabelText("Stop recording"));
+  await waitFor(() => expect(appendMock.mock.calls.length).toBeGreaterThan(before));
+}
+
+// A typed send. chatState.input is not wired to any real state (handleInputChange
+// is a bare mock, same as every other test in this file), so the value is set
+// directly and ChatView is forced to notice it via the same rerender-after-mutating
+// idiom the history-refetch tests above use. submit() is async even when the
+// conversation already exists (ensureConversation is an async function, so even
+// its synchronous `return existing` path resolves on a microtask tick), so this
+// waits for handleSubmit rather than asserting immediately after the click.
+async function typeAndSend(text: string) {
+  const before = handleSubmitMock.mock.calls.length;
+  chatState.input = text;
+  rerenderChatView?.();
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(handleSubmitMock.mock.calls.length).toBeGreaterThan(before));
 }
 
 describe("ChatView", () => {
@@ -394,5 +490,64 @@ describe("ChatView", () => {
     // already-spoken answer is not replayed.
     expect(cancel).not.toHaveBeenCalled();
     expect(speak).not.toHaveBeenCalled();
+  });
+
+  it("sends a voice transcript through append, not handleSubmit", async () => {
+    // handleSubmit reads `input` from state, which is stale in the tick a
+    // transcript arrives — a transcript sent through it would send an empty
+    // message or the previously typed one.
+    const { append, handleSubmit } = mountWithVoice();
+    await transcriptArrives("how many documents");
+    await waitFor(() => expect(append).toHaveBeenCalled());
+    expect(append.mock.calls[0][0]).toEqual({ role: "user", content: "how many documents" });
+    expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it("creates the conversation once across a voice send and a typed send", async () => {
+    const { createCalls } = mountWithVoice();
+    await transcriptArrives("first");
+    await typeAndSend("second");
+    expect(createCalls()).toBe(1);
+  });
+
+  it("passes the created conversation id on the voice path", async () => {
+    const { append } = mountWithVoice();
+    await transcriptArrives("hello");
+    await waitFor(() => expect(append).toHaveBeenCalled());
+    expect(append.mock.calls[0][1]).toMatchObject({ body: { conversationId: expect.any(String) } });
+  });
+
+  it("still sends a typed message through handleSubmit", async () => {
+    const { handleSubmit } = mountWithVoice();
+    await typeAndSend("typed");
+    expect(handleSubmit).toHaveBeenCalled();
+  });
+
+  it("reads a voice-sent question's answer aloud when speaking is enabled", async () => {
+    // The falsification target for this file: submitVoice's setHasLiveTurn(true).
+    // Deleting that one line breaks none of the tests above — nothing else in this
+    // file exercises it — which is exactly the gap this test exists to close. It is
+    // the seam where the microphone and the spoken-answers feature meet.
+    window.localStorage.setItem("speak_answers", "1");
+    const speak = vi.fn();
+    stubSpeechSynthesis({ speak });
+
+    const { append } = mountWithVoice();
+    await transcriptArrives("where is the Eiffel Tower?");
+    await waitFor(() => expect(append).toHaveBeenCalled());
+
+    // The turn streams in, exactly as a typed turn's would (mirrors the id-swap
+    // test above): a live assistant message arrives while status is "streaming",
+    // then the turn finishes.
+    chatState.status = "streaming";
+    chatState.messages = [
+      { id: "user-1", role: "user", content: "where is the Eiffel Tower?" },
+      { id: "live-1", role: "assistant", content: "Paris is the capital of France." },
+    ];
+    rerenderChatView?.();
+    chatState.status = "ready";
+    rerenderChatView?.();
+
+    await waitFor(() => expect(speak).toHaveBeenCalled());
   });
 });

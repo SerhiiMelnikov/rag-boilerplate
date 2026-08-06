@@ -69,6 +69,12 @@ export function useMicrophone({
   error: string | null;
   supported: boolean;
   toggle: () => void;
+  /** Clears a stale error left over from a previous press. Never cleared on its
+   * own by the passage of time or a new render — a caller that starts a turn
+   * through some path other than the mic (e.g. sending a typed message) must
+   * call this itself, or a refused-permission message from minutes ago keeps
+   * occupying the one error slot the rest of the chat shares. */
+  clearError: () => void;
 } {
   const [fallback] = useState<Recorder | null>(() => (recorder === undefined ? browserRecorder() : null));
   const active = recorder !== undefined ? recorder : fallback;
@@ -153,5 +159,7 @@ export function useMicrophone({
   // Leaving the page must not leave a microphone recording.
   useEffect(() => () => active?.cancel(), [active]);
 
-  return { state, elapsedMs, error, supported: active !== null, toggle };
+  const clearError = useCallback(() => setError(null), []);
+
+  return { state, elapsedMs, error, supported: active !== null, toggle, clearError };
 }

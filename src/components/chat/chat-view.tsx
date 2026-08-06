@@ -77,8 +77,8 @@ export function ChatView({
   // empty, and it is *replaced* by the loaded one moments later without `enabled`
   // ever toggling again. Left ungated, opening an old conversation with the switch
   // already on reads its last answer aloud, unprompted. Gating on a real turn having
-  // started in this session — set once, in submit(), and never unset — closes that
-  // without touching the adopt-on-toggle behavior mid-turn.
+  // started in this session — set in both submit() and submitVoice(), and never
+  // unset — closes that without touching the adopt-on-toggle behavior mid-turn.
   const [hasLiveTurn, setHasLiveTurn] = useState(false);
 
   function toggleSpeakAnswers() {
@@ -120,7 +120,11 @@ export function ChatView({
   async function ensureConversation(): Promise<string | null> {
     // A new attempt is under way, so the last one's message no longer describes
     // anything. useChat clears its own `error` the same way, inside triggerRequest.
+    // mic.error is cleared here too, not just on the next recording: a typed
+    // send following a refused mic permission must not leave that refusal
+    // pinned in the one error slot the two sources share.
     setStartError(null);
+    mic.clearError();
     const existing = conversationRef.current;
     if (existing) return existing;
     if (creating.current) return null;
@@ -167,9 +171,11 @@ export function ChatView({
   }
 
   // One error slot for the transcript, fed by all three sources: a conversation
-  // that could not be created, the microphone itself, and a turn that failed once
-  // a conversation exists.
-  const shownError = startError ?? mic.error ?? (error ? humanizeChatError(error) : undefined);
+  // that could not be created, a turn that failed once a conversation exists, and
+  // the microphone itself. mic.error sits LAST, not first: it is only cleared on
+  // the next successful send attempt (see ensureConversation), so a stale refusal
+  // from minutes ago must never outrank — and hide — a live chat error.
+  const shownError = startError ?? (error ? humanizeChatError(error) : undefined) ?? mic.error ?? undefined;
   const persistedById = new Map(persisted.map((m) => [m.id, m]));
   const stream = messages
     .filter((m) => m.role === "user" || m.role === "assistant")

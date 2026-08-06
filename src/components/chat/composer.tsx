@@ -128,7 +128,13 @@ export function Composer({
             type="button"
             variant="ghost"
             onClick={onMicrophone}
-            disabled={busy || micState === "requesting" || micState === "transcribing"}
+            // Recording overrides `busy`: use-microphone.ts's toggle() lets a manual
+            // stop through unconditionally (the VAD auto-stop is never blocked by
+            // `disabled` either), because a turn starting while the mic is live must
+            // not strand it running with no way to end it. The button has to stay
+            // pressable for that same case, or the press this comment describes
+            // never reaches toggle() at all.
+            disabled={micState === "recording" ? false : busy || micState === "requesting" || micState === "transcribing"}
             aria-label={MIC_LABELS[micState ?? "idle"]}
             className="flex-none px-3"
           >

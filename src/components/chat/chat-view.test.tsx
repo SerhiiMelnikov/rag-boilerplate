@@ -174,6 +174,20 @@ async function typeAndSend(text: string) {
   await waitFor(() => expect(handleSubmitMock.mock.calls.length).toBeGreaterThan(before));
 }
 
+// Presses the mic once and makes the underlying recorder's start() reject with a
+// permission refusal, exactly what a user declining the browser's mic prompt
+// produces. Drives use-microphone.ts's real error-mapping (messageFor), not a
+// stubbed one, so this is what actually lands in mic.error.
+async function micRefuses() {
+  fakeRecorderApi.start.mockImplementationOnce(async () => {
+    const err = new Error("refused");
+    err.name = "NotAllowedError";
+    throw err;
+  });
+  fireEvent.click(screen.getByLabelText("Ask by voice"));
+  await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+}
+
 describe("ChatView", () => {
   it("shows the server's message when the request is rejected", async () => {
     stubFetch(async () => new Response(JSON.stringify({ messages: [] }), { status: 200 }));
@@ -549,5 +563,43 @@ describe("ChatView", () => {
     rerenderChatView?.();
 
     await waitFor(() => expect(speak).toHaveBeenCalled());
+  });
+
+  it("shows a refused microphone permission in the alert slot", async () => {
+    // Fix-round finding: there was no test that mic.error reaches the shared
+    // error slot at all, in either ordering.
+    mountWithVoice();
+    await micRefuses();
+    expect(screen.getByRole("alert")).toHaveTextContent("Microphone access was refused.");
+  });
+
+  it("shows a live chat error even when a stale microphone error exists", async () => {
+    // mic.error is only cleared by the NEXT send attempt (ensureConversation), not
+    // by the passage of time or by a later chat error arriving on its own — so a
+    // refused-permission message from minutes ago must never outrank, and hide, a
+    // real turn failure that happens afterward.
+    mountWithVoice();
+    await micRefuses();
+    expect(screen.getByRole("alert")).toHaveTextContent("Microphone access was refused.");
+
+    chatState.error = new Error(
+      JSON.stringify({ error: "You have reached the message limit. Try again in 42 seconds." }),
+    );
+    rerenderChatView?.();
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "You have reached the message limit. Try again in 42 seconds.",
+    );
+  });
+
+  it("clears a stale microphone error once a new turn is sent", async () => {
+    const { handleSubmit } = mountWithVoice();
+    await micRefuses();
+    expect(screen.getByRole("alert")).toHaveTextContent("Microphone access was refused.");
+
+    await typeAndSend("hello");
+
+    expect(handleSubmit).toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

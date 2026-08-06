@@ -131,6 +131,27 @@ describe("a prompt echo is not a transcript", () => {
     expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
   });
 
+  it("maps the paraphrased two-word sentinel to an empty string", async () => {
+    // A model told to reply with the bare token "NO_SPEECH" frequently
+    // paraphrases it as the two plain words instead — this is deliberate, not
+    // an accident of the character class, and must keep working.
+    generateTextSpy.mockResolvedValue({ text: "No speech" });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
+  });
+
+  it("maps the paraphrased sentinel to an empty string with a trailing full stop", async () => {
+    generateTextSpy.mockResolvedValue({ text: "No speech." });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
+  });
+
+  it("does NOT drop a real sentence that merely contains the words no speech", async () => {
+    // Pins the end anchor: the sentinel pattern matches the WHOLE reply, not
+    // a substring of it, so a genuine sentence that happens to contain "no
+    // speech" partway through is left alone.
+    generateTextSpy.mockResolvedValue({ text: "No speech was detected in the recording." });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("No speech was detected in the recording.");
+  });
+
   it("drops a short echo that stops after the instruction's first sentence", async () => {
     // A truncated echo need not run all the way to the anchor's end to be
     // identifiable as one: "Transcribe this audio verbatim." is a complete

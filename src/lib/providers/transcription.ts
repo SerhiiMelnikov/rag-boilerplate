@@ -49,12 +49,22 @@ const ECHO_ANCHOR = normalize(ECHO_ANCHOR_TEXT);
 const ECHO_FIRST_SENTENCE_LEN = normalize(ECHO_ANCHOR_TEXT.slice(0, ECHO_ANCHOR_TEXT.indexOf(".") + 1)).length;
 
 // A model asked to emit the sentinel can still fence it, punctuate it, or
-// otherwise decorate it instead of returning it bare — exactly the kind of
-// deviation that produced the shipped bug in the first place, so an exact
-// string match is not enough. Tolerates a trailing "." or "!" and a wrap in
-// backticks (single-token answers get fenced constantly); nothing looser than
-// that, since the sentinel is a fixed word the model was told verbatim, not
-// free text where a fuzzier match would be justified.
+// paraphrase it as the two plain words instead of returning it bare — exactly
+// the kind of deviation that produced the shipped bug in the first place, so
+// an exact string match is not enough. This is anchored at both ends, so the
+// surface it accepts is only the WHOLE reply being, case/space-insensitively:
+// the sentinel itself ("NO_SPEECH") or its natural-language form ("no
+// speech"), optionally wrapped in backticks, with at most one trailing "."
+// or "!". "No speech was detected in the recording." does not match — the
+// end anchor rules out a real sentence that merely contains those two words.
+//
+// This deliberately also drops a genuine user message whose entire content
+// is the literal two words "no speech" (e.g. answering "was there any
+// speech?" with "No speech."). That is the acceptable side to err on, for
+// the same reason direction 1's comment above gives for the echo matcher: a
+// model told to reply with a bare token frequently paraphrases it instead,
+// "No speech" is exactly the paraphrase Gemini is likely to produce, and
+// missing it silently reintroduces the defect this file exists to prevent.
 const NO_SPEECH_PATTERN = /^`?no[_ ]speech`?[.!]?$/;
 
 // The sentinel makes an echo less likely but not impossible (a model can

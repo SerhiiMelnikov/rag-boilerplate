@@ -125,6 +125,26 @@ describe("useMicrophone", () => {
     expect(onTranscript).not.toHaveBeenCalled();
   });
 
+  it("tells the user why nothing was sent when the transcript comes back empty", async () => {
+    // An empty transcript is reachable even after the client-side speech gate
+    // passes: a server-side guard (the echo backstop, the no-speech sentinel)
+    // can still catch what the energy floor let through. Without feedback here,
+    // the user pressed the button, spoke, and the UI did nothing at all with no
+    // explanation — indistinguishable from a broken button. This is a DIFFERENT
+    // assertion from "does not send an empty transcript" above, which does not
+    // check `error`; falsifying the branch that sets it must fail this test
+    // while leaving that one green.
+    const rec = fakeRecorder();
+    const onTranscript = vi.fn();
+    const transcribeFn = vi.fn(async () => "");
+    const { handle } = mount({ recorder: rec.api, onTranscript, transcribeFn });
+    await act(async () => handle.current!.toggle());
+    rec.feed(8, 0.2);   // 400ms of speech, over the 300ms floor — clears the silence gate
+    await act(async () => handle.current!.toggle());
+    await waitFor(() => expect(handle.current!.error).toMatch(/no speech/i));
+    expect(onTranscript).not.toHaveBeenCalled();
+  });
+
   it("does not transcribe a recording with no speech in it", async () => {
     // The user pressed the button, said nothing, and pressed it again. Sending
     // that costs money and, worse, gets a confident answer back: handed silence,

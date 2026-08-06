@@ -113,9 +113,15 @@ export function useMicrophone({
         return;
       }
       const text = await transcribeRef.current(audio);
-      // An empty transcript is silence recorded by accident. It must not spend
-      // a model request, and it must not look like a failure either.
-      if (text !== "") onTranscriptRef.current(text);
+      // A transcript can come back empty for the same reason the gate above
+      // exists — the recording held no speech, and the server's own guards
+      // caught what the energy floor let through. Saying so is the difference
+      // between "nothing was heard" and "the button is broken".
+      if (text === "") {
+        setError(NO_SPEECH);
+        return;
+      }
+      onTranscriptRef.current(text);
     } catch (err) {
       // active.stop() can reject without having released anything (the device
       // went away, or the recorder was already inactive). Without cancelling

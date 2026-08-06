@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatView } from "./chat-view";
 import type { Recorder, RecordedAudio } from "./recorder";
@@ -44,14 +44,19 @@ vi.mock("@ai-sdk/react", () => ({
 // recorder is injected) must hand back something that behaves like one. Bindings
 // referenced from a vi.mock() factory have to go through vi.hoisted, since the
 // mock calls themselves are hoisted above every other top-level declaration.
-const { fakeRecorderApi } = vi.hoisted(() => {
+const { fakeRecorderApi, fireFrame } = vi.hoisted(() => {
   const AUDIO: RecordedAudio = { blob: new Blob(["audio"], { type: "audio/webm" }), mimeType: "audio/webm;codecs=opus" };
+  // Captured so tests can simulate speech energy: use-microphone.ts's new
+  // silence gate (Task 10b) reads vad.current.spokeMs, which only advances
+  // when the hook's own onFrame callback is actually invoked.
+  let onFrame: ((energy: number) => void) | null = null;
   return {
     fakeRecorderApi: {
-      start: vi.fn(async () => {}),
+      start: vi.fn(async (cb: (energy: number) => void) => { onFrame = cb; }),
       stop: vi.fn(async () => AUDIO),
-      cancel: vi.fn(),
+      cancel: vi.fn(() => { onFrame = null; }),
     },
+    fireFrame: (energy: number) => onFrame?.(energy),
   };
 });
 
@@ -155,6 +160,11 @@ async function transcriptArrives(text: string) {
   const before = appendMock.mock.calls.length;
   fireEvent.click(screen.getByLabelText("Ask by voice"));
   await waitFor(() => expect(screen.getByLabelText("Stop recording")).toBeTruthy());
+  // Task 10b's silence gate drops a recording with no speech in it before it
+  // ever reaches transcribeFn, so this harness must simulate some (8 frames *
+  // 50ms = 400ms, over the 300ms floor) or every call below would be dropped
+  // as silence rather than exercising what these tests are actually about.
+  act(() => { for (let i = 0; i < 8; i++) fireFrame(0.2); });
   fireEvent.click(screen.getByLabelText("Stop recording"));
   await waitFor(() => expect(appendMock.mock.calls.length).toBeGreaterThan(before));
 }

@@ -88,6 +88,44 @@ describe("transcribe", () => {
   });
 });
 
+describe("a prompt echo is not a transcript", () => {
+  it("drops the instruction when Gemini echoes it back", async () => {
+    // This is the exact string a real user saw posted as their own question.
+    generateTextSpy.mockResolvedValue({
+      text: "Transcribe this audio verbatim. Output only the transcript, with no preamble, commentary or translation. If the audio contains no discernible speech, reply with exactly: NO_SPEECH",
+    });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
+  });
+
+  it("drops a partial echo of the instruction", async () => {
+    generateTextSpy.mockResolvedValue({ text: "Transcribe this audio verbatim. Output only the transcript." });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
+  });
+
+  it("drops the echo whatever the casing and spacing", async () => {
+    generateTextSpy.mockResolvedValue({ text: "  transcribe this audio verbatim.   output only the transcript,  " });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
+  });
+
+  it("maps the no-speech sentinel to an empty string", async () => {
+    generateTextSpy.mockResolvedValue({ text: "NO_SPEECH" });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
+  });
+
+  it("does NOT drop a real transcript that happens to talk about transcription", async () => {
+    // The guard must be narrow. Someone asking about this very feature is a
+    // legitimate question, and eating it would be a worse bug than the one the
+    // guard exists to stop.
+    generateTextSpy.mockResolvedValue({ text: "How do I transcribe an audio file with this app?" });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("How do I transcribe an audio file with this app?");
+  });
+
+  it("does NOT drop a real transcript that merely contains the word transcript", async () => {
+    generateTextSpy.mockResolvedValue({ text: "Show me the transcript of yesterday's meeting." });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("Show me the transcript of yesterday's meeting.");
+  });
+});
+
 describe("isTranscribeConfigured", () => {
   it("is true for a keyed, speech-capable provider with a model", () => {
     expect(isTranscribeConfigured(settings())).toBe(true);

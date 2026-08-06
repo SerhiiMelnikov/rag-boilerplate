@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { stepVad, INITIAL_VAD_STATE, type VadState } from "@/lib/voice/silence";
+import { stepVad, INITIAL_VAD_STATE, VAD_DEFAULTS, type VadState } from "@/lib/voice/silence";
 import { browserRecorder, type Recorder, type RecordedAudio } from "./recorder";
 
 export type MicState = "idle" | "requesting" | "recording" | "transcribing";
@@ -13,6 +13,7 @@ const RATE_LIMITED = "You have reached the voice limit. Try again shortly.";
 const NOT_CONFIGURED = "Voice input is not configured.";
 const TOO_LONG = "That recording is too long.";
 const GENERIC = "Could not transcribe that. Try again.";
+const NO_SPEECH = "No speech detected — nothing was sent.";
 
 // Thrown by the default transcribe call so the hook can map a status to a
 // message without knowing anything about fetch.
@@ -101,6 +102,16 @@ export function useMicrophone({
     setState("transcribing");
     try {
       const audio = await active.stop();
+      // Silence recorded by accident must not spend a model request. This has
+      // to happen HERE rather than on the result: handed a silent clip, Gemini
+      // echoes the instruction it was given and Whisper hallucinates a stock
+      // phrase, so what comes back is confidently wrong rather than empty and
+      // no check on the returned string can tell it from a real transcript.
+      // vad.current is reset per recording in toggle()'s start branch.
+      if (vad.current.spokeMs < VAD_DEFAULTS.minSpeechMs) {
+        setError(NO_SPEECH);
+        return;
+      }
       const text = await transcribeRef.current(audio);
       // An empty transcript is silence recorded by accident. It must not spend
       // a model request, and it must not look like a failure either.

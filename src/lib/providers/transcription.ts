@@ -6,15 +6,55 @@ import { openaiTranscription } from "./openai";
 import { googleChat } from "./google";
 
 // Gemini has no transcription model, so it is asked to transcribe through the
-// ordinary chat model. The instruction has to forbid answering: the audio is a
-// question, and a chat model's first instinct is to reply to it. Verified
-// against the live API before this was written — it returns the transcript.
+// ordinary chat model. Two clauses are load-bearing. The first forbids
+// answering: the audio is a question, and a chat model's first instinct is to
+// reply to it. The second gives it something to say when there is nothing to
+// transcribe — without an escape hatch, a model handed silence and told
+// "output only the transcript" has no valid output and echoes the instruction
+// back instead, which is exactly what shipped to a real user.
+const NO_SPEECH_SENTINEL = "NO_SPEECH";
 const TRANSCRIBE_PROMPT =
-  "Transcribe this audio verbatim. Output only the transcript, with no preamble, commentary or translation.";
+  "Transcribe this audio verbatim. Output only the transcript, with no preamble, " +
+  "commentary or translation. If the audio contains no discernible speech, reply " +
+  `with exactly: ${NO_SPEECH_SENTINEL}`;
 
 function speechKey(s: RuntimeSettings): string | null {
   const name = keyNameOf(s.speechProvider);
   return name ? s.keys[name] : null;
+}
+
+function normalize(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+// The opening clause of TRANSCRIBE_PROMPT, with no trailing punctuation. This
+// is the anchor an echo is matched against below — kept as a slice of the
+// literal prompt text (not a separately maintained string) so the two can
+// never drift out of sync.
+const ECHO_ANCHOR = normalize("Transcribe this audio verbatim. Output only the transcript");
+
+// The sentinel makes an echo less likely but not impossible (a model can
+// still ignore the escape hatch and repeat the instruction instead), and what
+// shipped to a real user must be impossible, not just less likely. This is
+// matched on a PREFIX of the normalised instruction, never on a keyword: a
+// prefix match can only fire on text that begins the way the instruction
+// begins, so a genuine question that merely mentions "transcript" — e.g. "How
+// do I transcribe an audio file with this app?" — cannot start with
+// "transcribe this audio verbatim..." and is left alone. Two directions are
+// checked because an echo can end two different ways: a short echo that cuts
+// off is a true prefix of the instruction (direction 1), while a longer one
+// can diverge at the trailing punctuation the model chose to close its own
+// sentence with instead of continuing the original one (direction 2, matched
+// against the anchor rather than the full instruction). A false positive here
+// — dropping one real question that happens to open with those exact words —
+// is the acceptable side to err on: the alternative is a repeat of the bug
+// this guards against, a fabricated answer posted as the user's own message.
+function looksLikeEcho(reply: string): boolean {
+  const normalized = normalize(reply);
+  if (normalized === "") return false;
+  if (normalized === normalize(NO_SPEECH_SENTINEL)) return true;
+  const instruction = normalize(TRANSCRIBE_PROMPT);
+  return instruction.startsWith(normalized) || normalized.startsWith(ECHO_ANCHOR);
 }
 
 // Whether a transcription request can be served at all: a speech-capable
@@ -71,7 +111,14 @@ export async function transcribe(
           },
         ],
       });
-      return text.trim();
+      const trimmed = text.trim();
+      // The echo backstop applies only here: Whisper (the openai branch above)
+      // never sees TRANSCRIBE_PROMPT and so cannot echo it. Whisper's own
+      // failure mode on silence is a hallucinated stock phrase rather than an
+      // echo, and that is covered upstream by the caller's speech-detection
+      // gate, not here — which is why that gate, not this backstop, is the
+      // real fix for both providers.
+      return looksLikeEcho(trimmed) ? "" : trimmed;
     }
   } catch (err) {
     throw toProviderError(err, task, provider);

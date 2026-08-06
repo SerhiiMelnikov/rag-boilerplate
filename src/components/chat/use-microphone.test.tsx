@@ -90,6 +90,7 @@ describe("useMicrophone", () => {
     const transcribeFn = vi.fn(async () => "how many documents");
     const { handle } = mount({ recorder: rec.api, onTranscript, transcribeFn });
     await act(async () => handle.current!.toggle());
+    rec.feed(8, 0.2);   // 400ms of speech, over the 300ms floor — clears the silence gate
     await act(async () => handle.current!.toggle());
     await waitFor(() => expect(onTranscript).toHaveBeenCalledWith("how many documents"));
     expect(transcribeFn).toHaveBeenCalledWith(AUDIO);
@@ -108,14 +109,75 @@ describe("useMicrophone", () => {
   });
 
   it("does not send an empty transcript", async () => {
-    // Silence recorded by accident must not spend a model request.
+    // The provider itself can still come back empty even when speech was
+    // heard (e.g. inaudible mumbling) — this exercises the `text !== ""`
+    // guard downstream of the silence gate, not the gate itself, so it must
+    // clear the gate first or it would pass for the wrong reason.
     const rec = fakeRecorder();
     const onTranscript = vi.fn();
-    const { handle } = mount({ recorder: rec.api, onTranscript, transcribeFn: async () => "" });
+    const transcribeFn = vi.fn(async () => "");
+    const { handle } = mount({ recorder: rec.api, onTranscript, transcribeFn });
     await act(async () => handle.current!.toggle());
+    rec.feed(8, 0.2);   // 400ms of speech, over the 300ms floor — clears the silence gate
     await act(async () => handle.current!.toggle());
     await waitFor(() => expect(handle.current!.state).toBe<MicState>("idle"));
+    expect(transcribeFn).toHaveBeenCalledTimes(1);
     expect(onTranscript).not.toHaveBeenCalled();
+  });
+
+  it("does not transcribe a recording with no speech in it", async () => {
+    // The user pressed the button, said nothing, and pressed it again. Sending
+    // that costs money and, worse, gets a confident answer back: handed silence,
+    // Gemini echoes the instruction and Whisper hallucinates. Neither is empty,
+    // so no downstream string check can catch it — the request must not happen.
+    const rec = fakeRecorder();
+    const onTranscript = vi.fn();
+    const transcribeFn = vi.fn(async () => "should never be called");
+    const { handle } = mount({ recorder: rec.api, onTranscript, transcribeFn });
+    await act(async () => handle.current!.toggle());
+    rec.feed(20, 0.0);                       // 1 second of silence, no speech at all
+    await act(async () => handle.current!.toggle());
+    await waitFor(() => expect(handle.current!.state).toBe<MicState>("idle"));
+    expect(transcribeFn).not.toHaveBeenCalled();
+    expect(onTranscript).not.toHaveBeenCalled();
+  });
+
+  it("still releases the microphone when it drops a silent recording", async () => {
+    // Dropping the request must not skip the teardown: an unreleased MediaStream
+    // keeps the browser's recording indicator lit.
+    const rec = fakeRecorder();
+    const { handle } = mount({ recorder: rec.api, transcribeFn: vi.fn(async () => "x") });
+    await act(async () => handle.current!.toggle());
+    rec.feed(20, 0.0);
+    await act(async () => handle.current!.toggle());
+    await waitFor(() => expect(handle.current!.state).toBe<MicState>("idle"));
+    expect(rec.api.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("tells the user why nothing was sent", async () => {
+    // Silence rather than a message would be worse: the energy threshold is
+    // unverified against real rooms, so if it ever eats genuine speech the user
+    // must be able to see that it did, not just watch nothing happen.
+    const rec = fakeRecorder();
+    const { handle } = mount({ recorder: rec.api, transcribeFn: vi.fn(async () => "x") });
+    await act(async () => handle.current!.toggle());
+    rec.feed(20, 0.0);
+    await act(async () => handle.current!.toggle());
+    await waitFor(() => expect(handle.current!.error).toMatch(/no speech/i));
+  });
+
+  it("still transcribes a recording that does contain speech", async () => {
+    // The control case. Without it, a gate that blocked everything would pass
+    // all three tests above.
+    const rec = fakeRecorder();
+    const onTranscript = vi.fn();
+    const transcribeFn = vi.fn(async () => "how many documents");
+    const { handle } = mount({ recorder: rec.api, onTranscript, transcribeFn });
+    await act(async () => handle.current!.toggle());
+    rec.feed(8, 0.2);                        // 400ms of speech, over the 300ms floor
+    await act(async () => handle.current!.toggle());
+    await waitFor(() => expect(onTranscript).toHaveBeenCalledWith("how many documents"));
+    expect(transcribeFn).toHaveBeenCalledTimes(1);
   });
 
   it("reports a refused microphone", async () => {
@@ -178,6 +240,7 @@ describe("useMicrophone", () => {
       transcribeFn: async () => { throw Object.assign(new Error("rate limited"), { status: 429 }); },
     });
     await act(async () => handle.current!.toggle());
+    rec.feed(8, 0.2);   // 400ms of speech, over the 300ms floor — clears the silence gate
     await act(async () => handle.current!.toggle());
     await waitFor(() => expect(handle.current!.error).toMatch(/voice limit/i));
   });
@@ -189,6 +252,7 @@ describe("useMicrophone", () => {
       transcribeFn: async () => { throw Object.assign(new Error("unconfigured"), { status: 503 }); },
     });
     await act(async () => handle.current!.toggle());
+    rec.feed(8, 0.2);   // 400ms of speech, over the 300ms floor — clears the silence gate
     await act(async () => handle.current!.toggle());
     await waitFor(() => expect(handle.current!.error).toMatch(/not configured/i));
   });

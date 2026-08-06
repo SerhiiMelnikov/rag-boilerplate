@@ -4,6 +4,7 @@ import { getAuthUserById } from "@/lib/auth/users";
 import { isConversationOwned, addMessage, setConversationTitleIfDefault } from "@/lib/chat/conversations";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
 import { consume } from "@/lib/ratelimit/store";
+import { checkDualWindowRateLimit } from "@/lib/ratelimit/dual-window";
 import { prepareContext } from "@/lib/rag/answer";
 import { getChatModel } from "@/lib/providers";
 import { isProviderError } from "@/lib/providers/types";
@@ -29,8 +30,6 @@ const IMAGE_CANDIDATES = 8;
 const IMAGE_MIN_SCORE = 0.1;
 const IMAGE_INTRO = "Here are the images that best match your description:";
 const NO_IMAGE_ANSWER = "I couldn't find any image matching that description.";
-const MINUTE_MS = 60_000;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Narrow session type: guards.ts now reads the session via getSessionFromRequest
 // (flat { id, role, isSuperAdmin }, no NextAuth `.user`/`expires` wrapper), keyed
@@ -93,19 +92,18 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   // after the expensive part is not a limit. Two independent buckets: a burst guard
   // and a daily quota. The minute rule is checked first and short-circuits, so a
   // request it already rejected does not also burn a slot of the daily quota.
+  // Shared with src/api/chat/transcribe/handler.ts via checkDualWindowRateLimit —
+  // see that file for the parts that must never drift (bucket key shape, the
+  // short-circuit, and that the 429 copy stays distinct per feature).
   const settings = await getSettingsFn();
-  for (const [rule, limit, windowMs] of [
-    ["minute", settings.chatRateLimitPerMinute, MINUTE_MS],
-    ["day", settings.chatRateLimitPerDay, DAY_MS],
-  ] as const) {
-    const verdict = await rateLimitFn(`chat:${rule}:user:${user.id}`, limit, windowMs);
-    if (!verdict.allowed) {
-      return Response.json(
-        { error: `You have reached the message limit. Try again in ${verdict.retryAfterSeconds} seconds.` },
-        { status: 429, headers: { "Retry-After": String(verdict.retryAfterSeconds) } },
-      );
-    }
-  }
+  const limited = await checkDualWindowRateLimit(
+    user.id,
+    "chat",
+    "message",
+    { perMinute: settings.chatRateLimitPerMinute, perDay: settings.chatRateLimitPerDay },
+    rateLimitFn,
+  );
+  if (limited) return limited;
 
   let parsed: { messages?: Array<{ role?: string; content?: unknown }>; conversationId?: unknown };
   try {

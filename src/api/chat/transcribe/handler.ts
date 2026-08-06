@@ -2,11 +2,9 @@ import { requireUser, errorToResponse } from "@/lib/auth/guards";
 import { getAuthUserById } from "@/lib/auth/users";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
 import { consume } from "@/lib/ratelimit/store";
+import { checkDualWindowRateLimit } from "@/lib/ratelimit/dual-window";
 import { transcribe, isTranscribeConfigured } from "@/lib/providers/transcription";
 import { isProviderError } from "@/lib/providers/types";
-
-const MINUTE_MS = 60_000;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 // A 60-second opus recording is well under a megabyte, so this only ever
 // catches something that did not come from our own recorder.
@@ -79,20 +77,19 @@ export async function handleTranscribe(request: Request, deps: TranscribeDeps = 
   // Its own bucket, and before any parsing: this is a new paid path, and a
   // limit that runs after the expensive part is not a limit. The minute rule
   // short-circuits so a request it already rejected does not also burn a slot
-  // of the daily quota.
+  // of the daily quota. Shared with src/api/chat/handler.ts via
+  // checkDualWindowRateLimit — see that file for the parts that must never
+  // drift (bucket key shape, the short-circuit, and that the 429 copy stays
+  // distinct per feature).
   const settings = await getSettingsFn();
-  for (const [rule, limit, windowMs] of [
-    ["minute", settings.transcribeRateLimitPerMinute, MINUTE_MS],
-    ["day", settings.transcribeRateLimitPerDay, DAY_MS],
-  ] as const) {
-    const verdict = await rateLimitFn(`transcribe:${rule}:user:${user.id}`, limit, windowMs);
-    if (!verdict.allowed) {
-      return Response.json(
-        { error: `You have reached the voice limit. Try again in ${verdict.retryAfterSeconds} seconds.` },
-        { status: 429, headers: { "Retry-After": String(verdict.retryAfterSeconds) } },
-      );
-    }
-  }
+  const limited = await checkDualWindowRateLimit(
+    user.id,
+    "transcribe",
+    "voice",
+    { perMinute: settings.transcribeRateLimitPerMinute, perDay: settings.transcribeRateLimitPerDay },
+    rateLimitFn,
+  );
+  if (limited) return limited;
 
   // Before reading the body: there is no point buffering ten megabytes for a
   // request that cannot be served.

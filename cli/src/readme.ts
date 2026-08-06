@@ -573,10 +573,16 @@ function generateApiOnlyReadme(o: InstallOptions): string {
       "that itself failed is `502`. |",
   );
   lines.push(
-    "| `GET /api/chat/transcribe` | `{ \"available\": true|false }` — whether transcription can be served at " +
-      "all right now (a speech-capable provider selected, with a model and a key). Call it once to decide " +
-      "whether to show a microphone in your own UI, rather than discovering the `503` after the user has " +
-      "already spoken. |",
+    // No pipe anywhere in this cell, deliberately. GFM splits table cells on
+    // every unescaped `|`, INCLUDING one inside a code span, and discards the
+    // cells past the header's column count — so `true|false` here silently ate
+    // the whole rest of the row in every generated README. `\|` would work, but
+    // it is invisible to anyone rewording this later; a cell with no pipe in it
+    // cannot regress the same way.
+    "| `GET /api/chat/transcribe` | Answers `{ \"available\": true }` when transcription can be served at " +
+      "all right now (a speech-capable provider selected, with a model and a key), and `false` otherwise. " +
+      "Call it once to decide whether to show a microphone in your own UI, rather than discovering the " +
+      "`503` after the user has already spoken. |",
   );
   lines.push("");
   lines.push(

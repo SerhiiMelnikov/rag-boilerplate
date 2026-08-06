@@ -7,6 +7,77 @@ const opts = (over: Partial<InstallOptions> = {}): InstallOptions => ({
   appKind: "full", git: false, install: false, packageManager: "npm", yes: true, ...over,
 });
 
+// --- Markdown table structure ----------------------------------------------
+//
+// A cell is split on every UNESCAPED `|`, which is what a GFM renderer does —
+// there is no exemption for a pipe inside a code span, and `\|` is the only
+// escape. This is not pedantry: a renderer discards the cells past the header's
+// column count, so one stray pipe deletes the whole rest of that row from the
+// rendered page while the source still looks complete.
+function splitRow(line: string): string[] {
+  const parts = line.trim().split(/(?<!\\)\|/);
+  // A well-formed row opens and closes with a pipe, so the outermost fragments
+  // are empty and are not cells.
+  if (parts.length && parts[0].trim() === "") parts.shift();
+  if (parts.length && parts[parts.length - 1].trim() === "") parts.pop();
+  return parts.map((c) => c.trim());
+}
+
+/** Every GFM table in `md`: a `|`-row immediately followed by a `| --- |` rule. */
+function markdownTables(md: string): { header: string[]; rows: string[][]; lineNo: number }[] {
+  const lines = md.split("\n");
+  const tables: { header: string[]; rows: string[][]; lineNo: number }[] = [];
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (!lines[i].trimStart().startsWith("|")) continue;
+    if (!/^\s*\|(\s*:?-{3,}:?\s*\|)+\s*$/.test(lines[i + 1])) continue;
+    const rows: string[][] = [];
+    let j = i + 2;
+    for (; j < lines.length && lines[j].trimStart().startsWith("|"); j++) rows.push(splitRow(lines[j]));
+    tables.push({ header: splitRow(lines[i]), rows, lineNo: i + 1 });
+    i = j - 1;
+  }
+  return tables;
+}
+
+// Nothing in this file asserted table STRUCTURE, which is how an unescaped `|`
+// inside a code span shipped: `{ "available": true|false }` split the cell in
+// two, and GFM dropped everything past the header's column count — the whole
+// "call it once to decide whether to show a microphone" guidance vanished from
+// every generated api-only README while the source still read correctly.
+//
+// Deliberately over EVERY table in BOTH builds, not just the row that was
+// found: this must catch the next stray pipe, wherever it lands.
+describe("generateReadme markdown tables render as written", () => {
+  for (const appKind of ["full", "api"] as const) {
+    it(`has no ${appKind} table row a renderer would silently truncate`, () => {
+      const tables = markdownTables(generateReadme(opts({ appKind })));
+      expect(tables.length, "expected this build to contain tables at all").toBeGreaterThan(0);
+      for (const table of tables) {
+        for (const row of table.rows) {
+          expect(
+            row.length,
+            `table at line ${table.lineNo} (${table.header.join(" | ")}): the row starting ` +
+              `"${row[0]}" splits into ${row.length} cells but the header declares ` +
+              `${table.header.length}. A renderer discards the extras — escape the stray pipe as \\| ` +
+              `or reword the cell to avoid it.`,
+          ).toBe(table.header.length);
+        }
+      }
+    });
+  }
+
+  // The specific content the truncation ate. Cell-count parity alone would pass
+  // against a row that was shortened rather than split.
+  it("keeps the whole GET /api/chat/transcribe guidance in its own cell", () => {
+    const tables = markdownTables(generateReadme(opts({ appKind: "api" })));
+    const row = tables.flatMap((t) => t.rows).find((r) => r[0].includes("GET /api/chat/transcribe"));
+    expect(row, "the api-only README must document GET /api/chat/transcribe").toBeDefined();
+    expect(row).toHaveLength(2);
+    expect(row![1]).toMatch(/whether to show a microphone in your own UI/);
+    expect(row![1]).toMatch(/already spoken/);
+  });
+});
+
 describe("generateReadme", () => {
   it("google + pgvector: mentions the project, Google, pgvector, npm run dev, and omits Qdrant/vectorstore:init", () => {
     const readme = generateReadme(opts({ providers: ["google"], defaultProvider: "google", vectorStore: "pgvector" }));

@@ -144,12 +144,40 @@ describe("a prompt echo is not a transcript", () => {
     expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
   });
 
-  it("does NOT drop a real sentence that merely contains the words no speech", async () => {
-    // Pins the end anchor: the sentinel pattern matches the WHOLE reply, not
-    // a substring of it, so a genuine sentence that happens to contain "no
-    // speech" partway through is left alone.
+  it("maps a sentinel that explains itself to an empty string", async () => {
+    // A model told to reply with a bare token explains itself about as often as
+    // it paraphrases. This form matched NEITHER the old end-anchored sentinel
+    // pattern NOR either echo direction (both anchored on the instruction's
+    // opening), so it posted to the chat as the user's own question — the
+    // shipped bug's exact shape, on a path the fix for it did not reach.
+    generateTextSpy.mockResolvedValue({ text: "NO_SPEECH — the audio contains only background noise" });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
+  });
+
+  it("maps the paraphrased sentinel that explains itself to an empty string", async () => {
     generateTextSpy.mockResolvedValue({ text: "No speech was detected in the recording." });
-    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("No speech was detected in the recording.");
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("");
+  });
+
+  it("does NOT drop a real sentence that merely contains the words no speech", async () => {
+    // What the OPENING anchor protects, now that the closing one is gone: a
+    // genuine question that mentions no-speech partway through does not begin
+    // the way the sentinel does, so a prefix match cannot reach it — however
+    // short it is.
+    const real = "There is no speech in the second recording, can you check?";
+    generateTextSpy.mockResolvedValue({ text: real });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe(real);
+  });
+
+  it("does NOT drop a long transcript that happens to open with the words no speech", async () => {
+    // What the LENGTH CAP protects, now that the opening anchor alone would
+    // otherwise reach this. The cap is NO_SPEECH_CLAUSE's own length — the
+    // escape hatch the model is paraphrasing when it explains itself — and past
+    // it, prose is the likelier reading than a sentinel.
+    const real =
+      "No speech is allowed in the reading room after eight, according to the library handbook we uploaded last week.";
+    generateTextSpy.mockResolvedValue({ text: real });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe(real);
   });
 
   it("drops a short echo that stops after the instruction's first sentence", async () => {
@@ -186,6 +214,43 @@ describe("a prompt echo is not a transcript", () => {
   it("does NOT drop a real transcript that merely contains the word transcript", async () => {
     generateTextSpy.mockResolvedValue({ text: "Show me the transcript of yesterday's meeting." });
     expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("Show me the transcript of yesterday's meeting.");
+  });
+
+  // --- Whisper's own silence failure mode (the openai branch) ----------------
+  //
+  // Whisper never sees TRANSCRIBE_PROMPT and cannot echo it, so none of the
+  // guards above reach this provider — the one a `--providers openai` scaffold
+  // gets by default. Handed audio with no speech in it, it hallucinates a stock
+  // phrase from its training data, and the caller's 300 ms energy floor does not
+  // stop a cough or a door slam from getting that far.
+  const OPENAI = { speechProvider: "openai", speechModel: "gpt-4o-mini-transcribe" };
+
+  it.each([
+    "Thank you.",
+    "Thanks for watching!",
+    "Thank you for watching.",
+    "Subtitles by the Amara.org community",
+    "you",
+  ])("maps Whisper's silence hallucination %j to an empty string", async (phrase) => {
+    transcribeSpy.mockResolvedValue({ text: phrase });
+    expect(await transcribe(AUDIO, "audio/webm", settings(OPENAI))).toBe("");
+  });
+
+  it("does NOT drop a real Whisper transcript that merely contains a listed phrase", async () => {
+    // Exact-match, not fuzzy: the list is short precisely so it can stay whole
+    // -string. Anything that merely contains one of these is a real utterance.
+    const real = "Thank you for the summary, can you also list the sources?";
+    transcribeSpy.mockResolvedValue({ text: real });
+    expect(await transcribe(AUDIO, "audio/webm", settings(OPENAI))).toBe(real);
+  });
+
+  it("leaves the Whisper denylist off the google branch", async () => {
+    // Gemini is instructed and answers with the sentinel; it has no reason to
+    // produce Whisper's caption artifacts, and a real spoken "thank you" on that
+    // path should reach the chat like any other utterance. Pins the two backstops
+    // as per-provider rather than shared.
+    generateTextSpy.mockResolvedValue({ text: "Thank you." });
+    expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("Thank you.");
   });
 });
 

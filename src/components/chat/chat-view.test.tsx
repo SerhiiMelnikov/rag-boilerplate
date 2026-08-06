@@ -24,6 +24,14 @@ const setMessagesMock = vi.fn((msgs: MockMessage[]) => {
 const handleInputChangeMock = vi.fn();
 const handleSubmitMock = vi.fn();
 const appendMock = vi.fn();
+// Given a real implementation for the same reason setMessagesMock is: the
+// busy-voice tests below assert on what actually lands in the composer, and a
+// no-op setter would let a fix that writes the transcript nowhere pass. It takes
+// the updater-function form because that is the form chat-view.tsx uses (to keep
+// any already-typed text), so a bare-value mock would record a function object.
+const setInputMock = vi.fn((next: string | ((prev: string) => string)) => {
+  chatState.input = typeof next === "function" ? next(chatState.input) : next;
+});
 
 vi.mock("@ai-sdk/react", () => ({
   useChat: () => ({
@@ -33,6 +41,7 @@ vi.mock("@ai-sdk/react", () => ({
     handleSubmit: handleSubmitMock,
     status: chatState.status,
     setMessages: setMessagesMock,
+    setInput: setInputMock,
     error: chatState.error,
     append: appendMock,
   }),
@@ -70,6 +79,7 @@ beforeEach(() => {
   chatState.messages = [];
   handleSubmitMock.mockClear();
   setMessagesMock.mockClear();
+  setInputMock.mockClear();
   appendMock.mockClear();
   fakeRecorderApi.start.mockClear();
   fakeRecorderApi.stop.mockClear();
@@ -167,6 +177,26 @@ async function transcriptArrives(text: string) {
   act(() => { for (let i = 0; i < 8; i++) fireFrame(0.2); });
   fireEvent.click(screen.getByLabelText("Stop recording"));
   await waitFor(() => expect(appendMock.mock.calls.length).toBeGreaterThan(before));
+}
+
+// The same recording, stopped while a turn is already streaming — the one path
+// on which a transcript arrives and cannot be sent. The microphone is opened
+// first (useMicrophone ignores a press while `disabled`), the turn is started
+// underneath it, and only then is stop pressed: exactly what happens when the
+// user hits Send, or the VAD's silence stop fires, with the microphone live.
+// Returns once finish() has fully settled — the button's label goes back to
+// "Ask by voice" in its `finally` — so the assertions are not racing submitVoice.
+async function transcriptArrivesWhileBusy(text: string) {
+  nextTranscript = text;
+  fireEvent.click(screen.getByLabelText("Ask by voice"));
+  await waitFor(() => expect(screen.getByLabelText("Stop recording")).toBeTruthy());
+  act(() => { for (let i = 0; i < 8; i++) fireFrame(0.2); });
+
+  chatState.status = "streaming";
+  rerenderChatView?.();
+
+  fireEvent.click(screen.getByLabelText("Stop recording"));
+  await waitFor(() => expect(screen.getByLabelText("Ask by voice")).toBeTruthy());
 }
 
 // A typed send. chatState.input is not wired to any real state (handleInputChange
@@ -587,6 +617,103 @@ describe("ChatView", () => {
     rerenderChatView?.();
 
     await waitFor(() => expect(speak).toHaveBeenCalled());
+  });
+
+  it("does not start a second concurrent turn when a transcript arrives mid-stream", async () => {
+    // The typed path is gated by the composer's canSend (`!busy`); submitVoice
+    // had no equivalent, and a manual stop is deliberately left pressable while
+    // busy — so stopping a recording started before the turn appended a second
+    // /api/chat request on top of the live one. With ai@^4 the second overwrites
+    // the first's abortControllerRef and both write into the same message list.
+    const { append, handleSubmit } = mountWithVoice();
+    await transcriptArrivesWhileBusy("and what about the second document");
+    expect(append).not.toHaveBeenCalled();
+    expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it("puts a transcript it could not send into the composer instead of losing it", async () => {
+    // Refusing outright would mean there is no way to end a recording started
+    // before the turn without throwing away what the user said: press stop and
+    // it sends, do nothing and the VAD or the 60-second cap sends. The text goes
+    // where the user can see it and send it when the turn finishes.
+    mountWithVoice();
+    await transcriptArrivesWhileBusy("and what about the second document");
+    expect(chatState.input).toBe("and what about the second document");
+    expect(screen.getByLabelText("Message")).toHaveValue("and what about the second document");
+  });
+
+  it("keeps text already typed in the composer when a transcript lands on top of it", async () => {
+    // The box is not disabled while busy — composer.tsx only disables Send — so
+    // there may well be something in it already. Overwriting would lose one
+    // message to save the other.
+    mountWithVoice();
+    chatState.input = "and also";
+    rerenderChatView?.();
+    await transcriptArrivesWhileBusy("what does it cost");
+    expect(chatState.input).toBe("and also what does it cost");
+  });
+
+  it("stops reading an answer aloud the moment the microphone opens", async () => {
+    // The seam between the two halves of this feature. Synthesis is far slower
+    // than the stream, so a finished turn re-enables the microphone while the
+    // assistant is still reading its answer OUT LOUD. A hands-free user presses
+    // the microphone right then, the AnalyserNode measures the TTS coming out of
+    // the speakers, the energy gate passes on the assistant's own voice, and the
+    // previous answer comes back as the user's next question.
+    window.localStorage.setItem("speak_answers", "1");
+    const speak = vi.fn();
+    const cancel = vi.fn();
+    stubSpeechSynthesis({ speak, cancel });
+
+    mountWithVoice();
+    await transcriptArrives("where is the Eiffel Tower?");
+
+    // From here the history refetch must hand back the SAME turn it is about to
+    // be asked for. Found by falsifying: mountWithVoice's stub answers every
+    // conversation GET with `{ messages: [] }`, so loadHistory (fired when
+    // status reaches "ready") emptied the list, the assistant-turn count fell
+    // from 1 back to 0, and use-spoken-answer's turnKey effect called cancel()
+    // by itself. The first draft of this test passed identically with and
+    // without the fix it exists to pin.
+    const persisted = [
+      { id: "db-user-1", role: "user", content: "where is the Eiffel Tower?" },
+      { id: "db-1", role: "assistant", content: "Paris is the capital of France." },
+    ];
+    stubFetch(async (url) =>
+      url === "/api/chat/transcribe"
+        ? new Response(JSON.stringify({ text: "" }), { status: 200 })
+        : new Response(JSON.stringify({ messages: persisted }), { status: 200 }),
+    );
+
+    chatState.status = "streaming";
+    chatState.messages = [
+      { id: "user-1", role: "user", content: "where is the Eiffel Tower?" },
+      { id: "live-1", role: "assistant", content: "Paris is the capital of France." },
+    ];
+    rerenderChatView?.();
+    chatState.status = "ready";
+    rerenderChatView?.();
+    await waitFor(() => expect(speak).toHaveBeenCalled());
+    // The refetch has landed and the turn count is settled, so nothing else is
+    // still queued that could call cancel() for a reason other than the press.
+    await waitFor(() => expect(setMessagesMock).toHaveBeenCalledWith(persisted));
+
+    // The answer is now being read aloud, and `busy` is false again — the
+    // microphone is live-able. This is the press.
+    cancel.mockClear();
+    fireEvent.click(screen.getByLabelText("Ask by voice"));
+    await waitFor(() => expect(cancel).toHaveBeenCalled());
+  });
+
+  it("keeps the empty-state panel visible behind a microphone error", async () => {
+    // A user whose first action is a refused permission (or a silent recording,
+    // which produces the same shaped error) used to lose the only thing on
+    // screen telling them what to do — the panel was gated on there being no
+    // error at all, so the error replaced it rather than joining it.
+    mountWithVoice();
+    await micRefuses();
+    expect(screen.getByRole("alert")).toHaveTextContent("Microphone access was refused.");
+    expect(screen.getByText("Ask your documents a question")).toBeInTheDocument();
   });
 
   it("shows a refused microphone permission in the alert slot", async () => {

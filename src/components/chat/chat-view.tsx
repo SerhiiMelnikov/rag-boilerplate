@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
+import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { readSpeakAnswers, writeSpeakAnswers } from "@/lib/voice/preference";
 import { MessageList } from "./message-list";
@@ -45,7 +46,7 @@ export function ChatView({
   // Failures that happen before useChat is ever involved, and which its own `error`
   // therefore cannot report: creating the conversation the first message needs.
   const [startError, setStartError] = useState<string | null>(null);
-  const { messages, input, handleInputChange, handleSubmit, status, setMessages, error, append } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, status, setMessages, setInput, error, append } = useChat({
     api: "/api/chat",
   });
   const prevStatus = useRef(status);
@@ -162,6 +163,29 @@ export function ChatView({
   // Voice cannot go through handleSubmit: it reads `input` from state, which is
   // still stale in the tick a transcript arrives. append() takes the text directly.
   async function submitVoice(text: string) {
+    // A turn is already in flight. The typed path is gated by the composer's
+    // `canSend = value.trim().length > 0 && !busy`; this one had no equivalent,
+    // so a transcript arriving mid-stream started a SECOND concurrent
+    // /api/chat request — and with ai@^4 the second overwrites the first's
+    // abortControllerRef while both write into the same message list.
+    //
+    // Reaching this state is ordinary, not exotic: a manual stop is deliberately
+    // left pressable while busy (a live microphone must always be stoppable), and
+    // toggle() in "recording" calls finish(), which transcribes and sends. The
+    // VAD's silence stop and the 60-second cap do the same on their own. So
+    // refusing outright would mean there is no way to end a recording started
+    // before the turn without throwing away what was said.
+    //
+    // The spec's settled "send immediately, do not drop it into the input for
+    // review" decision was made about the idle case — the case where sending is
+    // possible. Here it is not, so the transcript goes to the composer, in front
+    // of the user, ready to send the moment the turn finishes. Whatever was
+    // already typed is kept rather than overwritten: the box is not disabled
+    // while busy (composer.tsx only disables Send), so there may well be some.
+    if (busy) {
+      setInput((prev) => (prev.trim() === "" ? text : `${prev.trimEnd()} ${text}`));
+      return;
+    }
     const id = await ensureConversation();
     if (!id) return;
     void append({ role: "user", content: text }, { body: { conversationId: id } });
@@ -192,18 +216,37 @@ export function ChatView({
   useSpokenAnswer({
     answer: lastAssistant?.content ?? "",
     status,
-    enabled: speakAnswers && speechAvailable && hasLiveTurn,
+    // `mic.state === "idle"` is the seam between the two halves of this feature.
+    // Speech synthesis is far slower than the stream (see the comment above), so
+    // a turn finishing flips `busy` false and re-enables the microphone while the
+    // assistant is still reading the answer OUT LOUD. A hands-free user presses
+    // the microphone right then; the AnalyserNode measures whatever the mic
+    // hears, the energy gate passes on the assistant's own voice, and the answer
+    // comes back from the transcription provider as the user's next question.
+    // Routing through `enabled` reuses the !enabled effect's own cancel().
+    //
+    // Idle rather than !== "recording": from the moment the button is pressed the
+    // user has said they want to talk, and "requesting" can sit on an open
+    // permission prompt for seconds. Re-enabling afterwards does not replay
+    // anything — the disable effect resets wasEnabled, so the next enabled pass
+    // adopts the answer as it then stands.
+    enabled: speakAnswers && speechAvailable && hasLiveTurn && mic.state === "idle",
     turnKey: String(assistantTurns),
   });
 
   return (
     <>
-      {stream.length === 0 && status === "ready" && !shownError ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
+      {stream.length === 0 && status === "ready" ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 overflow-y-auto px-4">
           <EmptyState
             title="Ask your documents a question"
             description="Type below. Answers cite how many passages they stand on."
           />
+          {/* Beside the panel, not instead of it. This branch used to be gated on
+              `!shownError`, so a user whose very first action was a silent
+              recording (or a refused mic permission) lost the only thing on
+              screen telling them what to do, and saw an error in its place. */}
+          {shownError && <Alert tone="danger">{shownError}</Alert>}
         </div>
       ) : (
         <MessageList

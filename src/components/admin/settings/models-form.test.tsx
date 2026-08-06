@@ -105,8 +105,10 @@ describe("ModelsForm", () => {
     for (const foreign of ["temperature", "topK", "systemPrompt", "chatRateLimitPerMinute", "allowedEmailDomains", "smtpHost", "smtpPassword"]) {
       expect(body, `${foreign} belongs to another page`).not.toHaveProperty(foreign);
     }
-    // Speech, like the other model pairs, must survive a save even though its
-    // own row is not always shown (SPEECH_PROVIDER_IDS can be empty).
+    // Speech is owned only while its row renders — which, with the unpruned
+    // catalog this test runs against, it does. The empty-catalog case is the
+    // opposite assertion, and has its own test at the bottom of this file.
+    expect(SPEECH_PROVIDER_IDS.length).toBeGreaterThan(0);
     expect(body).toHaveProperty("speechProvider");
     expect(body).toHaveProperty("speechModel");
   });
@@ -147,6 +149,8 @@ describe("ModelsForm", () => {
     await waitFor(() => expect(putBody()).toHaveProperty("googleKey"));
     const body = putBody();
     expect(body.googleKey).toBeNull();
+    // The unpruned catalog's key set: speech is in it because its row renders.
+    // The pruned counterpart is asserted by the last test in this file.
     expect(Object.keys(body).sort()).toEqual([
       "chatModel", "chatProvider", "embeddingModel", "embeddingProvider", "googleKey",
       "imageModel", "imageProvider", "ollamaBaseUrl", "parserModel", "parserProvider",
@@ -220,5 +224,43 @@ describe("ModelsForm", () => {
     await waitFor(() => expect(putBody()).toHaveProperty("chatProvider"));
     const body = putBody();
     expect(body).toMatchObject({ speechProvider: "google", speechModel: "gemini-2.5-flash" });
+  });
+
+  // The whole page, not just the speech row, in an --providers ollama scaffold.
+  //
+  // Pruning empties SPEECH_PROVIDER_IDS but deliberately writes no speech
+  // default, so the settings row still holds "google". settingsPatchSchema
+  // refines speechProvider against SPEECH_PROVIDER_IDS, and [].includes("google")
+  // is false — so a body that carries the pair unconditionally makes EVERY save
+  // on this page 400, including each API-key set and clear, with an error that
+  // names no field. No type checker can see a runtime refine; this test is what
+  // sees it.
+  it("sends no speech pair at all when the catalog has no speech provider", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/providers/catalog", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/providers/catalog")>()),
+      SPEECH_PROVIDER_IDS: [],
+    }));
+    const { ModelsForm: Pruned } = await import("./models-form");
+    render(<Pruned />);
+
+    // The row is gone — a picker with no options would be the visible half of
+    // the same bug, and is what the guard on the row already prevents.
+    await screen.findByLabelText("Chat provider");
+    expect(screen.queryByLabelText("Speech to text provider")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(putBody()).toHaveProperty("chatProvider"));
+    const body = putBody();
+    expect(body).not.toHaveProperty("speechProvider");
+    expect(body).not.toHaveProperty("speechModel");
+    // Pinned as an exact set, not two absence checks: absence checks pass just
+    // as happily against a body that has lost something else as well.
+    expect(Object.keys(body).sort()).toEqual([
+      "chatModel", "chatProvider", "embeddingModel", "embeddingProvider",
+      "imageModel", "imageProvider", "ollamaBaseUrl", "parserModel", "parserProvider",
+      "unifiedMode", "unifiedModel", "unifiedProvider",
+    ]);
+    vi.doUnmock("@/lib/providers/catalog");
   });
 });

@@ -13,17 +13,19 @@ import { googleChat } from "./google";
 // "output only the transcript" has no valid output and echoes the instruction
 // back instead, which is exactly what shipped to a real user.
 //
-// ECHO_ANCHOR_TEXT is the opening clause, held out as its own constant and
-// spliced INTO the prompt below (rather than the prompt's wording being
-// duplicated separately as an anchor to match echoes against) so the two can
-// truly never drift apart: there is only one place that spells out how the
-// instruction begins.
+// ECHO_ANCHOR_TEXT and NO_SPEECH_CLAUSE are the two clauses this file matches
+// replies against, held out as their own constants and spliced INTO the prompt
+// below (rather than the prompt's wording being duplicated separately as
+// anchors) so the wording and the matchers can truly never drift apart: there
+// is only one place that spells out how the instruction begins, and only one
+// that spells out the escape hatch.
 const NO_SPEECH_SENTINEL = "NO_SPEECH";
 const ECHO_ANCHOR_TEXT = "Transcribe this audio verbatim. Output only the transcript";
+const NO_SPEECH_CLAUSE =
+  `If the audio contains no discernible speech, reply with exactly: ${NO_SPEECH_SENTINEL}`;
 const TRANSCRIBE_PROMPT =
   `${ECHO_ANCHOR_TEXT}, with no preamble, ` +
-  "commentary or translation. If the audio contains no discernible speech, reply " +
-  `with exactly: ${NO_SPEECH_SENTINEL}`;
+  `commentary or translation. ${NO_SPEECH_CLAUSE}`;
 
 function speechKey(s: RuntimeSettings): string | null {
   const name = keyNameOf(s.speechProvider);
@@ -48,24 +50,40 @@ const ECHO_ANCHOR = normalize(ECHO_ANCHOR_TEXT);
 // a coincidence a real, unrelated utterance would produce.
 const ECHO_FIRST_SENTENCE_LEN = normalize(ECHO_ANCHOR_TEXT.slice(0, ECHO_ANCHOR_TEXT.indexOf(".") + 1)).length;
 
-// A model asked to emit the sentinel can still fence it, punctuate it, or
-// paraphrase it as the two plain words instead of returning it bare — exactly
-// the kind of deviation that produced the shipped bug in the first place, so
-// an exact string match is not enough. This is anchored at both ends, so the
-// surface it accepts is only the WHOLE reply being, case/space-insensitively:
-// the sentinel itself ("NO_SPEECH") or its natural-language form ("no
-// speech"), optionally wrapped in backticks, with at most one trailing "."
-// or "!". "No speech was detected in the recording." does not match — the
-// end anchor rules out a real sentence that merely contains those two words.
+// A model asked to emit the sentinel can still fence it, punctuate it,
+// paraphrase it as the two plain words, or — just as often — emit it and then
+// explain itself: "NO_SPEECH — the audio contains only background noise", "No
+// speech was detected in the recording." An exact string match is not enough,
+// and neither is a match anchored at BOTH ends, which is what this used to be:
+// every one of those explanatory forms slipped past it AND past both echo
+// directions (which are anchored on the instruction's opening, not on the
+// sentinel), and posted to the chat as the user's own question. That is the
+// shipped bug's exact shape.
 //
-// This deliberately also drops a genuine user message whose entire content
-// is the literal two words "no speech" (e.g. answering "was there any
-// speech?" with "No speech."). That is the acceptable side to err on, for
-// the same reason direction 1's comment above gives for the echo matcher: a
-// model told to reply with a bare token frequently paraphrases it instead,
-// "No speech" is exactly the paraphrase Gemini is likely to produce, and
-// missing it silently reintroduces the defect this file exists to prevent.
-const NO_SPEECH_PATTERN = /^`?no[_ ]speech`?[.!]?$/;
+// So the pattern is anchored at the OPENING only, exactly like the echo
+// matcher below, and narrowed by a length cap instead of by an end anchor. It
+// accepts, case/space-insensitively: the sentinel ("NO_SPEECH") or its
+// natural-language form ("no speech"), optionally opened with a backtick, as
+// the START of a reply no longer than NO_SPEECH_MAX_LEN. `\b` is what keeps
+// "no speechwriter" out; the cap is what keeps a real, longer utterance out.
+//
+// The cap is derived, not chosen: it is the length of NO_SPEECH_CLAUSE, the
+// instruction's own escape hatch — the sentence the model is paraphrasing when
+// it explains itself. A reply no longer than the clause it was told to obey is
+// still that clause; past that length it is prose the model wrote for its own
+// reasons, and a transcript is the likelier reading. Deriving it from the
+// clause rather than writing a literal is the same discipline
+// ECHO_FIRST_SENTENCE_LEN follows, and for the same reason: reword the prompt
+// and the bound moves with it.
+//
+// This deliberately also drops a genuine short user message that OPENS with
+// the two words "no speech" (e.g. "No speech." in answer to "was there any
+// speech?"). That is the acceptable side to err on, for exactly the reason
+// direction 1's comment below gives for the echo matcher: the alternative is a
+// repeat of the bug this file exists to prevent, a fabricated non-transcript
+// posted as the user's own message.
+const NO_SPEECH_PATTERN = /^`?no[_ ]speech\b/;
+const NO_SPEECH_MAX_LEN = normalize(NO_SPEECH_CLAUSE).length;
 
 // The sentinel makes an echo less likely but not impossible (a model can
 // still ignore the escape hatch and repeat the instruction instead), and what
@@ -99,12 +117,42 @@ const NO_SPEECH_PATTERN = /^`?no[_ ]speech`?[.!]?$/;
 function looksLikeEcho(reply: string): boolean {
   const normalized = normalize(reply);
   if (normalized === "") return false;
-  if (NO_SPEECH_PATTERN.test(normalized)) return true;
+  if (normalized.length <= NO_SPEECH_MAX_LEN && NO_SPEECH_PATTERN.test(normalized)) return true;
   const instruction = normalize(TRANSCRIBE_PROMPT);
   return (
     (normalized.length >= ECHO_FIRST_SENTENCE_LEN && instruction.startsWith(normalized)) ||
     normalized.startsWith(ECHO_ANCHOR)
   );
+}
+
+// Whisper is never shown TRANSCRIBE_PROMPT and so cannot echo it, but it has a
+// failure mode of its own: handed audio with no speech in it, it hallucinates
+// one of a short, well-known set of stock phrases from its training data
+// (YouTube captions, mostly). The caller's 300 ms energy floor is the real fix
+// and catches nearly all of it — but a cough, a door slam or a chair scrape
+// clears that floor while containing no speech at all, and what comes back then
+// posts to the chat as the user's own question.
+//
+// Deliberately an EXACT-match list, and deliberately five entries long. A fuzzy
+// filter here would eat real one-word and one-phrase answers; these are matched
+// whole, after the same normalization and the same single trailing "." or "!"
+// the sentinel pattern already tolerates (Whisper punctuates its own
+// hallucinations inconsistently). Entries are stored without that punctuation.
+//
+// The cost of a false positive is one dropped real utterance whose ENTIRE
+// content is "thank you" or "you" — no question worth asking a document
+// collection. The cost of a false negative is the defect this file exists to
+// prevent, on the provider a `--providers openai` scaffold gets by default.
+const WHISPER_SILENCE_HALLUCINATIONS = new Set([
+  "thank you",
+  "thanks for watching",
+  "thank you for watching",
+  "subtitles by the amara.org community",
+  "you",
+]);
+
+function isWhisperSilenceArtifact(text: string): boolean {
+  return WHISPER_SILENCE_HALLUCINATIONS.has(normalize(text).replace(/[.!]$/, "").trim());
 }
 
 // Whether a transcription request can be served at all: a speech-capable
@@ -146,7 +194,8 @@ export async function transcribe(
         model: openaiTranscription(key, s.speechModel),
         audio,
       });
-      return text.trim();
+      const trimmed = text.trim();
+      return isWhisperSilenceArtifact(trimmed) ? "" : trimmed;
     }
     if (provider === "google") {
       const { text } = await generateText({
@@ -165,9 +214,9 @@ export async function transcribe(
       // The echo backstop applies only here: Whisper (the openai branch above)
       // never sees TRANSCRIBE_PROMPT and so cannot echo it. Whisper's own
       // failure mode on silence is a hallucinated stock phrase rather than an
-      // echo, and that is covered upstream by the caller's speech-detection
-      // gate, not here — which is why that gate, not this backstop, is the
-      // real fix for both providers.
+      // echo, which is why it gets its own, different backstop above. Neither
+      // is the real fix — the caller's speech-detection gate is, for both
+      // providers; these two catch what clears it.
       return looksLikeEcho(trimmed) ? "" : trimmed;
     }
   } catch (err) {

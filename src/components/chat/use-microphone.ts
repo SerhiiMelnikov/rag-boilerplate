@@ -96,6 +96,23 @@ export function useMicrophone({
   const transcribeRef = useRef(transcribeFn);
   transcribeRef.current = transcribeFn;
 
+  // active.cancel() is insurance: defence in depth against a recorder that
+  // failed to clean up after itself. Insurance must not be able to cost more
+  // than it insures. Called bare, a throwing cancel() escaped the async IIFE in
+  // toggle() as an unhandled rejection, swallowed the user-facing message that
+  // was meant to follow it, and stranded state at "requesting" — permanently
+  // unusable, strictly worse than the leak it was guarding against. Every call
+  // goes through here, and every one is placed AFTER the setError/setState it
+  // must not be able to prevent.
+  const cancelQuietly = useCallback(() => {
+    try {
+      active?.cancel();
+    } catch {
+      // A recorder that cannot even release its own stream is not something the
+      // user can act on, and there is no second thing to try.
+    }
+  }, [active]);
+
   const finish = useCallback(async () => {
     if (!active || finishing.current) return;
     finishing.current = true;
@@ -127,14 +144,14 @@ export function useMicrophone({
       // went away, or the recorder was already inactive). Without cancelling
       // here, the frame loop survives and every subsequent silent frame trips
       // the VAD's "silence" stop again, calling finish() again forever.
-      active.cancel();
       setError(messageFor(err));
+      cancelQuietly();
     } finally {
       finishing.current = false;
       setState("idle");
       setElapsedMs(0);
     }
-  }, [active]);
+  }, [active, cancelQuietly]);
 
   const toggle = useCallback(() => {
     if (!active) return;
@@ -166,15 +183,15 @@ export function useMicrophone({
         // plain permission-refused path where nothing was acquired at all; it
         // is the defence in depth that holds even if a future recorder
         // implementation forgets its own cleanup.
-        active.cancel();
         setError(messageFor(err));
         setState("idle");
+        cancelQuietly();
       }
     })();
-  }, [active, disabled, state, finish]);
+  }, [active, disabled, state, finish, cancelQuietly]);
 
   // Leaving the page must not leave a microphone recording.
-  useEffect(() => () => active?.cancel(), [active]);
+  useEffect(() => () => cancelQuietly(), [cancelQuietly]);
 
   const clearError = useCallback(() => setError(null), []);
 

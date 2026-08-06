@@ -116,6 +116,16 @@ describe("generateReadme guidance", () => {
     expect(out).toContain("`0` disables a limit");
   });
 
+  // The transcription limits shipped with the microphone and were never written
+  // down anywhere. A limit an operator does not know about is one they meet as
+  // an unexplained 429.
+  it("names the voice transcription limits alongside the chat ones", () => {
+    const out = generateReadme(opts());
+    expect(out).toMatch(/voice transcriptions per minute and per day/i);
+    expect(out).toMatch(/10\/minute and 100\/day/);
+    expect(out).toMatch(/second budget/i);
+  });
+
   // Registration is gated (see the Registration section), but the per-account chat
   // cap still only bounds one account — an attacker with a mailbox at an allowed
   // domain can create several. That has to be stated so an owner doesn't find out
@@ -370,6 +380,30 @@ describe("generateReadme appKind: api", () => {
     const readme = generateReadme(opts({ appKind: "api" }));
     expect(readme).toContain("npm run dev");
     expect(readme).toContain("npm run start");
+  });
+
+  // src/server/routes.ts serves both transcribe routes and API_ONLY_DELETE_PATHS
+  // does not touch src/api, so this endpoint SHIPS in this build — it was simply
+  // undocumented, which for a headless build means undiscoverable. The empty-text
+  // contract is the load-bearing part: a consumer that posts "" as a message
+  // reintroduces, in their own frontend, the exact defect this feature's server
+  // guards exist to prevent.
+  it("documents the transcribe endpoints that ship in this build", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("POST /api/chat/transcribe");
+    expect(readme).toContain("GET /api/chat/transcribe");
+    expect(readme).toMatch(/multipart\/form-data/);
+    expect(readme).toMatch(/audio\/webm/);
+    expect(readme).toMatch(/`415`/);
+    expect(readme).toMatch(/`503`/);
+    expect(readme).toMatch(/empty.*nothing was heard|nothing was said/i);
+    expect(readme).toMatch(/do NOT[\s\S]{0,40}post it as a message/);
+  });
+
+  it("documents the transcription rate limits, not only the chat ones", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("transcribeRateLimitPerMinute");
+    expect(readme).toContain("transcribeRateLimitPerDay");
   });
 });
 

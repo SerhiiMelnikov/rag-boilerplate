@@ -134,12 +134,23 @@ export function ModelsForm() {
   // Every field this page owns. Both submit and Clear send the whole set, because
   // either one adopts the server's response wholesale — sending a subset would
   // silently discard whatever else the admin had changed but not yet saved.
+  //
+  // The speech pair is guarded by exactly the condition its row is (below): the
+  // reason for "send everything you own" is not to discard the admin's unsaved
+  // edits, and where the row does not render there is no edit to discard — the
+  // form does not own the field. Sending it anyway is not merely redundant, it
+  // makes the whole page unsaveable in a scaffold with no speech-capable
+  // provider: pruning empties SPEECH_PROVIDER_IDS but leaves the stored
+  // speech_provider at its "google" default, and settingsPatchSchema refines
+  // speechProvider against that now-empty list — so every save, every key set
+  // and every key clear comes back 400. tsc cannot see a runtime refine; this
+  // guard is the only thing that keeps the two sides in step.
   const ownFields = (): Record<string, unknown> => ({
     chatProvider: s.chatProvider, chatModel: s.chatModel,
     embeddingProvider: s.embeddingProvider, embeddingModel: s.embeddingModel,
     parserProvider: s.parserProvider, parserModel: s.parserModel,
     imageProvider: s.imageProvider, imageModel: s.imageModel,
-    speechProvider: s.speechProvider, speechModel: s.speechModel,
+    ...(SPEECH_PROVIDER_IDS.length > 0 ? { speechProvider: s.speechProvider, speechModel: s.speechModel } : {}),
     unifiedMode: s.unifiedMode, unifiedProvider: s.unifiedProvider, unifiedModel: s.unifiedModel,
     ollamaBaseUrl: s.ollamaBaseUrl,
   });

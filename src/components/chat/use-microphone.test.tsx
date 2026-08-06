@@ -303,12 +303,56 @@ describe("useMicrophone", () => {
     expect(handle.current!.error).toBeNull();
   });
 
-  it("cancels on unmount", async () => {
+  it("cancels on unmount, and not before", async () => {
     const rec = fakeRecorder();
     const { handle, view } = mount({ recorder: rec.api });
     await act(async () => handle.current!.toggle());
+    // The half without which this test cannot fail: the cleanup is keyed on
+    // [active], and an effect written with NO dep array runs its cleanup on
+    // every render — so "cancel was called by the time we unmounted" is true
+    // either way. Only "not called while still mounted and recording" tells the
+    // correct dep array from a missing one.
+    expect(rec.api.cancel).not.toHaveBeenCalled();
     view.unmount();
     expect(rec.api.cancel).toHaveBeenCalled();
+  });
+
+  it("still reports a refused permission when the recorder's own cancel() throws", async () => {
+    // active.cancel() on this path is insurance against a recorder that forgot
+    // its own cleanup. Called bare it escaped the async IIFE as an unhandled
+    // rejection, took the user-facing message with it, and left state stranded
+    // at "requesting" — permanently unusable, strictly worse than the leak it
+    // was insuring against.
+    const rec = fakeRecorder();
+    rec.api.start.mockImplementationOnce(async () => {
+      throw Object.assign(new Error("refused"), { name: "NotAllowedError" });
+    });
+    rec.api.cancel.mockImplementationOnce(() => {
+      throw new Error("this recorder cannot clean up after itself");
+    });
+    const { handle } = mount({ recorder: rec.api });
+
+    await act(async () => handle.current!.toggle());
+
+    expect(handle.current!.error).toBe("Microphone access was refused.");
+    expect(handle.current!.state).toBe<MicState>("idle");
+  });
+
+  it("still reports a failed stop when the recorder's own cancel() throws", async () => {
+    const rec = fakeRecorder();
+    rec.api.stop.mockImplementationOnce(async () => {
+      throw new Error("device went away");
+    });
+    rec.api.cancel.mockImplementationOnce(() => {
+      throw new Error("this recorder cannot clean up after itself");
+    });
+    const { handle } = mount({ recorder: rec.api });
+    await act(async () => handle.current!.toggle());
+    rec.feed(8, 0.2); // clears the 300ms speech floor, so stop() is actually reached
+    await act(async () => handle.current!.toggle());
+
+    expect(handle.current!.error).toBe("Could not transcribe that. Try again.");
+    expect(handle.current!.state).toBe<MicState>("idle");
   });
 
   it("does not stop twice when a manual press lands in the same tick as the VAD auto-stop", async () => {

@@ -64,6 +64,31 @@ describe("AnsweringForm", () => {
     }
   });
 
+  // A scaffold with no speech-capable provider ships no microphone and no
+  // transcribe endpoint, so a limit on transcriptions is a control over nothing
+  // — and a field the admin cannot see is a field they cannot have edited.
+  // Same guard, same reasoning, as the speech row on the Models page.
+  it("renders and sends no transcription limits when the catalog has no speech provider", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/providers/catalog", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/providers/catalog")>()),
+      SPEECH_PROVIDER_IDS: [],
+    }));
+    const { AnsweringForm: Pruned } = await import("./answering-form");
+    render(<Pruned />);
+
+    await screen.findByLabelText("Chat requests / minute");
+    expect(screen.queryByLabelText("Voice transcriptions / minute")).toBeNull();
+    expect(screen.queryByLabelText("Voice transcriptions / day")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(putBody()).toHaveProperty("topK"));
+    const body = putBody();
+    expect(body).not.toHaveProperty("transcribeRateLimitPerMinute");
+    expect(body).not.toHaveProperty("transcribeRateLimitPerDay");
+    vi.doUnmock("@/lib/providers/catalog");
+  });
+
   it("surfaces a rejected save instead of looking like nothing happened", async () => {
     global.fetch = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === "PUT"
       ? { ok: false, json: async () => ({}) }

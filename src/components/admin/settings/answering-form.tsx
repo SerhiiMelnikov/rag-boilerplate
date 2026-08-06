@@ -8,7 +8,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { Loading } from "@/components/ui/loading";
+import { SPEECH_PROVIDER_IDS } from "@/lib/providers/catalog";
 import { useAdminSettings, type AdminSettings } from "./use-admin-settings";
+
+// A scaffold with no speech-capable provider ships no microphone and no
+// transcribe endpoint, so a limit on transcriptions is a control over nothing.
+// Same guard, same reasoning, as the speech row on the Models page.
+const HAS_SPEECH = SPEECH_PROVIDER_IDS.length > 0;
 
 export function AnsweringForm() {
   const { settings, patch, save, saving, saved, saveError, loadError } = useAdminSettings();
@@ -51,8 +57,14 @@ export function AnsweringForm() {
       contextTokenBudget: s.contextTokenBudget, systemPrompt: s.systemPrompt,
       chatRateLimitPerMinute: s.chatRateLimitPerMinute,
       chatRateLimitPerDay: s.chatRateLimitPerDay,
-      transcribeRateLimitPerMinute: s.transcribeRateLimitPerMinute,
-      transcribeRateLimitPerDay: s.transcribeRateLimitPerDay,
+      // Owned only while the fields render. "Send everything you own" is there
+      // so an unsaved edit is not discarded; where there is no input there is no
+      // edit to discard, and sending a value nobody on this page can see is how
+      // a hidden field becomes a save-blocker (see ownFields in models-form.tsx).
+      ...(HAS_SPEECH ? {
+        transcribeRateLimitPerMinute: s.transcribeRateLimitPerMinute,
+        transcribeRateLimitPerDay: s.transcribeRateLimitPerDay,
+      } : {}),
     });
   }
 
@@ -86,12 +98,16 @@ export function AnsweringForm() {
               <Field label="Chat requests / day" description="0 turns the limit off.">
                 {(control) => <Input {...control} type="number" value={s.chatRateLimitPerDay} onChange={num("chatRateLimitPerDay")} />}
               </Field>
-              <Field label="Voice transcriptions / minute" description="0 turns the limit off.">
-                {(control) => <Input {...control} type="number" value={s.transcribeRateLimitPerMinute} onChange={num("transcribeRateLimitPerMinute")} />}
-              </Field>
-              <Field label="Voice transcriptions / day" description="0 turns the limit off.">
-                {(control) => <Input {...control} type="number" value={s.transcribeRateLimitPerDay} onChange={num("transcribeRateLimitPerDay")} />}
-              </Field>
+              {HAS_SPEECH && (
+                <>
+                  <Field label="Voice transcriptions / minute" description="0 turns the limit off.">
+                    {(control) => <Input {...control} type="number" value={s.transcribeRateLimitPerMinute} onChange={num("transcribeRateLimitPerMinute")} />}
+                  </Field>
+                  <Field label="Voice transcriptions / day" description="0 turns the limit off.">
+                    {(control) => <Input {...control} type="number" value={s.transcribeRateLimitPerDay} onChange={num("transcribeRateLimitPerDay")} />}
+                  </Field>
+                </>
+              )}
             </div>
           </Card>
 

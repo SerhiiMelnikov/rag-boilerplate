@@ -64,6 +64,17 @@ The generated app includes:
   browser (Ubuntu's default Chromium install, notably) can't reach the system's
   speech engine and reports no voices either — install a distribution-packaged
   browser to get the button back.
+- Questions can be asked by voice. The microphone button records, stops itself
+  after about a second and a half of silence (or at a hard 60-second cap, or
+  when you press it again), and sends what it heard as the next message. If it
+  hears no speech at all, or the provider comes back with nothing usable, it
+  says so instead of sending anything. Unlike spoken answers, this one costs
+  money and needs a key: transcription runs on the server through Google or
+  OpenAI — Anthropic and Ollama have no speech API at all — chosen under
+  **Admin → Settings → Models**, with its own rate limit under **Answering**.
+  The button is absent entirely when no capable provider is configured, and on
+  a browser that cannot record. Verified in Chrome; Safari records a container
+  no provider documents support for audio.
 - Workspaces: group documents and images, grant users access, and scope the
   assistant's answers to the active workspace plus the always-available General
   one (a file can belong to several workspaces)

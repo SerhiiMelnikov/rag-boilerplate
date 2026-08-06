@@ -45,6 +45,7 @@ beforeEach(async () => {
   await cp(join(process.cwd(), "test-fixtures", "vectorstore-index.ts"), join(templateDir, "src/lib/vectorstore/index.ts"));
   await cp(join(process.cwd(), "test-fixtures", "schema.ts"), join(templateDir, "src/lib/db/schema.ts"));
   await cp(join(REPO_ROOT, "src/lib/providers/catalog.ts"), join(templateDir, "src/lib/providers/catalog.ts"));
+  await cp(join(REPO_ROOT, "src/lib/providers/transcription.ts"), join(templateDir, "src/lib/providers/transcription.ts"));
   await cp(join(REPO_ROOT, "src/lib/config/settings-service.ts"), join(templateDir, "src/lib/config/settings-service.ts"));
   await cp(join(process.cwd(), "test-fixtures", "vectorstore-init.ts"), join(templateDir, "scripts/vectorstore-init.ts"));
   await cp(join(process.cwd(), "test-fixtures", "admin-settings.ts"), join(templateDir, "src/lib/openapi/paths/admin-settings.ts"));

@@ -3,7 +3,7 @@ import { Project } from "ts-morph";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneProviderCatalog, pruneSettingsServiceProviders, pruneOpenApiProviderLists, rewriteSettingsDefaults, pruneChunksFromSchema } from "./source.js";
+import { pruneProviderFactory, narrowProviderUnions, pruneVectorFactory, pruneVectorInitScript, pruneProviderCatalog, pruneSettingsServiceProviders, pruneOpenApiProviderLists, pruneTranscriptionAdapter, rewriteSettingsDefaults, pruneChunksFromSchema } from "./source.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "test-fixtures");
 const read = (p: string) => readFileSync(join(FIX, p), "utf8");
@@ -33,6 +33,91 @@ describe("pruneProviderFactory", () => {
     expect(text).not.toContain('case "anthropic"');
     expect(text).toContain('case "google"');
     expect(text).toContain('case "ollama"');
+  });
+});
+
+describe("pruneTranscriptionAdapter", () => {
+  const TRANSCRIPTION = "src/lib/providers/transcription.ts";
+  const load = () => {
+    const project = new Project({ useInMemoryFileSystem: true });
+    project.createSourceFile(TRANSCRIPTION, readRepo(TRANSCRIPTION));
+    return project;
+  };
+  const textOf = (project: Project) => project.getSourceFileOrThrow(TRANSCRIPTION).getFullText();
+
+  // The confirmed build break this transform exists to close: scaffold.ts
+  // deletes a removed provider's adapter file (src/lib/providers/<id>.ts)
+  // outright, but transcription.ts's static imports of googleChat/openaiTranscription
+  // were never pruned to match — a project scaffolded without google or without
+  // openai shipped transcription.ts importing a file that no longer exists.
+  it("removes the openai branch and its now-dead import, leaving the google branch intact", () => {
+    const project = load();
+    pruneTranscriptionAdapter(project, ["openai"]);
+    const text = textOf(project);
+    expect(text).not.toContain("openaiTranscription");
+    expect(text).not.toContain('from "./openai"');
+    expect(text).not.toContain('if (provider === "openai")');
+    expect(text).toContain('if (provider === "google")');
+    expect(text).toContain("googleChat");
+    // experimental_transcribe is openai-only; generateText still serves the
+    // surviving google branch and must not be swept out with it.
+    expect(text).not.toContain("experimental_transcribe");
+    expect(text).toContain("generateText");
+  });
+
+  it("removes the google branch and its now-dead import, leaving the openai branch intact", () => {
+    const project = load();
+    pruneTranscriptionAdapter(project, ["google"]);
+    const text = textOf(project);
+    expect(text).not.toContain("googleChat");
+    expect(text).not.toContain('from "./google"');
+    expect(text).not.toContain('if (provider === "google")');
+    expect(text).toContain('if (provider === "openai")');
+    expect(text).toContain("openaiTranscription");
+    expect(text).not.toContain("generateText");
+    expect(text).toContain("experimental_transcribe");
+  });
+
+  // --providers ollama (or anthropic, or anthropic+ollama): neither speech-capable
+  // provider survives, SPEECH_PROVIDER_IDS is empty, and isTranscribeConfigured
+  // must still compile and simply answer false. The whole "ai" import drops out
+  // because both its named bindings become unused once both branches are gone.
+  it("removes both branches and the whole now-unused 'ai' import when neither speech-capable provider survives", () => {
+    const project = load();
+    pruneTranscriptionAdapter(project, ["google", "openai", "anthropic"]);
+    const text = textOf(project);
+    expect(text).not.toContain('if (provider === "google")');
+    expect(text).not.toContain('if (provider === "openai")');
+    expect(text).not.toContain("googleChat");
+    expect(text).not.toContain("openaiTranscription");
+    expect(text).not.toMatch(/from "ai"/);
+    // The rest of the file must still be well-formed: the capability check and
+    // the unreachable fallback throw both survive untouched.
+    expect(text).toContain("export function isTranscribeConfigured");
+    expect(text).toContain("cannot transcribe");
+  });
+
+  // anthropic and ollama have no branch in this file at all — pruning either
+  // (or both) is a legitimate no-op, the same way pruning a vector store nobody
+  // selected removes zero cases from vectorstore/index.ts.
+  it("is a no-op when the removed set has no speech-capable provider", () => {
+    const project = load();
+    const before = textOf(project);
+    pruneTranscriptionAdapter(project, ["anthropic", "ollama"]);
+    expect(textOf(project)).toBe(before);
+  });
+
+  // The contract, enforced loudly, matching pruneProviderCatalog's convention:
+  // if this file's shape ever stops matching what the transform expects, it must
+  // fail scaffold-time rather than silently leave a dead import in place — which
+  // would just reproduce the defect this transform exists to close.
+  it("throws when the expected if-branch is missing", () => {
+    const project = new Project({ useInMemoryFileSystem: true });
+    project.createSourceFile(
+      TRANSCRIPTION,
+      'export async function transcribe(provider: string) { if (provider === "google") { return ""; } return ""; }',
+    );
+    expect(() => pruneTranscriptionAdapter(project, ["openai"])).toThrow(/if \(provider === "openai"\)/);
   });
 });
 

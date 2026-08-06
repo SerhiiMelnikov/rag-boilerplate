@@ -403,6 +403,17 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("speech engine and reports no voices either — install a distribution-packaged");
   lines.push("browser to get the button back.");
   lines.push("");
+  lines.push("Questions can be asked by voice too. The microphone button records, stops");
+  lines.push("itself after about a second and a half of silence (or at a hard 60-second cap,");
+  lines.push("or when you press it again), and sends what it heard as the next message. If");
+  lines.push("it hears no speech at all, or the provider comes back with nothing usable, it");
+  lines.push("says so instead of sending anything. Unlike spoken answers this costs money and");
+  lines.push("needs a key: transcription runs on the server through Google or OpenAI —");
+  lines.push("Anthropic and Ollama have no speech API at all — chosen under **Admin →");
+  lines.push("Settings → Models**, with its own rate limit under **Answering**. The button");
+  lines.push("is absent entirely when no capable provider is configured, and on a browser");
+  lines.push("that cannot record.");
+  lines.push("");
 
   return lines.join("\n");
 }

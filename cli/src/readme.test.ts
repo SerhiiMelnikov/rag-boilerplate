@@ -95,10 +95,15 @@ describe("generateReadme guidance", () => {
     expect(full).toMatch(/per device/i);                // not per account
     expect(full).toMatch(/flatpak-confined/i);          // snap/flatpak browsers can't reach the system voice
     expect(full).toMatch(/distribution-packaged/i);     // the remedy: install a distro-packaged browser
+    // The microphone paragraph, not just its neighbours — see cli/src/readme.ts's
+    // "Questions can be asked by voice too" line.
+    expect(full).toMatch(/microphone button records, stops/i);
+    expect(full).toMatch(/hears no speech at all, or the provider comes back with nothing usable/i);
 
     const api = generateReadme(opts({ appKind: "api" }));
     expect(api).not.toContain("## Voice");
     expect(api).not.toMatch(/speaker button/i);
+    expect(api).not.toMatch(/microphone button records, stops/i);
   });
 
   it("tells the admin to set provider keys before anything else", () => {

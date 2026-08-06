@@ -1,6 +1,7 @@
 import { Project, SyntaxKind, Node } from "ts-morph";
 import type { SourceFile } from "ts-morph";
 import type { ProviderId, VectorStoreId } from "../options.js";
+import { SPEECH_CAPABLE } from "../options.js";
 
 // Resolve a source file either by its exact path (used by the in-memory tests,
 // which create files at repo-relative virtual paths) or by an absolute path
@@ -44,6 +45,68 @@ function removeSwitchCasesByLiteral(project: Project, path: string, ids: string[
 // providers/index.ts: remove the removed providers' cases + now-unused imports.
 export function pruneProviderFactory(project: Project, removed: ProviderId[]): void {
   removeSwitchCasesByLiteral(project, "src/lib/providers/index.ts", removed);
+}
+
+// providers/transcription.ts: remove the `if (provider === "<id>") { ... }`
+// branch for each removed speech-capable provider, plus the now-unused named
+// import for its adapter module.
+//
+// A sibling to removeSwitchCasesByLiteral rather than a reuse of it: this file
+// branches on `provider === "openai"` / `provider === "google"` inside a single
+// try block, not a switch, so there are no CaseClause nodes for that helper to
+// find. Only google and openai (SPEECH_CAPABLE) ever appear here — anthropic and
+// ollama have no branch to remove and are silently skipped, same as pruning a
+// vector store nobody selected removes zero cases from vectorstore/index.ts.
+//
+// Follows pruneProviderCatalog's fail-loudly convention rather than
+// removeSwitchCasesByLiteral's tolerate-and-move-on one: this is the exact file
+// where a shape drift once shipped a project whose transcription.ts imported a
+// provider adapter file scaffold.ts had already deleted (Task 2's finding, closed
+// here). Silently leaving that import in place on a shape mismatch would
+// reproduce the very defect this function exists to close, so a missing branch
+// for a targeted provider throws instead.
+export function pruneTranscriptionAdapter(project: Project, removed: ProviderId[]): void {
+  const targets = removed.filter((p) => SPEECH_CAPABLE.includes(p));
+  if (targets.length === 0) return;
+
+  const sf = resolveSourceFile(project, "src/lib/providers/transcription.ts");
+  const fn = sf.getFunctionOrThrow("transcribe");
+
+  for (const id of targets) {
+    const ifStmt = fn.getDescendantsOfKind(SyntaxKind.IfStatement).find((stmt) => {
+      const expr = stmt.getExpression();
+      if (!Node.isBinaryExpression(expr)) return false;
+      if (expr.getOperatorToken().getKind() !== SyntaxKind.EqualsEqualsEqualsToken) return false;
+      if (expr.getLeft().getText() !== "provider") return false;
+      const right = expr.getRight();
+      return Node.isStringLiteral(right) && right.getLiteralValue() === id;
+    });
+    if (!ifStmt) {
+      throw new Error(
+        `src/lib/providers/transcription.ts must contain an "if (provider === \"${id}\")" branch to prune`,
+      );
+    }
+    ifStmt.remove();
+  }
+
+  // Drop now-unused named import SPECIFIERS (not whole declarations): unlike
+  // providers/index.ts, this file imports experimental_transcribe and
+  // generateText together from "ai", and pruning only one provider leaves the
+  // other in active use — an all-or-nothing removal (removeSwitchCasesByLiteral's
+  // approach) would leave the whole "ai" import untouched either way, but this
+  // is scoped per-specifier so the now-dead half is still removed when only one
+  // of the two provider branches is pruned.
+  for (const imp of sf.getImportDeclarations()) {
+    for (const spec of [...imp.getNamedImports()]) {
+      const name = spec.getName();
+      const uses = sf.getDescendantsOfKind(SyntaxKind.Identifier).filter((i) => i.getText() === name);
+      if (uses.length <= 1) spec.remove(); // only the import binding itself remains
+    }
+    if (imp.getNamedImports().length === 0 && !imp.getDefaultImport() && !imp.getNamespaceImport()) {
+      imp.remove();
+    }
+  }
+  sf.saveSync();
 }
 
 // vectorstore/index.ts: remove the removed stores' cases + now-unused imports.
@@ -290,6 +353,7 @@ export async function applySourceTransforms(
   const project = new Project({ tsConfigFilePath: `${root}/tsconfig.json`, skipAddingFilesFromTsConfig: true });
   for (const rel of [
     "src/lib/providers/index.ts", "src/lib/providers/types.ts", "src/lib/providers/catalog.ts",
+    "src/lib/providers/transcription.ts",
     "src/lib/vectorstore/index.ts", "src/lib/db/schema.ts",
     "scripts/vectorstore-init.ts", "src/lib/openapi/paths/admin-settings.ts", "src/lib/openapi/schemas.ts",
     "src/lib/config/settings-service.ts",
@@ -299,6 +363,7 @@ export async function applySourceTransforms(
 
   if (removedProviders.length) {
     pruneProviderFactory(project, removedProviders);
+    pruneTranscriptionAdapter(project, removedProviders);
     narrowProviderUnions(project, o.keptProviders);
     pruneProviderCatalog(project, o.keptProviders);
     pruneSettingsServiceProviders(project, o.keptProviders);

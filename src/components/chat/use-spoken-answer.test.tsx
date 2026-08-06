@@ -140,4 +140,17 @@ describe("useSpokenAnswer", () => {
   it("does nothing at all when there is no engine", () => {
     expect(() => render(<Host {...base} answer="One." engine={null} />)).not.toThrow();
   });
+
+  it("reads a Cyrillic sentence with a Ukrainian voice and a Latin one with the browser's", () => {
+    const engine = fakeEngine();
+    // status "ready": the second sentence's trailing period sits at the very end
+    // of the text, which is withheld while streaming (see sentences.ts) — this
+    // test is about per-sentence language, not about streaming, so it renders a
+    // stream that has already finished (same reasoning as "strips markdown
+    // before speaking" above).
+    render(<Host {...base} status="ready" answer="Привіт, світе. Hello there, world." engine={engine} />);
+    const langs = engine.speak.mock.calls.map((c) => c[1]);
+    expect(langs[0]).toBe("uk-UA");
+    expect(langs[1]).toBe(navigator.language);
+  });
 });

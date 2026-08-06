@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { speakableText } from "@/lib/voice/speakable-text";
 import { completedSentences } from "@/lib/voice/sentences";
+import { detectSpeechLang } from "@/lib/voice/lang";
 import { browserSpeechEngine, type SpeechEngine } from "./speech-engine";
 
 // Speaks an assistant answer aloud, sentence by sentence, while it streams.
@@ -110,8 +111,13 @@ export function useSpokenAnswer({
       wasEnabled.current = true;
     }
 
-    const lang = typeof navigator !== "undefined" ? navigator.language : "en";
-    for (const sentence of sentences.slice(spoken.current)) active.speak(sentence, lang);
+    // The browser's UI language is only the fallback now: the answer's own
+    // script decides, per sentence, so a mixed answer reads correctly on both
+    // halves. See src/lib/voice/lang.ts for why this is a heuristic.
+    const fallbackLang = typeof navigator !== "undefined" ? navigator.language : "en";
+    for (const sentence of sentences.slice(spoken.current)) {
+      active.speak(sentence, detectSpeechLang(sentence) ?? fallbackLang);
+    }
     spoken.current = sentences.length;
   }, [answer, status, enabled, active]);
 

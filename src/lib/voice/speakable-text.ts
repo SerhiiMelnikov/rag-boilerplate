@@ -10,6 +10,30 @@
 // UNCLOSED trailing fence is removed too. While an answer streams, a fence
 // routinely opens in one chunk and closes several chunks later; without the
 // second rule the body of a code block is spoken line by line until it closes.
+// Sentence punctuation that a URL match may greedily swallow. ')' is absent
+// deliberately — it is decided by balance, not by membership.
+const URL_TAIL = ".,!?;:'\"…]}";
+
+// The URL, with sentence punctuation trimmed from its end. Exported so the
+// balance rule can be tested apart from the sixteen-rule pipeline below.
+export function trimUrlTail(url: string): string {
+  let end = url.length;
+  while (end > 0) {
+    const ch = url[end - 1];
+    if (ch === ")") {
+      // Balanced means this ')' is part of the URL — stop trimming.
+      const head = url.slice(0, end);
+      const opens = (head.match(/\(/g) ?? []).length;
+      const closes = (head.match(/\)/g) ?? []).length;
+      if (opens >= closes) break;
+    } else if (!URL_TAIL.includes(ch)) {
+      break;
+    }
+    end -= 1;
+  }
+  return url.slice(0, end);
+}
+
 export function speakableText(markdown: string): string {
   let s = markdown;
 
@@ -28,12 +52,15 @@ export function speakableText(markdown: string): string {
   // would otherwise strip the "!" and leave the alt text looking like link text.
   s = s.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1");
   s = s.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
-  // \S+ alone would greedily swallow trailing sentence punctuation (a URL ending a
-  // sentence is ordinary in an answer that cites sources), merging that sentence
-  // with the next one under the sentence splitter. Requiring the match to end on a
-  // non-punctuation character makes it backtrack off any trailing '.', ',', '!',
-  // '?', ';', ':', quote, ellipsis or closing bracket instead of consuming it.
-  s = s.replace(/https?:\/\/\S*[^\s.,!?;:'"…)\]}]/g, "link");
+  // A URL's trailing punctuation belongs to the sentence, not the URL — a URL
+  // ending a sentence is ordinary in an answer that cites sources, and
+  // swallowing the full stop would merge that sentence with the next one under
+  // the sentence splitter.
+  //
+  // The exception is a ')' that closes a '(' inside the URL itself, as in
+  // Wikipedia's "Foo_(bar)". Backtracking off it unconditionally left the paren
+  // behind, to be read aloud as "link)".
+  s = s.replace(/https?:\/\/\S+/g, (match) => "link" + match.slice(trimUrlTail(match).length));
 
   // Block markers, at line start only. The horizontal-rule check runs before the
   // list-marker check: a spaced rule ("- - -") also looks like a list item ("- ")

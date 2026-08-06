@@ -41,4 +41,14 @@ describe("speakableText + completedSentences composition", () => {
       "This is documented (see https://docs.example.com/x for the source). Good."
     );
   });
+
+  it("stays stable while a parenthesised URL streams in", () => {
+    // The last URL-shaped change to speakableText broke exactly this and a clause
+    // was spoken twice on every answer that cited a source.
+    assertStableUnderStreaming("See https://en.wikipedia.org/wiki/Foo_(bar) for more. Then stop.");
+  });
+
+  it("stays stable when the paren closes the sentence rather than the URL", () => {
+    assertStableUnderStreaming("(see https://example.com) for more. Then stop.");
+  });
 });

@@ -484,26 +484,34 @@ describe("ChatView", () => {
     chatState.messages = liveMessages;
     rerender(<ChatView initialConversationId="c1" />);
 
+    // Cleared BEFORE the render that both flushes and starts the swap, not after:
+    // loadHistory's fetch (and everything it drives, including the buggy turnKey
+    // effect this test guards against) can fully resolve within the SAME await
+    // that observes the legitimate flush call below — waitFor polls by yielding to
+    // the event loop, and the mocked fetch's promise chain needs only a couple of
+    // microtask ticks, comfortably inside that window. A clear placed after that
+    // await, as this used to be, can erase an illegitimate cancel()/speak() before
+    // either assertion below ever sees it — the assertion would then pass whether
+    // the swap is handled correctly or not.
+    speak.mockClear();
+    cancel.mockClear();
+
     // The turn finishes: status reaches "ready", which both flushes the withheld
     // sentence above (legitimate — the turn is genuinely over) and, separately,
     // fires ChatView's history refetch that swaps the live id for the database's.
-    // The two are asserted apart so the refetch's effect isn't mistaken for the
-    // flush's.
     chatState.status = "ready";
     rerender(<ChatView initialConversationId="c1" />);
+    // The one call the assertions below allow for: the turn genuinely finishing.
     await waitFor(() => expect(speak).toHaveBeenCalled());
-    // The call above is legitimate (the turn actually finishing) — clear it so
-    // what's asserted below is only what happens because of the id swap itself,
-    // not noise from getting to that point.
-    speak.mockClear();
-    cancel.mockClear();
 
     await waitFor(() => expect(setMessagesMock).toHaveBeenCalledWith(persistedMessages));
 
     // The id swap must not look like a new turn: nothing gets cancelled, and the
-    // already-spoken answer is not replayed.
+    // already-spoken answer is not replayed as a second call. (Not "not called":
+    // the legitimate flush call above is no longer cleared away, so the swap's own
+    // effect adding a second, illegitimate call is what this must now catch.)
     expect(cancel).not.toHaveBeenCalled();
-    expect(speak).not.toHaveBeenCalled();
+    expect(speak).toHaveBeenCalledTimes(1);
   });
 
   it("sends a voice transcript through append, not handleSubmit", async () => {

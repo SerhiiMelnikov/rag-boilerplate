@@ -62,21 +62,27 @@ export function useSpokenAnswer({
     if (status === "submitted") active?.cancel();
   }, [status, active]);
 
-  // A new turn silences the previous one and restarts the count.
-  const lastTurn = useRef(turnKey);
-  useEffect(() => {
-    if (lastTurn.current === turnKey) return;
-    lastTurn.current = turnKey;
-    spoken.current = 0;
-    active?.cancel();
-  }, [turnKey, active]);
-
   // wasEnabled distinguishes a real off-to-on toggle from the initial mount: this
   // effect, like every effect, also fires on mount, and mounting already enabled
   // (the ordinary case of a fresh streaming turn) must NOT adopt the answer-so-far
   // — that would silently skip whatever sentence had already completed by the
   // first render, which is exactly the answer this hook exists to speak.
   const wasEnabled = useRef(enabled);
+
+  // A new turn silences the previous one and restarts the count.
+  const lastTurn = useRef(turnKey);
+  useEffect(() => {
+    if (lastTurn.current === turnKey) return;
+    lastTurn.current = turnKey;
+    spoken.current = 0;
+    // A new turn has nothing on screen to replay, so it must never be adopted.
+    // Without this, a turn change landing in the SAME commit as an off->on
+    // toggle skips every sentence that turn had already completed: this effect
+    // is declared before the main one and therefore runs first, so writing
+    // wasEnabled here is what the adopt branch below sees.
+    wasEnabled.current = enabled;
+    active?.cancel();
+  }, [turnKey, active, enabled]);
 
   // Disabling stops speech immediately and resets wasEnabled, so a later re-enable
   // adopts the answer as it then stands instead of replaying it. This is its own

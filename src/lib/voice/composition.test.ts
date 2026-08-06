@@ -45,10 +45,21 @@ describe("speakableText + completedSentences composition", () => {
   it("stays stable while a parenthesised URL streams in", () => {
     // The last URL-shaped change to speakableText broke exactly this and a clause
     // was spoken twice on every answer that cited a source.
+    //
+    // This case (and the one below) only guards the STABILITY property this file
+    // is about — that no already-emitted sentence is revised once the rest of a
+    // URL arrives. It does NOT cover the paren-balance rule itself: that stability
+    // property holds for any pure, whitespace-bounded per-match substitution,
+    // balanced or not, so both cases pass unchanged against the correct rule,
+    // against the rule disabled outright, and against an off-by-one variant. The
+    // balance rule's actual coverage lives in speakable-text.test.ts, in
+    // trimUrlTail and the "URLs with parentheses" describe block.
     assertStableUnderStreaming("See https://en.wikipedia.org/wiki/Foo_(bar) for more. Then stop.");
   });
 
   it("stays stable when the paren closes the sentence rather than the URL", () => {
+    // Same caveat as above: a stability check, not a balance-rule check. See
+    // speakable-text.test.ts (trimUrlTail, "URLs with parentheses") for that.
     assertStableUnderStreaming("(see https://example.com) for more. Then stop.");
   });
 });

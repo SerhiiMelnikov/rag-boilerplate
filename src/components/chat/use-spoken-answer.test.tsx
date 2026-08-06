@@ -153,4 +153,35 @@ describe("useSpokenAnswer", () => {
     expect(langs[0]).toBe("uk-UA");
     expect(langs[1]).toBe(navigator.language);
   });
+
+  it("speaks a new turn from its first sentence when the toggle flips on in the same commit", () => {
+    // Adoption exists so switching on mid-answer does not replay what is already
+    // on screen. A NEW turn has nothing on screen to replay — adopting there
+    // swallows the sentences that turn had already finished.
+    //
+    // Brief's literal text ended right at "And a second one." with base's default
+    // status "streaming" (flush: false): per sentences.ts, a terminator at the very
+    // end of arrived text is withheld until flush because it is indistinguishable
+    // from a delta boundary, so that second sentence was never confirmed and the
+    // test failed even after the fix (only "Brand new sentence." was spoken). "Th"
+    // trailing follows this file's own established convention (see the first two
+    // tests above) so "And a second one." is confirmed by text arriving after it.
+    const engine = fakeEngine();
+    const view = render(<Host {...base} enabled={false} answer="Old answer." turnKey="m1" engine={engine} />);
+    expect(engine.speak).not.toHaveBeenCalled();
+
+    // Both change together: a new turn AND the toggle going on.
+    view.rerender(<Host {...base} enabled={true} answer="Brand new sentence. And a second one. Th" turnKey="m2" engine={engine} />);
+
+    const spoken = engine.speak.mock.calls.map((c) => c[0]);
+    expect(spoken).toEqual(["Brand new sentence.", "And a second one."]);
+  });
+
+  it("still adopts when only the toggle flips, with no turn change", () => {
+    // The behaviour the fix must NOT break.
+    const engine = fakeEngine();
+    const view = render(<Host {...base} enabled={false} answer="Already showing." turnKey="m1" engine={engine} />);
+    view.rerender(<Host {...base} enabled={true} answer="Already showing." turnKey="m1" engine={engine} />);
+    expect(engine.speak).not.toHaveBeenCalled();
+  });
 });

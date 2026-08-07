@@ -357,6 +357,30 @@ describe("ChatView", () => {
     );
   });
 
+  // A failed turn leaves ai-sdk's local messages one assistant entry ahead of the
+  // database (status parks at "error", so the ready-only refetch never ran). The next
+  // successful turn's refetch then SHRINKS the list, moving turnKey backwards, and
+  // useSpokenAnswer reads that as a new turn and re-reads the whole answer aloud.
+  it("refetches history when a turn fails, so the client does not run ahead of the database", async () => {
+    const fetchSpy = stubFetch(async () => new Response(JSON.stringify({ messages: [] }), { status: 200 }));
+    const historyCalls = () =>
+      fetchSpy.mock.calls.filter((c) => String(c[0]).includes("/api/conversations/c1")).length;
+
+    const { rerender } = render(<ChatView initialConversationId="c1" />);
+    // The mount-time load has to land first, or the assertion below races it.
+    await waitFor(() => expect(historyCalls()).toBe(1));
+
+    // A real turn: streaming, then a failure. The transition is what matters —
+    // mounting straight into "error" leaves prevStatus already at "error" and the
+    // guard correctly does nothing (which is why the retry test below is unaffected).
+    chatState.status = "streaming";
+    rerender(<ChatView initialConversationId="c1" />);
+    chatState.status = "error";
+    rerender(<ChatView initialConversationId="c1" />);
+
+    await waitFor(() => expect(historyCalls()).toBe(2));
+  });
+
   it("says so when the conversation could not be created", async () => {
     // Before: `if (!res.ok) return;` — the user pressed Send on their first message
     // and absolutely nothing happened, on screen or in the transcript's error slot.

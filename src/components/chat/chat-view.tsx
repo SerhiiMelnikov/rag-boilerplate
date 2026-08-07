@@ -107,9 +107,17 @@ export function ChatView({
 
   // A streamed turn finishing (status back to "ready") is when images, ratings and
   // the source count exist in the database, so that is when history is refetched.
+  // A turn that FAILED refetches too: ai-sdk parks status at "error", and without a
+  // resync the local messages keep a partial assistant entry the database never got.
+  // The count of assistant turns then drives turnKey (see below), so the next
+  // successful turn's refetch would shrink the list, move turnKey backwards, and make
+  // useSpokenAnswer re-read the whole answer aloud. onTurnComplete stays on the ready
+  // path alone — a failed turn did not complete.
   useEffect(() => {
     if (prevStatus.current !== "ready" && status === "ready") {
       void loadHistory().then(() => onTurnComplete?.());
+    } else if (prevStatus.current !== "error" && status === "error") {
+      void loadHistory();
     }
     prevStatus.current = status;
   }, [status, loadHistory, onTurnComplete]);

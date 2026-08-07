@@ -2,7 +2,7 @@
 // matches in the message's `images[]` field. The next turn's prompt is rebuilt from
 // message CONTENT only, so before 0.6.4 the assistant had no idea what it had just
 // shown — asked why it chose a picture, it truthfully had nothing to answer from.
-// Putting the captions in the content closes that, and the caption is the right
+// Putting the captions in the content will close that, and the caption is the right
 // evidence: it is exactly what the relevance verifier judged.
 export const CAPTION_CAP = 160;
 

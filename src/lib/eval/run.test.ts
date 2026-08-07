@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { runEvaluation } from "./run";
 import type { EvalRepo, ResultInput } from "./repo";
 import type { EvalAggregate } from "./types";
+import { buildAnswerSystemPrompt } from "@/lib/chat/answer-prompt";
 
 // Mock params are explicitly typed (not just `() => {}`) so vitest infers a real
 // `mock.calls` tuple type for each field — needed since assertions below index into
@@ -78,6 +79,25 @@ describe("runEvaluation", () => {
     const result = repo.addResult.mock.calls[0][0];
     expect(result.generatedAnswer).toBe("");
     expect(result.hit).toBe(false);
+  });
+
+  // The eval harness must score answers against exactly the prompt production uses.
+  // Before 0.6.4 it carried its own copy of the grounding clause, already differing
+  // from the handler's by a word.
+  it("builds generateAnswer's system prompt through the shared builder", async () => {
+    const repo = fakeRepo();
+    const generateAnswer = vi.fn(async () => "A cat is an animal.");
+    await runEvaluation("run-1", settings, {
+      repo: asRepo(repo),
+      prepareContextFn: vi.fn(async () => ({ hasContext: true, context: "cats are animals", sources: [{ documentId: "d1", filename: "cats.md", chunkId: "c1", score: 0.9 }] })),
+      generateAnswer,
+      judge: vi.fn(async () => ({ score: 5, rationale: "grounded" })),
+    });
+    expect(generateAnswer).toHaveBeenCalledWith(
+      buildAnswerSystemPrompt({ systemPrompt: "sp", context: "cats are animals", hasContext: true }),
+      "what is a cat?",
+      settings,
+    );
   });
 
   it("keeps going when the failure row itself cannot be written", async () => {

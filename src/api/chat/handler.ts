@@ -225,6 +225,16 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
     // The grounding rule and the context block are composed in one shared place so
     // the eval harness scores answers against exactly the prompt production uses.
     // Turn-by-turn conversation stays in `messages`, not in the system prompt.
+    //
+    // hasContext is passed through, NOT used as a guard: there is deliberately no
+    // "no passages matched, skip the model" short-circuit here any more. A user who
+    // asks why an image was chosen, or what the assistant can do, retrieves nothing
+    // and must still get a real reply — buildAnswerSystemPrompt swaps in
+    // NO_PASSAGES_NOTE and the rule keeps the model off its general knowledge.
+    // src/lib/eval/run.ts KEEPS the equivalent guard on purpose, and the two must
+    // stay divergent: a golden question whose documents were never retrieved has to
+    // score as an empty answer, not as a conversational one. Both sides document
+    // this; change neither without the other.
     system: buildAnswerSystemPrompt({
       systemPrompt: settings.systemPrompt,
       context: prepared.context,

@@ -46,9 +46,18 @@ describe("imageAnswerText", () => {
     expect(out).not.toContain("…");
   });
 
-  it("does not crash on an empty or whitespace-only caption", () => {
+  it("drops an empty or whitespace-only caption instead of emitting a bare marker", () => {
+    // This used to assert only that the intro came first, which every possible
+    // behaviour satisfies — including the dangling "- " line the function then
+    // emitted. The dangling line is not harmless: it is stored as the message's
+    // content, replayed to the model as history, and spoken as a lone marker.
     const out = imageAnswerText(INTRO, [{ caption: "   " }]);
-    expect(out.startsWith(INTRO)).toBe(true);
+    expect(out).toBe(INTRO);
+  });
+
+  it("keeps the remaining captions when only one of them is blank", () => {
+    const out = imageAnswerText(INTRO, [{ caption: "A red bicycle." }, { caption: "" }, { caption: "A car." }]);
+    expect(out.split("\n").filter((l) => l.startsWith("- "))).toEqual(["- A red bicycle.", "- A car."]);
   });
 
   it("enforces the hardcoded 160-character limit", () => {

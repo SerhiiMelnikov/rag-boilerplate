@@ -41,9 +41,25 @@ describe("buildAnswerSystemPrompt", () => {
     expect(GROUNDING_RULE).toMatch(/general knowledge/i);
   });
 
-  it("is deterministic for the same input", () => {
-    const a = buildAnswerSystemPrompt({ systemPrompt: "sp", context: "c", hasContext: true });
-    const b = buildAnswerSystemPrompt({ systemPrompt: "sp", context: "c", hasContext: true });
-    expect(a).toBe(b);
+  // Replaces a "same input, same output" test that called one pure function twice
+  // with identical arguments — no implementation could have failed it. Order is
+  // the property actually worth pinning: the admin's prompt sets the persona, the
+  // rule qualifies it, and the passages are the material both apply to. A build
+  // that put the context ahead of the rule would pass every other test in this
+  // file while presenting the model with the passages before the rule governing
+  // how to use them.
+  it("orders the three parts: admin prompt, then the rule, then the passages", () => {
+    const out = buildAnswerSystemPrompt({ systemPrompt: "You are Ada.", context: "cats are animals", hasContext: true });
+    expect(out.indexOf("You are Ada.")).toBeLessThan(out.indexOf(GROUNDING_RULE));
+    expect(out.indexOf(GROUNDING_RULE)).toBeLessThan(out.indexOf("Context:"));
+    // Blank lines between them, not run together: the admin prompt can end
+    // mid-sentence, and a glued-on rule would read as part of it.
+    expect(out).toBe(`You are Ada.\n\n${GROUNDING_RULE}\n\nContext:\ncats are animals`);
+  });
+
+  it("puts the no-passages note where the context block would have gone", () => {
+    const out = buildAnswerSystemPrompt({ systemPrompt: "You are Ada.", context: "", hasContext: false });
+    expect(out.indexOf(GROUNDING_RULE)).toBeLessThan(out.indexOf(NO_PASSAGES_NOTE));
+    expect(out).toBe(`You are Ada.\n\n${GROUNDING_RULE}\n\n${NO_PASSAGES_NOTE}`);
   });
 });

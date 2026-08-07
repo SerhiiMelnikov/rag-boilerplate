@@ -20,7 +20,7 @@ const OUT = resolve(import.meta.dirname, "..", "template");
 // of generated artifacts in the npm tarball). build-template.test.ts asserts
 // every gitignored top-level directory has an entry here, specifically to
 // catch a repeat of that.
-export const EXCLUDE = new Set([".github", "cli", "docs", ".superpowers", "node_modules", ".next", ".git", "tsconfig.tsbuildinfo", ".env", "package-lock.json", "next-env.d.ts", ".claude", "LICENSE", "README.md", "graphify-out"]);
+export const EXCLUDE = new Set([".github", "cli", "docs", ".superpowers", "node_modules", ".next", ".git", "tsconfig.tsbuildinfo", ".env", "next-env.d.ts", ".claude", "LICENSE", "README.md", "graphify-out"]);
 // The template is a clean starting point; the boilerplate's own tests (and the
 // vitest configs that run them) are not shipped. This also matters functionally:
 // scaffold() prunes unselected provider adapters and vector-store dirs, and the

@@ -195,7 +195,14 @@ function generateFullAppReadme(o: InstallOptions): string {
 
   lines.push("## Getting started", "");
   let step = 1;
-  lines.push(`${step++}. \`npm install\` (skip this if the installer already installed dependencies for you)`);
+  lines.push(
+    `${step++}. \`npm install\` (skip this if the installer already installed dependencies for you). ` +
+      "This project ships a `package-lock.json` pinning the dependency versions the " +
+      "boilerplate was tested against. npm reads it, while pnpm, yarn and bun each " +
+      "resolve their own lockfile instead and ignore this one. It may be absent if the " +
+      "scaffolder could not reconcile it against your selection (no network at scaffold " +
+      "time, for example) — npm then resolves fresh, same as the other package managers.",
+  );
   lines.push(
     `${step++}. \`.env\` is already generated with a fresh \`AUTH_SECRET\` / \`SETTINGS_ENCRYPTION_KEY\`; ` +
       "set provider API keys later under **Settings → Models**. Set " +
@@ -458,7 +465,14 @@ function generateApiOnlyReadme(o: InstallOptions): string {
 
   lines.push("## Getting started", "");
   let step = 1;
-  lines.push(`${step++}. \`npm install\` (skip this if the installer already installed dependencies for you)`);
+  lines.push(
+    `${step++}. \`npm install\` (skip this if the installer already installed dependencies for you). ` +
+      "This project ships a `package-lock.json` pinning the dependency versions the " +
+      "boilerplate was tested against. npm reads it, while pnpm, yarn and bun each " +
+      "resolve their own lockfile instead and ignore this one. It may be absent if the " +
+      "scaffolder could not reconcile it against your selection (no network at scaffold " +
+      "time, for example) — npm then resolves fresh, same as the other package managers.",
+  );
   lines.push(
     `${step++}. \`.env\` is already generated with a fresh \`AUTH_SECRET\` / \`SETTINGS_ENCRYPTION_KEY\`; ` +
       "set provider API keys via `PUT /api/admin/settings` (there is no admin UI here — see " +

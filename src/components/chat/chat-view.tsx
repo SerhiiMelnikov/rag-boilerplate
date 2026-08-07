@@ -128,7 +128,9 @@ export function ChatView({
   // resync the local messages keep a partial assistant entry the database never got.
   // The count of assistant turns then drives turnKey (see below), so the next
   // successful turn's refetch would shrink the list, move turnKey backwards, and make
-  // useSpokenAnswer re-read the whole answer aloud. onTurnComplete stays on the ready
+  // useSpokenAnswer re-read the whole answer aloud. That resync moves turnKey
+  // backwards HERE instead, which is why speech is disabled for the whole "error"
+  // status — see the `enabled` argument below. onTurnComplete stays on the ready
   // path alone — a failed turn did not complete.
   useEffect(() => {
     if (prevStatus.current !== "ready" && status === "ready") {
@@ -255,7 +257,24 @@ export function ChatView({
     // permission prompt for seconds. Re-enabling afterwards does not replay
     // anything — the disable effect resets wasEnabled, so the next enabled pass
     // adopts the answer as it then stands.
-    enabled: speakAnswers && speechAvailable && hasLiveTurn && mic.state === "idle",
+    //
+    // `status !== "error"` routes a FAILED turn through that same disable path,
+    // and it is load-bearing. The error branch above refetches history, and the
+    // database has no row for the turn that just failed, so the incoming snapshot
+    // moves two inputs of this hook at once: `assistantTurns` FALLS (turnKey goes
+    // backwards, which the hook reads as a new turn — spoken count back to 0), and
+    // `answer` reverts to the PREVIOUS turn's text, which "error" makes
+    // completedSentences flush whole. Both together mean the previous answer gets
+    // read aloud from the top, which is the defect this whole feature exists to
+    // avoid. Suppressing it here rather than inside the hook is deliberate: going
+    // false runs the hook's disable effect, which cancels AND clears wasEnabled, so
+    // the next submit's re-enable ADOPTS whatever answer is showing instead of
+    // speaking it. Merely skipping the speak loop while status is "error" would
+    // leave wasEnabled true and the spoken count at 0, and the next submit — which
+    // still has the old answer as the last one — would then speak it in full.
+    // ai-sdk parks status at "error" until the next request starts, so this stays
+    // false across the whole resync and lifts only on a genuinely new turn.
+    enabled: speakAnswers && speechAvailable && hasLiveTurn && mic.state === "idle" && status !== "error",
     turnKey: String(assistantTurns),
   });
 

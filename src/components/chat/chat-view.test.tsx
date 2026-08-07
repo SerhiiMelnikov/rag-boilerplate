@@ -642,6 +642,100 @@ describe("ChatView", () => {
     expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: "Paris is the capital of France." }));
   });
 
+  it("does not read the previous answer aloud when a turn fails", async () => {
+    // The failure branch's history refetch replaces `messages` with the database
+    // snapshot, which does NOT contain the failed turn's partial assistant entry.
+    // Two things therefore move in the same commit: the assistant-turn count falls,
+    // so turnKey goes BACKWARDS and useSpokenAnswer resets its spoken counter to 0;
+    // and `answer` reverts to the PREVIOUS turn's text, with status parked at
+    // "error" so completedSentences flushes it whole. Left alone, a failed turn
+    // reads the previous answer aloud from the top — the very defect the refetch
+    // was added to prevent, moved from the next successful turn onto the failure.
+    //
+    // Falsification: drop `status !== "error"` from useSpokenAnswer's `enabled`
+    // argument in chat-view.tsx and this test fails on the PREVIOUS-answer
+    // assertion below.
+    window.localStorage.setItem("speak_answers", "1");
+    const speak = vi.fn();
+    stubSpeechSynthesis({ speak });
+    chatState.input = "why did you show that one?";
+
+    // Two sentences, not one: the retry step at the end of this test needs an
+    // answer with a COMPLETED sentence in front of the trailing one. A single
+    // sentence sits at the very end of the arrived text, which completedSentences
+    // withholds while status is "submitted"/"streaming" — so a one-sentence
+    // previous answer would stay silent at the retry for a reason that has nothing
+    // to do with the fix, and the second-order assertion would pass either way.
+    const PREV_1 = "Paris is the capital of France.";
+    const PREVIOUS = `${PREV_1} The Eiffel Tower stands there.`;
+    const persisted: MockMessage[] = [
+      { id: "db-user-1", role: "user", content: "where is the Eiffel Tower?" },
+      { id: "db-1", role: "assistant", content: PREVIOUS },
+    ];
+    // Every load hands back the SAME snapshot: the failed turn never reached the
+    // database, which is exactly why the local list has to shrink back to this one.
+    let historyCalls = 0;
+    stubFetch(async (url) => {
+      if (url === "/api/conversations/c1") {
+        historyCalls += 1;
+        return new Response(JSON.stringify({ messages: persisted }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+    });
+
+    const { rerender } = render(<ChatView initialConversationId="c1" />);
+    // The toggle rendered "on" (localStorage was read) and the mount load landed,
+    // so the previous answer is on screen before the live turn starts.
+    await screen.findByRole("button", { name: /stop speaking answers/i });
+    await waitFor(() => expect(historyCalls).toBe(1));
+
+    // A real turn: sent (which is what arms hasLiveTurn), then streaming under
+    // ai-sdk's own ids, then failing. The partial answer deliberately ends without
+    // terminal punctuation, so nothing is legitimately speakable at any point here.
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    chatState.status = "streaming";
+    chatState.messages = [
+      ...persisted,
+      { id: "live-user-2", role: "user", content: "why did you show that one?" },
+      { id: "live-2", role: "assistant", content: "Because the caption" },
+    ];
+    rerender(<ChatView initialConversationId="c1" />);
+    speak.mockClear();
+
+    chatState.status = "error";
+    chatState.error = new Error(JSON.stringify({ error: "The provider is unavailable." }));
+    rerender(<ChatView initialConversationId="c1" />);
+
+    // The resync lands and the list shrinks back to the database's two messages.
+    await waitFor(() => expect(historyCalls).toBe(2));
+    await waitFor(() => expect(chatState.messages).toEqual(persisted));
+    // Let every effect the shrink schedules run before asserting a negative.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(speak).not.toHaveBeenCalledWith(expect.objectContaining({ text: PREV_1 }));
+    // Nor is the failed turn's own partial answer flushed: status reaching "error"
+    // makes completedSentences flush, and a turn that failed has nothing to read.
+    expect(speak).not.toHaveBeenCalled();
+
+    // Second order. The user retries: status leaves "error" while the PREVIOUS
+    // answer is still the last assistant message on screen (ai-sdk has not
+    // appended the new one yet). Speech becomes possible again here, and it must
+    // ADOPT that answer rather than start reading it. This is what rules out the
+    // narrower fix of skipping the speak loop while status is "error": that leaves
+    // the spoken count at 0 and wasEnabled true, so this very commit speaks every
+    // completed sentence of the previous answer.
+    chatState.status = "submitted";
+    chatState.error = undefined;
+    rerender(<ChatView initialConversationId="c1" />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(speak).not.toHaveBeenCalled();
+  });
+
   it("sends a voice transcript through append, not handleSubmit", async () => {
     // handleSubmit reads `input` from state, which is stale in the tick a
     // transcript arrives — a transcript sent through it would send an empty

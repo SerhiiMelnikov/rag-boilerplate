@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { imageAnswerText, CAPTION_CAP } from "./image-answer";
+import { speakableText } from "../voice/speakable-text";
+import { completedSentences } from "../voice/sentences";
 
 const INTRO = "Here are the images that best match your description:";
 
@@ -58,5 +60,45 @@ describe("imageAnswerText", () => {
     // Should be "- " (2 chars) + 160 chars + "…" (1 char) = 163 total
     expect(line.length).toBe(163);
     expect(line).toBe("- " + "a".repeat(160) + "…");
+  });
+
+  it("separates caption lines with blank lines, not single newlines", () => {
+    // This test guards against reverting the join separator. When a line ends
+    // with no punctuation and is followed by another, speakableText will strip
+    // the "- " marker. Without a blank line between them, completedSentences
+    // will merge them into a single sentence.
+    const out = imageAnswerText(INTRO, [
+      { caption: "First caption" },
+      { caption: "Second caption" },
+    ]);
+    // Should have blank lines (double newlines) between caption lines, not single
+    expect(out).toContain("- First caption\n\n- Second caption");
+    expect(out).not.toContain("- First caption\n- Second caption");
+  });
+
+  it("voice seam: captions without punctuation are separate spoken sentences", () => {
+    // This is a cross-module test that verifies the real user-facing behavior:
+    // two image captions without terminal punctuation should NOT be merged into
+    // a run-on sentence when spoken aloud. imageAnswerText -> speakableText ->
+    // completedSentences should yield two separate sentences.
+    const out = imageAnswerText(INTRO, [
+      { caption: "a red bicycle" },
+      { caption: "a red sports car" },
+    ]);
+
+    // Feed through speakableText (which strips markdown/list markers)
+    const speakable = speakableText(out);
+
+    // Then through completedSentences with flush=true to finalize
+    const sentences = completedSentences(speakable, { flush: true });
+
+    // Should have at least 3: intro, first caption, second caption
+    // (intro may or may not be joined with first depending on punctuation)
+    const captionSentences = sentences.filter(
+      (s) => s.includes("bicycle") || s.includes("sports car")
+    );
+    expect(captionSentences).toHaveLength(2);
+    expect(captionSentences[0]).toContain("bicycle");
+    expect(captionSentences[1]).toContain("sports car");
   });
 });

@@ -18,5 +18,5 @@ function firstSentence(caption: string): string {
 
 export function imageAnswerText(intro: string, images: Array<{ caption: string }>): string {
   const lines = images.map((img) => `- ${firstSentence(img.caption)}`);
-  return lines.length === 0 ? intro : `${intro}\n\n${lines.join("\n")}`;
+  return lines.length === 0 ? intro : `${intro}\n\n${lines.join("\n\n")}`;
 }

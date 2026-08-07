@@ -88,13 +88,30 @@ export function ChatView({
     setSpeakAnswers(next);
   }
 
+  // Bumped at the start of every loadHistory() call. A monotonic counter, not a
+  // boolean "is this the latest call" flag: a flag is only good for telling the
+  // second of two calls apart from the first, and is defeated the moment a THIRD
+  // call supersedes the second before the second's own response lands — the
+  // second would then see the flag still saying "I'm latest" and write anyway.
+  // recorder.ts's `generation` counter documents the identical reasoning for
+  // start() superseding start().
+  const loadHistorySeq = useRef(0);
+
   const loadHistory = useCallback(async () => {
     const id = conversationRef.current;
     if (!id) return;
+    const mySeq = ++loadHistorySeq.current;
     const res = await fetch(`/api/conversations/${id}`);
     if (!res.ok) return;
     const data = await res.json();
     const msgs: PersistedMessage[] = data.messages ?? [];
+    // The ready-triggered and error-triggered refetches (below) both call
+    // loadHistory independently, so a slow first response can resolve AFTER a
+    // faster later one — e.g. the error path's GET is still in flight when a
+    // fast retry succeeds and the ready path's GET both fires and resolves
+    // first. Without this guard the stale response's setMessages would land
+    // last and clobber the fresh state already on screen.
+    if (mySeq !== loadHistorySeq.current) return;
     setPersisted(msgs);
     setMessages(msgs.map((m) => ({ id: m.id, role: m.role, content: m.content })));
   }, [setMessages]);

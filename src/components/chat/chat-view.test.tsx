@@ -381,6 +381,64 @@ describe("ChatView", () => {
     await waitFor(() => expect(historyCalls()).toBe(2));
   });
 
+  it("keeps the newer history load's result when an older, error-triggered load resolves after it", async () => {
+    // The race the sequence guard above closes: the error branch and the ready
+    // branch both call loadHistory independently, so two GETs for the same
+    // conversation can be in flight together. Here the OLDER call (fired by the
+    // failure) is made to resolve AFTER the NEWER call (fired by the retry's
+    // success) — the exact out-of-order arrival that would let the stale,
+    // post-failure snapshot clobber the fresh, post-success one. Resolution
+    // order is driven by hand via `resolvers`, not left to real timing.
+    const resolvers: Array<(body: unknown) => void> = [];
+    let historyCallCount = 0;
+    stubFetch(async (url) => {
+      if (url === "/api/conversations/c1") {
+        const mine = historyCallCount++;
+        return new Promise<Response>((resolve) => {
+          resolvers[mine] = (body) => resolve(new Response(JSON.stringify(body), { status: 200 }));
+        });
+      }
+      return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+    });
+
+    const { rerender } = render(<ChatView initialConversationId="c1" />);
+    // Settle the mount-time load (call 0) before the two racing calls below.
+    resolvers[0]({ messages: [] });
+    await waitFor(() => expect(setMessagesMock).toHaveBeenCalledWith([]));
+
+    // Call 1: the error-triggered load. Fired, then left pending.
+    chatState.status = "streaming";
+    rerender(<ChatView initialConversationId="c1" />);
+    chatState.status = "error";
+    rerender(<ChatView initialConversationId="c1" />);
+    await waitFor(() => expect(historyCallCount).toBe(2));
+
+    // Call 2: the ready-triggered load from a fast, successful retry. Also left
+    // pending — both calls are now in flight at once.
+    chatState.status = "ready";
+    rerender(<ChatView initialConversationId="c1" />);
+    await waitFor(() => expect(historyCallCount).toBe(3));
+
+    const stale: MockMessage[] = [{ id: "stale-1", role: "assistant", content: "STALE post-failure snapshot" }];
+    const fresh: MockMessage[] = [{ id: "fresh-1", role: "assistant", content: "FRESH post-success snapshot" }];
+
+    // The NEWER call (2) resolves FIRST...
+    resolvers[2]({ messages: fresh });
+    await waitFor(() => expect(setMessagesMock).toHaveBeenCalledWith(fresh));
+
+    // ...and the OLDER call (1) resolves LAST. Without the guard this would call
+    // setMessages again with the stale snapshot, overwriting the fresh one just
+    // applied above. Flushed inside act() since, with the guard in place,
+    // nothing further updates — there is no later condition to waitFor.
+    await act(async () => {
+      resolvers[1]({ messages: stale });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(chatState.messages).toEqual(fresh);
+    expect(screen.queryByText("STALE post-failure snapshot")).toBeNull();
+  });
+
   it("says so when the conversation could not be created", async () => {
     // Before: `if (!res.ok) return;` — the user pressed Send on their first message
     // and absolutely nothing happened, on screen or in the transcript's error slot.

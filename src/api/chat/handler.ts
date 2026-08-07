@@ -12,6 +12,7 @@ import { isProviderError } from "@/lib/providers/types";
 import { routeIntent } from "@/lib/chat/route-intent";
 import { searchImages } from "@/lib/images/search";
 import { verifyImageMatches } from "@/lib/images/verify";
+import { imageAnswerText } from "@/lib/chat/image-answer";
 import { createWorkspaceRepo, type WorkspaceRepo } from "@/lib/workspaces/repo";
 import { resolveActiveWorkspaceId, resolveAllowedDocumentIds, resolveAllowedImageIds } from "@/lib/workspaces/access";
 import { parseActiveWorkspaceCookie } from "@/lib/workspaces/cookie";
@@ -197,7 +198,10 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
     }
     if (matches.length === 0) return replyWithMessage(NO_IMAGE_ANSWER);
     const images = matches.map((h) => ({ imageId: h.imageId, caption: h.caption }));
-    return replyWithMessage(IMAGE_INTRO, images);
+    // The captions go in the CONTENT, not only in images[]: the next turn's history
+    // is rebuilt from content alone (see the history block above), so this is the
+    // only channel through which the assistant can later say what it showed.
+    return replyWithMessage(imageAnswerText(IMAGE_INTRO, images), images);
   }
 
   let prepared;

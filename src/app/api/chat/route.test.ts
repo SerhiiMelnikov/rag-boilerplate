@@ -8,6 +8,7 @@ import type { searchImages, ImageSearchHit } from "@/lib/images/search";
 import type { getAuthUserById } from "@/lib/auth/users";
 import type { getRuntimeSettings } from "@/lib/config/settings-service";
 import type { getChatModel } from "@/lib/providers";
+import { imageAnswerText } from "@/lib/chat/image-answer";
 
 const settings = {
   chatProvider: "google", chatModel: "gemma-4-31b-it",
@@ -208,7 +209,7 @@ describe("handleChat", () => {
     expect(assistantCall?.[0].content).toMatch(/no API key for provider "openai"/);
   });
 
-  it("IMAGE intent: persists images + streams the intro, skips prepareContext", async () => {
+  it("IMAGE intent: persists images + a body carrying their captions, skips prepareContext", async () => {
     const prepareContextFn = vi.fn();
     const deps = baseDeps({
       prepareContextFn,
@@ -217,9 +218,12 @@ describe("handleChat", () => {
     });
     const res = await chat(body(msg("show me a red bike")), deps);
     expect(res.status).toBe(200);
-    // assistant message persisted with the images
     const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
     expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", caption: "a red bicycle" }]);
+    // The caption must reach `content`: history for the next turn is rebuilt from
+    // content alone, so anything left only in images[] is invisible to the model.
+    expect(assistantCall?.[0].content).toContain("a red bicycle");
+    expect(assistantCall?.[0].content).toBe(imageAnswerText("Here are the images that best match your description:", [{ caption: "a red bicycle" }]));
     expect(prepareContextFn).not.toHaveBeenCalled();
   });
 

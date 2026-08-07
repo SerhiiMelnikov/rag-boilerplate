@@ -23,6 +23,7 @@ export const PROVIDER_IDS: ProviderId[] = ["google", "openai", "anthropic", "oll
 export const VECTOR_STORE_IDS: VectorStoreId[] = ["pgvector", "qdrant", "chroma", "weaviate", "pinecone"];
 export const APP_KIND_IDS: AppKind[] = ["full", "api"];
 export const EMBEDDING_CAPABLE: ProviderId[] = ["google", "openai", "ollama"];
+export const SPEECH_CAPABLE: ProviderId[] = ["google", "openai"];
 
 // Parse argv into a partial option set. Missing values are filled by prompts later.
 export function parseArgs(argv: string[]): Partial<InstallOptions> & { yes: boolean } {
@@ -76,6 +77,16 @@ export function validateSelection(o: { providers: ProviderId[]; defaultProvider:
 export function resolveEmbeddingProvider(providers: ProviderId[], defaultProvider: ProviderId): ProviderId {
   if (EMBEDDING_CAPABLE.includes(defaultProvider)) return defaultProvider;
   return providers.find((p) => EMBEDDING_CAPABLE.includes(p))!;
+}
+
+// The speech provider written into the generated project's settings defaults:
+// the default provider when it can transcribe, else the first selected one that
+// can. **null when the selection keeps none** — unlike embeddings, nothing
+// validates that a speech-capable provider was selected, because a project
+// without voice input is perfectly valid. Callers must handle null.
+export function resolveSpeechProvider(providers: ProviderId[], defaultProvider: ProviderId): ProviderId | null {
+  if (SPEECH_CAPABLE.includes(defaultProvider)) return defaultProvider;
+  return providers.find((p) => SPEECH_CAPABLE.includes(p)) ?? null;
 }
 
 export function detectPackageManager(userAgent: string | undefined): PackageManager {

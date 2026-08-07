@@ -9,6 +9,12 @@ export interface ProviderModule {
   defaultChatModel: string;
   defaultEmbeddingModel: string | null;
   defaultVisionModel: string;
+  /** Can this provider transcribe audio? The CLI cannot import the app's
+   *  catalog (it ships as dist + template), so this is a second copy kept in
+   *  step by the agreement test in options.test.ts. */
+  supportsSpeech: boolean;
+  /** null exactly when supportsSpeech is false. */
+  defaultSpeechModel: string | null;
 }
 
 export interface VectorStoreModule {
@@ -39,21 +45,25 @@ export const PROVIDERS: Record<ProviderId, ProviderModule> = {
     id: "google", label: "Google Gemini", file: "src/lib/providers/google.ts",
     dep: "@ai-sdk/google", supportsEmbedding: true,
     defaultChatModel: "gemma-4-31b-it", defaultEmbeddingModel: "gemini-embedding-2", defaultVisionModel: "gemini-2.5-flash",
+    supportsSpeech: true, defaultSpeechModel: "gemini-2.5-flash",
   },
   openai: {
     id: "openai", label: "OpenAI", file: "src/lib/providers/openai.ts",
     dep: "@ai-sdk/openai", supportsEmbedding: true,
     defaultChatModel: "gpt-4o-mini", defaultEmbeddingModel: "text-embedding-3-small", defaultVisionModel: "gpt-4o-mini",
+    supportsSpeech: true, defaultSpeechModel: "gpt-4o-mini-transcribe",
   },
   anthropic: {
     id: "anthropic", label: "Anthropic Claude", file: "src/lib/providers/anthropic.ts",
     dep: "@ai-sdk/anthropic", supportsEmbedding: false,
     defaultChatModel: "claude-3-5-sonnet-latest", defaultEmbeddingModel: null, defaultVisionModel: "claude-3-5-sonnet-latest",
+    supportsSpeech: false, defaultSpeechModel: null,
   },
   ollama: {
     id: "ollama", label: "Ollama (local)", file: "src/lib/providers/ollama.ts",
     dep: null, supportsEmbedding: true,
     defaultChatModel: "llama3.1", defaultEmbeddingModel: "nomic-embed-text", defaultVisionModel: "llava",
+    supportsSpeech: false, defaultSpeechModel: null,
   },
 };
 

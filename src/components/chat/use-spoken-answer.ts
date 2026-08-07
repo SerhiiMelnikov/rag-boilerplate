@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { speakableText } from "@/lib/voice/speakable-text";
 import { completedSentences } from "@/lib/voice/sentences";
+import { detectSpeechLang } from "@/lib/voice/lang";
 import { browserSpeechEngine, type SpeechEngine } from "./speech-engine";
 
 // Speaks an assistant answer aloud, sentence by sentence, while it streams.
@@ -61,21 +62,27 @@ export function useSpokenAnswer({
     if (status === "submitted") active?.cancel();
   }, [status, active]);
 
-  // A new turn silences the previous one and restarts the count.
-  const lastTurn = useRef(turnKey);
-  useEffect(() => {
-    if (lastTurn.current === turnKey) return;
-    lastTurn.current = turnKey;
-    spoken.current = 0;
-    active?.cancel();
-  }, [turnKey, active]);
-
   // wasEnabled distinguishes a real off-to-on toggle from the initial mount: this
   // effect, like every effect, also fires on mount, and mounting already enabled
   // (the ordinary case of a fresh streaming turn) must NOT adopt the answer-so-far
   // — that would silently skip whatever sentence had already completed by the
   // first render, which is exactly the answer this hook exists to speak.
   const wasEnabled = useRef(enabled);
+
+  // A new turn silences the previous one and restarts the count.
+  const lastTurn = useRef(turnKey);
+  useEffect(() => {
+    if (lastTurn.current === turnKey) return;
+    lastTurn.current = turnKey;
+    spoken.current = 0;
+    // A new turn has nothing on screen to replay, so it must never be adopted.
+    // Without this, a turn change landing in the SAME commit as an off->on
+    // toggle skips every sentence that turn had already completed: this effect
+    // is declared before the main one and therefore runs first, so writing
+    // wasEnabled here is what the adopt branch below sees.
+    wasEnabled.current = enabled;
+    active?.cancel();
+  }, [turnKey, active, enabled]);
 
   // Disabling stops speech immediately and resets wasEnabled, so a later re-enable
   // adopts the answer as it then stands instead of replaying it. This is its own
@@ -110,8 +117,13 @@ export function useSpokenAnswer({
       wasEnabled.current = true;
     }
 
-    const lang = typeof navigator !== "undefined" ? navigator.language : "en";
-    for (const sentence of sentences.slice(spoken.current)) active.speak(sentence, lang);
+    // The browser's UI language is only the fallback now: the answer's own
+    // script decides, per sentence, so a mixed answer reads correctly on both
+    // halves. See src/lib/voice/lang.ts for why this is a heuristic.
+    const fallbackLang = typeof navigator !== "undefined" ? navigator.language : "en";
+    for (const sentence of sentences.slice(spoken.current)) {
+      active.speak(sentence, detectSpeechLang(sentence) ?? fallbackLang);
+    }
     spoken.current = sentences.length;
   }, [answer, status, enabled, active]);
 

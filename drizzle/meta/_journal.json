@@ -148,6 +148,13 @@
       "when": 1785450000000,
       "tag": "0020_lowercase_emails",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1785936177424,
+      "tag": "0021_ancient_shockwave",
+      "breakpoints": true
     }
   ]
 }

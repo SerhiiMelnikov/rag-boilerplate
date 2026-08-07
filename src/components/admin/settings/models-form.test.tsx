@@ -2,17 +2,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { ModelsForm } from "./models-form";
-import { EMBEDDING_PROVIDER_IDS } from "@/lib/providers/catalog";
+import { EMBEDDING_PROVIDER_IDS, SPEECH_PROVIDER_IDS } from "@/lib/providers/catalog";
 
 const MASKED = {
   chatProvider: "openai", chatModel: "gpt-4o",
   embeddingProvider: "google", embeddingModel: "gemini-embedding-2",
   parserProvider: "google", parserModel: "gemini-2.5-flash",
   imageProvider: "google", imageModel: "gemini-2.5-flash",
+  speechProvider: "google", speechModel: "gemini-2.5-flash",
   unifiedMode: false, unifiedProvider: "google", unifiedModel: "gemini-2.5-flash",
   temperature: 0.2, topK: 5, minSimilarity: 0.3, contextTokenBudget: 3000,
   systemPrompt: "sp", ollamaBaseUrl: "http://localhost:11434",
   chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200,
+  transcribeRateLimitPerMinute: 10, transcribeRateLimitPerDay: 100,
   allowedEmailDomains: "", smtpHost: "", smtpPort: 587, smtpUser: "", smtpFrom: "",
   keys: { google: { set: true, last4: "1234" }, openai: { set: false, last4: null }, anthropic: { set: false, last4: null } },
   smtpPassword: { set: false, last4: null },
@@ -103,6 +105,12 @@ describe("ModelsForm", () => {
     for (const foreign of ["temperature", "topK", "systemPrompt", "chatRateLimitPerMinute", "allowedEmailDomains", "smtpHost", "smtpPassword"]) {
       expect(body, `${foreign} belongs to another page`).not.toHaveProperty(foreign);
     }
+    // Speech is owned only while its row renders — which, with the unpruned
+    // catalog this test runs against, it does. The empty-catalog case is the
+    // opposite assertion, and has its own test at the bottom of this file.
+    expect(SPEECH_PROVIDER_IDS.length).toBeGreaterThan(0);
+    expect(body).toHaveProperty("speechProvider");
+    expect(body).toHaveProperty("speechModel");
   });
 
   it("keeps the typed keys when the save is rejected", async () => {
@@ -141,10 +149,12 @@ describe("ModelsForm", () => {
     await waitFor(() => expect(putBody()).toHaveProperty("googleKey"));
     const body = putBody();
     expect(body.googleKey).toBeNull();
+    // The unpruned catalog's key set: speech is in it because its row renders.
+    // The pruned counterpart is asserted by the last test in this file.
     expect(Object.keys(body).sort()).toEqual([
       "chatModel", "chatProvider", "embeddingModel", "embeddingProvider", "googleKey",
       "imageModel", "imageProvider", "ollamaBaseUrl", "parserModel", "parserProvider",
-      "unifiedMode", "unifiedModel", "unifiedProvider",
+      "speechModel", "speechProvider", "unifiedMode", "unifiedModel", "unifiedProvider",
     ]);
   });
 
@@ -195,5 +205,62 @@ describe("ModelsForm", () => {
   it("shows the Ollama base URL because ollama is in the catalog", async () => {
     render(<ModelsForm />);
     expect(await screen.findByLabelText("Ollama base URL")).toBeInTheDocument();
+  });
+
+  // This is the only row gated on a catalog list that can be empty
+  // (SPEECH_PROVIDER_IDS), the way EMBEDDING_PROVIDER_IDS is checked above.
+  it("renders the speech row with only speech-capable providers", async () => {
+    render(<ModelsForm />);
+    fireEvent.click(await screen.findByLabelText("Speech to text provider"));
+    const options = await screen.findAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(SPEECH_PROVIDER_IDS);
+  });
+
+  it("sends the speech pair on save", async () => {
+    // Without this the Models page would adopt the server's response and drop a
+    // speech change the admin had just made alongside another edit.
+    render(<ModelsForm />);
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await waitFor(() => expect(putBody()).toHaveProperty("chatProvider"));
+    const body = putBody();
+    expect(body).toMatchObject({ speechProvider: "google", speechModel: "gemini-2.5-flash" });
+  });
+
+  // The whole page, not just the speech row, in an --providers ollama scaffold.
+  //
+  // Pruning empties SPEECH_PROVIDER_IDS but deliberately writes no speech
+  // default, so the settings row still holds "google". settingsPatchSchema
+  // refines speechProvider against SPEECH_PROVIDER_IDS, and [].includes("google")
+  // is false — so a body that carries the pair unconditionally makes EVERY save
+  // on this page 400, including each API-key set and clear, with an error that
+  // names no field. No type checker can see a runtime refine; this test is what
+  // sees it.
+  it("sends no speech pair at all when the catalog has no speech provider", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/providers/catalog", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/providers/catalog")>()),
+      SPEECH_PROVIDER_IDS: [],
+    }));
+    const { ModelsForm: Pruned } = await import("./models-form");
+    render(<Pruned />);
+
+    // The row is gone — a picker with no options would be the visible half of
+    // the same bug, and is what the guard on the row already prevents.
+    await screen.findByLabelText("Chat provider");
+    expect(screen.queryByLabelText("Speech to text provider")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(putBody()).toHaveProperty("chatProvider"));
+    const body = putBody();
+    expect(body).not.toHaveProperty("speechProvider");
+    expect(body).not.toHaveProperty("speechModel");
+    // Pinned as an exact set, not two absence checks: absence checks pass just
+    // as happily against a body that has lost something else as well.
+    expect(Object.keys(body).sort()).toEqual([
+      "chatModel", "chatProvider", "embeddingModel", "embeddingProvider",
+      "imageModel", "imageProvider", "ollamaBaseUrl", "parserModel", "parserProvider",
+      "unifiedMode", "unifiedModel", "unifiedProvider",
+    ]);
+    vi.doUnmock("@/lib/providers/catalog");
   });
 });

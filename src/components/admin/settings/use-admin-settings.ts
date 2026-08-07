@@ -13,10 +13,12 @@ export interface AdminSettings {
   embeddingProvider: string; embeddingModel: string;
   parserProvider: string; parserModel: string;
   imageProvider: string; imageModel: string;
+  speechProvider: string; speechModel: string;
   unifiedMode: boolean; unifiedProvider: string; unifiedModel: string;
   temperature: number; topK: number; minSimilarity: number; contextTokenBudget: number;
   systemPrompt: string; ollamaBaseUrl: string;
   chatRateLimitPerMinute: number; chatRateLimitPerDay: number;
+  transcribeRateLimitPerMinute: number; transcribeRateLimitPerDay: number;
   allowedEmailDomains: string;
   smtpHost: string; smtpPort: number; smtpUser: string; smtpFrom: string;
   keys: Record<string, KeyStatus>;

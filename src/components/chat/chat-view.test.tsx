@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatView } from "./chat-view";
+import type { Recorder, RecordedAudio } from "./recorder";
 
 type MockMessage = { id: string; role: string; content: string };
 const chatState: { error?: Error; status: string; input: string; messages: MockMessage[] } = {
@@ -22,6 +23,15 @@ const setMessagesMock = vi.fn((msgs: MockMessage[]) => {
 });
 const handleInputChangeMock = vi.fn();
 const handleSubmitMock = vi.fn();
+const appendMock = vi.fn();
+// Given a real implementation for the same reason setMessagesMock is: the
+// busy-voice tests below assert on what actually lands in the composer, and a
+// no-op setter would let a fix that writes the transcript nowhere pass. It takes
+// the updater-function form because that is the form chat-view.tsx uses (to keep
+// any already-typed text), so a bare-value mock would record a function object.
+const setInputMock = vi.fn((next: string | ((prev: string) => string)) => {
+  chatState.input = typeof next === "function" ? next(chatState.input) : next;
+});
 
 vi.mock("@ai-sdk/react", () => ({
   useChat: () => ({
@@ -31,9 +41,36 @@ vi.mock("@ai-sdk/react", () => ({
     handleSubmit: handleSubmitMock,
     status: chatState.status,
     setMessages: setMessagesMock,
+    setInput: setInputMock,
     error: chatState.error,
+    append: appendMock,
   }),
 }));
+
+// The voice tests below need the microphone to actually render, which takes two
+// more mocks: useTranscribeAvailable must report the server as ready, and
+// ./recorder's browserRecorder (what useMicrophone's own fallback calls when no
+// recorder is injected) must hand back something that behaves like one. Bindings
+// referenced from a vi.mock() factory have to go through vi.hoisted, since the
+// mock calls themselves are hoisted above every other top-level declaration.
+const { fakeRecorderApi, fireFrame } = vi.hoisted(() => {
+  const AUDIO: RecordedAudio = { blob: new Blob(["audio"], { type: "audio/webm" }), mimeType: "audio/webm;codecs=opus" };
+  // Captured so tests can simulate speech energy: use-microphone.ts's new
+  // silence gate (Task 10b) reads vad.current.spokeMs, which only advances
+  // when the hook's own onFrame callback is actually invoked.
+  let onFrame: ((energy: number) => void) | null = null;
+  return {
+    fakeRecorderApi: {
+      start: vi.fn(async (cb: (energy: number) => void) => { onFrame = cb; }),
+      stop: vi.fn(async () => AUDIO),
+      cancel: vi.fn(() => { onFrame = null; }),
+    },
+    fireFrame: (energy: number) => onFrame?.(energy),
+  };
+});
+
+vi.mock("./use-transcribe-available", () => ({ useTranscribeAvailable: () => true }));
+vi.mock("./recorder", () => ({ browserRecorder: () => fakeRecorderApi as unknown as Recorder }));
 
 beforeEach(() => {
   chatState.error = undefined;
@@ -42,6 +79,11 @@ beforeEach(() => {
   chatState.messages = [];
   handleSubmitMock.mockClear();
   setMessagesMock.mockClear();
+  setInputMock.mockClear();
+  appendMock.mockClear();
+  fakeRecorderApi.start.mockClear();
+  fakeRecorderApi.stop.mockClear();
+  fakeRecorderApi.cancel.mockClear();
   Element.prototype.scrollIntoView = vi.fn();
 });
 afterEach(() => {
@@ -76,6 +118,114 @@ function stubSpeechSynthesis(overrides: { speak?: ReturnType<typeof vi.fn>; canc
       constructor(public text: string) {}
     },
   );
+}
+
+// --- Harness for the microphone-wiring tests below --------------------------
+//
+// None of mountWithVoice/transcriptArrives/typeAndSend/createCalls pre-existed in
+// this file; the brief named them as placeholders for "whatever this file already
+// has", but there was no render helper here at all (every test above calls
+// `render(<ChatView ... />)` directly). These are new, built on the same
+// chatState/stubFetch/appendMock/handleSubmitMock mocks the rest of the file uses,
+// and on the rerender-after-mutating-chatState idiom the history-refetch tests
+// above already establish.
+
+// Set by transcriptArrives before the recorder "hears" anything; read by the
+// stubbed POST to /api/chat/transcribe that mountWithVoice installs.
+let nextTranscript = "";
+// The `rerender` of whichever tree mountWithVoice most recently rendered — what
+// lets transcriptArrives/typeAndSend force ChatView to notice a chatState mutation
+// made from outside React, exactly like the existing history-refetch tests do.
+let rerenderChatView: (() => void) | null = null;
+
+function mountWithVoice() {
+  let createCalls = 0;
+  stubFetch(async (url, init) => {
+    if (url === "/api/conversations" && init?.method === "POST") {
+      createCalls += 1;
+      return new Response(JSON.stringify({ id: `voice-${createCalls}` }), { status: 201 });
+    }
+    if (url === "/api/chat/transcribe") {
+      return new Response(JSON.stringify({ text: nextTranscript }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+  });
+  const { rerender } = render(<ChatView initialConversationId={null} />);
+  rerenderChatView = () => rerender(<ChatView initialConversationId={null} />);
+  return {
+    append: appendMock,
+    handleSubmit: handleSubmitMock,
+    createCalls: () => createCalls,
+  };
+}
+
+// Presses the mic, lets useMicrophone's own start() settle into "recording", then
+// presses it again to stop — driving a transcript through the real hook exactly as
+// a user would, down to the fetch to /api/chat/transcribe. Waits for append() to
+// have actually landed before returning, so a caller that immediately does
+// something else (typeAndSend, an assertion on createCalls) is not racing
+// submitVoice's still-pending ensureConversation().
+async function transcriptArrives(text: string) {
+  nextTranscript = text;
+  const before = appendMock.mock.calls.length;
+  fireEvent.click(screen.getByLabelText("Ask by voice"));
+  await waitFor(() => expect(screen.getByLabelText("Stop recording")).toBeTruthy());
+  // Task 10b's silence gate drops a recording with no speech in it before it
+  // ever reaches transcribeFn, so this harness must simulate some (8 frames *
+  // 50ms = 400ms, over the 300ms floor) or every call below would be dropped
+  // as silence rather than exercising what these tests are actually about.
+  act(() => { for (let i = 0; i < 8; i++) fireFrame(0.2); });
+  fireEvent.click(screen.getByLabelText("Stop recording"));
+  await waitFor(() => expect(appendMock.mock.calls.length).toBeGreaterThan(before));
+}
+
+// The same recording, stopped while a turn is already streaming — the one path
+// on which a transcript arrives and cannot be sent. The microphone is opened
+// first (useMicrophone ignores a press while `disabled`), the turn is started
+// underneath it, and only then is stop pressed: exactly what happens when the
+// user hits Send, or the VAD's silence stop fires, with the microphone live.
+// Returns once finish() has fully settled — the button's label goes back to
+// "Ask by voice" in its `finally` — so the assertions are not racing submitVoice.
+async function transcriptArrivesWhileBusy(text: string) {
+  nextTranscript = text;
+  fireEvent.click(screen.getByLabelText("Ask by voice"));
+  await waitFor(() => expect(screen.getByLabelText("Stop recording")).toBeTruthy());
+  act(() => { for (let i = 0; i < 8; i++) fireFrame(0.2); });
+
+  chatState.status = "streaming";
+  rerenderChatView?.();
+
+  fireEvent.click(screen.getByLabelText("Stop recording"));
+  await waitFor(() => expect(screen.getByLabelText("Ask by voice")).toBeTruthy());
+}
+
+// A typed send. chatState.input is not wired to any real state (handleInputChange
+// is a bare mock, same as every other test in this file), so the value is set
+// directly and ChatView is forced to notice it via the same rerender-after-mutating
+// idiom the history-refetch tests above use. submit() is async even when the
+// conversation already exists (ensureConversation is an async function, so even
+// its synchronous `return existing` path resolves on a microtask tick), so this
+// waits for handleSubmit rather than asserting immediately after the click.
+async function typeAndSend(text: string) {
+  const before = handleSubmitMock.mock.calls.length;
+  chatState.input = text;
+  rerenderChatView?.();
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(handleSubmitMock.mock.calls.length).toBeGreaterThan(before));
+}
+
+// Presses the mic once and makes the underlying recorder's start() reject with a
+// permission refusal, exactly what a user declining the browser's mic prompt
+// produces. Drives use-microphone.ts's real error-mapping (messageFor), not a
+// stubbed one, so this is what actually lands in mic.error.
+async function micRefuses() {
+  fakeRecorderApi.start.mockImplementationOnce(async () => {
+    const err = new Error("refused");
+    err.name = "NotAllowedError";
+    throw err;
+  });
+  fireEvent.click(screen.getByLabelText("Ask by voice"));
+  await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
 }
 
 describe("ChatView", () => {
@@ -374,25 +524,233 @@ describe("ChatView", () => {
     chatState.messages = liveMessages;
     rerender(<ChatView initialConversationId="c1" />);
 
+    // Cleared BEFORE the render that both flushes and starts the swap, not after:
+    // loadHistory's fetch (and everything it drives, including the buggy turnKey
+    // effect this test guards against) can fully resolve within the SAME await
+    // that observes the legitimate flush call below — waitFor polls by yielding to
+    // the event loop, and the mocked fetch's promise chain needs only a couple of
+    // microtask ticks, comfortably inside that window. A clear placed after that
+    // await, as this used to be, can erase an illegitimate cancel()/speak() before
+    // either assertion below ever sees it — the assertion would then pass whether
+    // the swap is handled correctly or not.
+    speak.mockClear();
+    cancel.mockClear();
+
     // The turn finishes: status reaches "ready", which both flushes the withheld
     // sentence above (legitimate — the turn is genuinely over) and, separately,
     // fires ChatView's history refetch that swaps the live id for the database's.
-    // The two are asserted apart so the refetch's effect isn't mistaken for the
-    // flush's.
     chatState.status = "ready";
     rerender(<ChatView initialConversationId="c1" />);
+    // The one call the assertions below allow for: the turn genuinely finishing.
     await waitFor(() => expect(speak).toHaveBeenCalled());
-    // The call above is legitimate (the turn actually finishing) — clear it so
-    // what's asserted below is only what happens because of the id swap itself,
-    // not noise from getting to that point.
-    speak.mockClear();
-    cancel.mockClear();
 
     await waitFor(() => expect(setMessagesMock).toHaveBeenCalledWith(persistedMessages));
 
     // The id swap must not look like a new turn: nothing gets cancelled, and the
-    // already-spoken answer is not replayed.
+    // already-spoken answer is not replayed as a second call. (Not "not called":
+    // the legitimate flush call above is no longer cleared away, so the swap's own
+    // effect adding a second, illegitimate call is what this must now catch.)
     expect(cancel).not.toHaveBeenCalled();
-    expect(speak).not.toHaveBeenCalled();
+    expect(speak).toHaveBeenCalledTimes(1);
+    // Count alone would not notice a bug that suppressed the legitimate flush call
+    // while substituting a different, single illegitimate one — content matters too.
+    // speechSynthesis.speak takes a single SpeechSynthesisUtterance-shaped argument
+    // (stubSpeechSynthesis's fake constructor sets .text and .lang on it), not the
+    // (text, lang) pair SpeechEngine.speak takes in use-spoken-answer.test.tsx.
+    expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: "Paris is the capital of France." }));
+  });
+
+  it("sends a voice transcript through append, not handleSubmit", async () => {
+    // handleSubmit reads `input` from state, which is stale in the tick a
+    // transcript arrives — a transcript sent through it would send an empty
+    // message or the previously typed one.
+    const { append, handleSubmit } = mountWithVoice();
+    await transcriptArrives("how many documents");
+    await waitFor(() => expect(append).toHaveBeenCalled());
+    expect(append.mock.calls[0][0]).toEqual({ role: "user", content: "how many documents" });
+    expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it("creates the conversation once across a voice send and a typed send", async () => {
+    const { createCalls } = mountWithVoice();
+    await transcriptArrives("first");
+    await typeAndSend("second");
+    expect(createCalls()).toBe(1);
+  });
+
+  it("passes the created conversation id on the voice path", async () => {
+    const { append } = mountWithVoice();
+    await transcriptArrives("hello");
+    await waitFor(() => expect(append).toHaveBeenCalled());
+    expect(append.mock.calls[0][1]).toMatchObject({ body: { conversationId: expect.any(String) } });
+  });
+
+  it("still sends a typed message through handleSubmit", async () => {
+    const { handleSubmit } = mountWithVoice();
+    await typeAndSend("typed");
+    expect(handleSubmit).toHaveBeenCalled();
+  });
+
+  it("reads a voice-sent question's answer aloud when speaking is enabled", async () => {
+    // The falsification target for this file: submitVoice's setHasLiveTurn(true).
+    // Deleting that one line breaks none of the tests above — nothing else in this
+    // file exercises it — which is exactly the gap this test exists to close. It is
+    // the seam where the microphone and the spoken-answers feature meet.
+    window.localStorage.setItem("speak_answers", "1");
+    const speak = vi.fn();
+    stubSpeechSynthesis({ speak });
+
+    const { append } = mountWithVoice();
+    await transcriptArrives("where is the Eiffel Tower?");
+    await waitFor(() => expect(append).toHaveBeenCalled());
+
+    // The turn streams in, exactly as a typed turn's would (mirrors the id-swap
+    // test above): a live assistant message arrives while status is "streaming",
+    // then the turn finishes.
+    chatState.status = "streaming";
+    chatState.messages = [
+      { id: "user-1", role: "user", content: "where is the Eiffel Tower?" },
+      { id: "live-1", role: "assistant", content: "Paris is the capital of France." },
+    ];
+    rerenderChatView?.();
+    chatState.status = "ready";
+    rerenderChatView?.();
+
+    await waitFor(() => expect(speak).toHaveBeenCalled());
+  });
+
+  it("does not start a second concurrent turn when a transcript arrives mid-stream", async () => {
+    // The typed path is gated by the composer's canSend (`!busy`); submitVoice
+    // had no equivalent, and a manual stop is deliberately left pressable while
+    // busy — so stopping a recording started before the turn appended a second
+    // /api/chat request on top of the live one. With ai@^4 the second overwrites
+    // the first's abortControllerRef and both write into the same message list.
+    const { append, handleSubmit } = mountWithVoice();
+    await transcriptArrivesWhileBusy("and what about the second document");
+    expect(append).not.toHaveBeenCalled();
+    expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it("puts a transcript it could not send into the composer instead of losing it", async () => {
+    // Refusing outright would mean there is no way to end a recording started
+    // before the turn without throwing away what the user said: press stop and
+    // it sends, do nothing and the VAD or the 60-second cap sends. The text goes
+    // where the user can see it and send it when the turn finishes.
+    mountWithVoice();
+    await transcriptArrivesWhileBusy("and what about the second document");
+    expect(chatState.input).toBe("and what about the second document");
+    expect(screen.getByLabelText("Message")).toHaveValue("and what about the second document");
+  });
+
+  it("keeps text already typed in the composer when a transcript lands on top of it", async () => {
+    // The box is not disabled while busy — composer.tsx only disables Send — so
+    // there may well be something in it already. Overwriting would lose one
+    // message to save the other.
+    mountWithVoice();
+    chatState.input = "and also";
+    rerenderChatView?.();
+    await transcriptArrivesWhileBusy("what does it cost");
+    expect(chatState.input).toBe("and also what does it cost");
+  });
+
+  it("stops reading an answer aloud the moment the microphone opens", async () => {
+    // The seam between the two halves of this feature. Synthesis is far slower
+    // than the stream, so a finished turn re-enables the microphone while the
+    // assistant is still reading its answer OUT LOUD. A hands-free user presses
+    // the microphone right then, the AnalyserNode measures the TTS coming out of
+    // the speakers, the energy gate passes on the assistant's own voice, and the
+    // previous answer comes back as the user's next question.
+    window.localStorage.setItem("speak_answers", "1");
+    const speak = vi.fn();
+    const cancel = vi.fn();
+    stubSpeechSynthesis({ speak, cancel });
+
+    mountWithVoice();
+    await transcriptArrives("where is the Eiffel Tower?");
+
+    // From here the history refetch must hand back the SAME turn it is about to
+    // be asked for. Found by falsifying: mountWithVoice's stub answers every
+    // conversation GET with `{ messages: [] }`, so loadHistory (fired when
+    // status reaches "ready") emptied the list, the assistant-turn count fell
+    // from 1 back to 0, and use-spoken-answer's turnKey effect called cancel()
+    // by itself. The first draft of this test passed identically with and
+    // without the fix it exists to pin.
+    const persisted = [
+      { id: "db-user-1", role: "user", content: "where is the Eiffel Tower?" },
+      { id: "db-1", role: "assistant", content: "Paris is the capital of France." },
+    ];
+    stubFetch(async (url) =>
+      url === "/api/chat/transcribe"
+        ? new Response(JSON.stringify({ text: "" }), { status: 200 })
+        : new Response(JSON.stringify({ messages: persisted }), { status: 200 }),
+    );
+
+    chatState.status = "streaming";
+    chatState.messages = [
+      { id: "user-1", role: "user", content: "where is the Eiffel Tower?" },
+      { id: "live-1", role: "assistant", content: "Paris is the capital of France." },
+    ];
+    rerenderChatView?.();
+    chatState.status = "ready";
+    rerenderChatView?.();
+    await waitFor(() => expect(speak).toHaveBeenCalled());
+    // The refetch has landed and the turn count is settled, so nothing else is
+    // still queued that could call cancel() for a reason other than the press.
+    await waitFor(() => expect(setMessagesMock).toHaveBeenCalledWith(persisted));
+
+    // The answer is now being read aloud, and `busy` is false again — the
+    // microphone is live-able. This is the press.
+    cancel.mockClear();
+    fireEvent.click(screen.getByLabelText("Ask by voice"));
+    await waitFor(() => expect(cancel).toHaveBeenCalled());
+  });
+
+  it("keeps the empty-state panel visible behind a microphone error", async () => {
+    // A user whose first action is a refused permission (or a silent recording,
+    // which produces the same shaped error) used to lose the only thing on
+    // screen telling them what to do — the panel was gated on there being no
+    // error at all, so the error replaced it rather than joining it.
+    mountWithVoice();
+    await micRefuses();
+    expect(screen.getByRole("alert")).toHaveTextContent("Microphone access was refused.");
+    expect(screen.getByText("Ask your documents a question")).toBeInTheDocument();
+  });
+
+  it("shows a refused microphone permission in the alert slot", async () => {
+    // Fix-round finding: there was no test that mic.error reaches the shared
+    // error slot at all, in either ordering.
+    mountWithVoice();
+    await micRefuses();
+    expect(screen.getByRole("alert")).toHaveTextContent("Microphone access was refused.");
+  });
+
+  it("shows a live chat error even when a stale microphone error exists", async () => {
+    // mic.error is only cleared by the NEXT send attempt (ensureConversation), not
+    // by the passage of time or by a later chat error arriving on its own — so a
+    // refused-permission message from minutes ago must never outrank, and hide, a
+    // real turn failure that happens afterward.
+    mountWithVoice();
+    await micRefuses();
+    expect(screen.getByRole("alert")).toHaveTextContent("Microphone access was refused.");
+
+    chatState.error = new Error(
+      JSON.stringify({ error: "You have reached the message limit. Try again in 42 seconds." }),
+    );
+    rerenderChatView?.();
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "You have reached the message limit. Try again in 42 seconds.",
+    );
+  });
+
+  it("clears a stale microphone error once a new turn is sent", async () => {
+    const { handleSubmit } = mountWithVoice();
+    await micRefuses();
+    expect(screen.getByRole("alert")).toHaveTextContent("Microphone access was refused.");
+
+    await typeAndSend("hello");
+
+    expect(handleSubmit).toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

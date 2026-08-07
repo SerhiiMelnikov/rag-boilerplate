@@ -15,6 +15,9 @@ export interface ProviderInfo {
   keyName: KeyName | null;
   /** Can this provider produce embeddings? */
   embedding: boolean;
+  /** Can this provider turn speech into text? Anthropic has no audio input at
+   *  all and Ollama serves no transcription API — neither is a gap to close. */
+  speech: boolean;
 }
 
 // A provider that definitely has a key. Without this narrowing, `keys[p.keyName]`
@@ -32,10 +35,10 @@ export interface KeyedProvider extends ProviderInfo {
 // throws at scaffold time if any of that stops being true, rather than silently
 // mangling a form the way its predecessor could.
 export const PROVIDERS: ProviderInfo[] = [
-  { id: "google", label: "Google", keyName: "google", embedding: true },
-  { id: "openai", label: "OpenAI", keyName: "openai", embedding: true },
-  { id: "anthropic", label: "Anthropic", keyName: "anthropic", embedding: false },
-  { id: "ollama", label: "Ollama", keyName: null, embedding: true },
+  { id: "google", label: "Google", keyName: "google", embedding: true, speech: true },
+  { id: "openai", label: "OpenAI", keyName: "openai", embedding: true, speech: true },
+  { id: "anthropic", label: "Anthropic", keyName: "anthropic", embedding: false, speech: false },
+  { id: "ollama", label: "Ollama", keyName: null, embedding: true, speech: false },
 ];
 
 // Everything below is DERIVED. Never hardcode these — the CLI prunes PROVIDERS
@@ -43,6 +46,7 @@ export const PROVIDERS: ProviderInfo[] = [
 // generated project does not ship.
 export const CHAT_PROVIDER_IDS: string[] = PROVIDERS.map((p) => p.id);
 export const EMBEDDING_PROVIDER_IDS: string[] = PROVIDERS.filter((p) => p.embedding).map((p) => p.id);
+export const SPEECH_PROVIDER_IDS: string[] = PROVIDERS.filter((p) => p.speech).map((p) => p.id);
 export const KEYED_PROVIDERS: KeyedProvider[] = PROVIDERS.filter(
   (p): p is KeyedProvider => p.keyName !== null,
 );

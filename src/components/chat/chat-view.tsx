@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
+import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { readSpeakAnswers, writeSpeakAnswers } from "@/lib/voice/preference";
 import { MessageList } from "./message-list";
@@ -9,6 +10,8 @@ import { Composer } from "./composer";
 import { humanizeChatError } from "./chat-error";
 import { useSpeechAvailable } from "./use-speech-available";
 import { useSpokenAnswer } from "./use-spoken-answer";
+import { useMicrophone } from "./use-microphone";
+import { useTranscribeAvailable } from "./use-transcribe-available";
 import type { PersistedMessage } from "./types";
 
 const CREATE_FAILED = "Could not start a new conversation. Please try again.";
@@ -43,12 +46,27 @@ export function ChatView({
   // Failures that happen before useChat is ever involved, and which its own `error`
   // therefore cannot report: creating the conversation the first message needs.
   const [startError, setStartError] = useState<string | null>(null);
-  const { messages, input, handleInputChange, handleSubmit, status, setMessages, error } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, status, setMessages, setInput, error, append } = useChat({
     api: "/api/chat",
   });
   const prevStatus = useRef(status);
 
   const speechAvailable = useSpeechAvailable();
+  const transcribeAvailable = useTranscribeAvailable();
+  const busy = status === "submitted" || status === "streaming" || starting;
+  const mic = useMicrophone({
+    onTranscript: (text) => void submitVoice(text),
+    disabled: busy,
+  });
+  // useMicrophone's `supported` is computed during render (browserRecorder() runs
+  // inside a useState lazy initialiser), so it is null/false on the server and on
+  // the client's own first (hydration) render, then a real Recorder from the next
+  // client render on — a hydration mismatch on its own, same shape as the one
+  // use-speech-available.ts defers to an effect. The microphone is safe only
+  // because transcribeAvailable is *also* seeded false on that first client
+  // render, so ANDing it in keeps the first client render's markup matching the
+  // server's. Do not drop this gate to "simplify" it away.
+  const micReady = mic.supported && transcribeAvailable;
   // Seeded false and read in an effect, never during render: the server cannot know
   // what this device stored, and disagreeing with it is a hydration mismatch.
   const [speakAnswers, setSpeakAnswers] = useState(false);
@@ -60,8 +78,8 @@ export function ChatView({
   // empty, and it is *replaced* by the loaded one moments later without `enabled`
   // ever toggling again. Left ungated, opening an old conversation with the switch
   // already on reads its last answer aloud, unprompted. Gating on a real turn having
-  // started in this session — set once, in submit(), and never unset — closes that
-  // without touching the adopt-on-toggle behavior mid-turn.
+  // started in this session — set in both submit() and submitVoice(), and never
+  // unset — closes that without touching the adopt-on-toggle behavior mid-turn.
   const [hasLiveTurn, setHasLiveTurn] = useState(false);
 
   function toggleSpeakAnswers() {
@@ -96,48 +114,92 @@ export function ChatView({
     prevStatus.current = status;
   }, [status, loadHistory, onTurnComplete]);
 
-  async function submit() {
+  // The creation branch, shared by both send paths. Null means the caller must
+  // not send: either creation failed, or another submit is already creating one
+  // and this call is ignored outright rather than queued — it can neither send
+  // into a conversation that does not exist yet nor create a duplicate.
+  async function ensureConversation(): Promise<string | null> {
     // A new attempt is under way, so the last one's message no longer describes
     // anything. useChat clears its own `error` the same way, inside triggerRequest.
+    // mic.error is cleared here too, not just on the next recording: a typed
+    // send following a refused mic permission must not leave that refusal
+    // pinned in the one error slot the two sources share.
     setStartError(null);
-    let id = conversationRef.current;
-    if (!id) {
-      // The conversation is born from the first question rather than from a
-      // button. Creation happens once per conversation: a second submit that
-      // lands while the first is still creating one is ignored outright, not
-      // queued, so it can neither send into a conversation that doesn't exist
-      // yet nor create a duplicate.
-      if (creating.current) return;
-      creating.current = true;
-      setStarting(true);
-      try {
-        const res = await fetch("/api/conversations", { method: "POST" });
-        if (!res.ok) {
-          setStartError(CREATE_FAILED);
-          return;
-        }
-        id = (await res.json()).id as string;
-        conversationRef.current = id;
-        onStarted?.(id);
-      } catch {
-        // A dropped connection rejects the fetch. Caught here for two reasons: the
-        // failure has to reach the transcript like any other, and submit() is called
-        // from an event handler that cannot await it — anything thrown past this
-        // point is an unhandled rejection.
+    mic.clearError();
+    const existing = conversationRef.current;
+    if (existing) return existing;
+    if (creating.current) return null;
+    creating.current = true;
+    setStarting(true);
+    try {
+      const res = await fetch("/api/conversations", { method: "POST" });
+      if (!res.ok) {
         setStartError(CREATE_FAILED);
-        return;
-      } finally {
-        creating.current = false;
-        setStarting(false);
+        return null;
       }
+      const id = (await res.json()).id as string;
+      conversationRef.current = id;
+      onStarted?.(id);
+      return id;
+    } catch {
+      // A dropped connection rejects the fetch. Caught here because the failure
+      // has to reach the transcript like any other, and because the callers are
+      // event handlers that cannot await this.
+      setStartError(CREATE_FAILED);
+      return null;
+    } finally {
+      creating.current = false;
+      setStarting(false);
     }
+  }
+
+  async function submit() {
+    const id = await ensureConversation();
+    if (!id) return;
     handleSubmit(undefined, { body: { conversationId: id } });
     setHasLiveTurn(true);
   }
 
-  // One error slot for the transcript, fed by both sources: a conversation that could
-  // not be created, and a turn that failed once one exists.
-  const shownError = startError ?? (error ? humanizeChatError(error) : undefined);
+  // Voice cannot go through handleSubmit: it reads `input` from state, which is
+  // still stale in the tick a transcript arrives. append() takes the text directly.
+  async function submitVoice(text: string) {
+    // A turn is already in flight. The typed path is gated by the composer's
+    // `canSend = value.trim().length > 0 && !busy`; this one had no equivalent,
+    // so a transcript arriving mid-stream started a SECOND concurrent
+    // /api/chat request — and with ai@^4 the second overwrites the first's
+    // abortControllerRef while both write into the same message list.
+    //
+    // Reaching this state is ordinary, not exotic: a manual stop is deliberately
+    // left pressable while busy (a live microphone must always be stoppable), and
+    // toggle() in "recording" calls finish(), which transcribes and sends. The
+    // VAD's silence stop and the 60-second cap do the same on their own. So
+    // refusing outright would mean there is no way to end a recording started
+    // before the turn without throwing away what was said.
+    //
+    // The spec's settled "send immediately, do not drop it into the input for
+    // review" decision was made about the idle case — the case where sending is
+    // possible. Here it is not, so the transcript goes to the composer, in front
+    // of the user, ready to send the moment the turn finishes. Whatever was
+    // already typed is kept rather than overwritten: the box is not disabled
+    // while busy (composer.tsx only disables Send), so there may well be some.
+    if (busy) {
+      setInput((prev) => (prev.trim() === "" ? text : `${prev.trimEnd()} ${text}`));
+      return;
+    }
+    const id = await ensureConversation();
+    if (!id) return;
+    void append({ role: "user", content: text }, { body: { conversationId: id } });
+    // Must be set here too, or a spoken question's answer is never read aloud —
+    // the two halves of this feature meet exactly at this line.
+    setHasLiveTurn(true);
+  }
+
+  // One error slot for the transcript, fed by all three sources: a conversation
+  // that could not be created, a turn that failed once a conversation exists, and
+  // the microphone itself. mic.error sits LAST, not first: it is only cleared on
+  // the next successful send attempt (see ensureConversation), so a stale refusal
+  // from minutes ago must never outrank — and hide — a live chat error.
+  const shownError = startError ?? (error ? humanizeChatError(error) : undefined) ?? mic.error ?? undefined;
   const persistedById = new Map(persisted.map((m) => [m.id, m]));
   const stream = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
@@ -154,18 +216,37 @@ export function ChatView({
   useSpokenAnswer({
     answer: lastAssistant?.content ?? "",
     status,
-    enabled: speakAnswers && speechAvailable && hasLiveTurn,
+    // `mic.state === "idle"` is the seam between the two halves of this feature.
+    // Speech synthesis is far slower than the stream (see the comment above), so
+    // a turn finishing flips `busy` false and re-enables the microphone while the
+    // assistant is still reading the answer OUT LOUD. A hands-free user presses
+    // the microphone right then; the AnalyserNode measures whatever the mic
+    // hears, the energy gate passes on the assistant's own voice, and the answer
+    // comes back from the transcription provider as the user's next question.
+    // Routing through `enabled` reuses the !enabled effect's own cancel().
+    //
+    // Idle rather than !== "recording": from the moment the button is pressed the
+    // user has said they want to talk, and "requesting" can sit on an open
+    // permission prompt for seconds. Re-enabling afterwards does not replay
+    // anything — the disable effect resets wasEnabled, so the next enabled pass
+    // adopts the answer as it then stands.
+    enabled: speakAnswers && speechAvailable && hasLiveTurn && mic.state === "idle",
     turnKey: String(assistantTurns),
   });
 
   return (
     <>
-      {stream.length === 0 && status === "ready" && !shownError ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
+      {stream.length === 0 && status === "ready" ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 overflow-y-auto px-4">
           <EmptyState
             title="Ask your documents a question"
             description="Type below. Answers cite how many passages they stand on."
           />
+          {/* Beside the panel, not instead of it. This branch used to be gated on
+              `!shownError`, so a user whose very first action was a silent
+              recording (or a refused mic permission) lost the only thing on
+              screen telling them what to do, and saw an error in its place. */}
+          {shownError && <Alert tone="danger">{shownError}</Alert>}
         </div>
       ) : (
         <MessageList
@@ -185,9 +266,12 @@ export function ChatView({
         // "ready" as busy left Send disabled forever after one failed turn. Retrying
         // from here is safe — triggerRequest clears the error and moves to
         // "submitted" itself.
-        busy={status === "submitted" || status === "streaming" || starting}
+        busy={busy}
         speakAnswers={speakAnswers}
         onToggleSpeakAnswers={speechAvailable ? toggleSpeakAnswers : undefined}
+        onMicrophone={micReady ? mic.toggle : undefined}
+        micState={mic.state}
+        micElapsedMs={mic.elapsedMs}
       />
     </>
   );

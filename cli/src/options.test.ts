@@ -3,7 +3,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Project, SyntaxKind, Node } from "ts-morph";
 import { describe, it, expect } from "vitest";
-import { parseArgs, validateSelection, detectPackageManager, EMBEDDING_CAPABLE } from "./options.js";
+import {
+  parseArgs,
+  validateSelection,
+  detectPackageManager,
+  EMBEDDING_CAPABLE,
+  SPEECH_CAPABLE,
+  resolveSpeechProvider,
+} from "./options.js";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -99,5 +106,47 @@ describe("EMBEDDING_CAPABLE agrees with the app's provider catalog", () => {
 
     expect(embedding.length, "parsed nothing — the catalog's shape changed").toBeGreaterThan(0);
     expect([...embedding].sort()).toEqual([...EMBEDDING_CAPABLE].sort());
+  });
+});
+
+describe("SPEECH_CAPABLE agrees with the app's provider catalog", () => {
+  it("matches the speech-capable entries of the app's provider catalog", () => {
+    const project = new Project({ useInMemoryFileSystem: true });
+    const sf = project.createSourceFile(
+      "catalog.ts",
+      readFileSync(join(REPO, "src/lib/providers/catalog.ts"), "utf8"),
+    );
+    const arr = sf
+      .getVariableDeclarationOrThrow("PROVIDERS")
+      .getInitializerIfKindOrThrow(SyntaxKind.ArrayLiteralExpression);
+
+    const speech: string[] = [];
+    for (const el of arr.getElements()) {
+      if (!Node.isObjectLiteralExpression(el)) continue;
+      const idProp = el.getProperty("id");
+      const speechProp = el.getProperty("speech");
+      if (!Node.isPropertyAssignment(idProp) || !Node.isPropertyAssignment(speechProp)) continue;
+      const id = idProp.getInitializer();
+      if (Node.isStringLiteral(id) && speechProp.getInitializer()?.getText() === "true") {
+        speech.push(id.getLiteralValue());
+      }
+    }
+
+    expect(speech.length, "parsed nothing — the catalog's shape changed").toBeGreaterThan(0);
+    expect([...speech].sort()).toEqual([...SPEECH_CAPABLE].sort());
+  });
+});
+
+describe("resolveSpeechProvider", () => {
+  it("keeps the default provider when it can transcribe", () => {
+    expect(resolveSpeechProvider(["google", "ollama"], "google")).toBe("google");
+  });
+
+  it("falls back to the first selected capable provider", () => {
+    expect(resolveSpeechProvider(["ollama", "openai"], "ollama")).toBe("openai");
+  });
+
+  it("returns null when the selection keeps none", () => {
+    expect(resolveSpeechProvider(["ollama", "anthropic"], "ollama")).toBeNull();
   });
 });

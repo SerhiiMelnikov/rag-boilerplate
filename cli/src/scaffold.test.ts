@@ -45,6 +45,7 @@ beforeEach(async () => {
   await cp(join(process.cwd(), "test-fixtures", "vectorstore-index.ts"), join(templateDir, "src/lib/vectorstore/index.ts"));
   await cp(join(process.cwd(), "test-fixtures", "schema.ts"), join(templateDir, "src/lib/db/schema.ts"));
   await cp(join(REPO_ROOT, "src/lib/providers/catalog.ts"), join(templateDir, "src/lib/providers/catalog.ts"));
+  await cp(join(REPO_ROOT, "src/lib/providers/transcription.ts"), join(templateDir, "src/lib/providers/transcription.ts"));
   await cp(join(REPO_ROOT, "src/lib/config/settings-service.ts"), join(templateDir, "src/lib/config/settings-service.ts"));
   await cp(join(process.cwd(), "test-fixtures", "vectorstore-init.ts"), join(templateDir, "scripts/vectorstore-init.ts"));
   await cp(join(process.cwd(), "test-fixtures", "admin-settings.ts"), join(templateDir, "src/lib/openapi/paths/admin-settings.ts"));
@@ -65,6 +66,24 @@ describe("settingsDefaultsFor", () => {
     const d = settingsDefaultsFor(opts({ providers: ["anthropic", "google"], defaultProvider: "anthropic" }));
     expect(d.chatProvider).toBe("anthropic");
     expect(d.embeddingProvider).toBe("google"); // anthropic can't embed
+  });
+
+  it("writes the default provider's speech model when it can transcribe", () => {
+    const d = settingsDefaultsFor(opts({ providers: ["google"], defaultProvider: "google" }));
+    expect(d.speechProvider).toBe("google");
+    expect(d.speechModel).toBe("gemini-2.5-flash");
+  });
+
+  it("falls back to another selected capable provider", () => {
+    const d = settingsDefaultsFor(opts({ providers: ["ollama", "openai"], defaultProvider: "ollama" }));
+    expect(d.speechProvider).toBe("openai");
+    expect(d.speechModel).toBe("gpt-4o-mini-transcribe");
+  });
+
+  it("leaves both null when nothing selected can transcribe", () => {
+    const d = settingsDefaultsFor(opts({ providers: ["ollama"], defaultProvider: "ollama" }));
+    expect(d.speechProvider).toBeNull();
+    expect(d.speechModel).toBeNull();
   });
 });
 

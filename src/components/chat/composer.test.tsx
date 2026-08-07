@@ -160,4 +160,50 @@ describe("Composer", () => {
       expect(screen.getByRole("button", { name: /speak answers aloud/i })).not.toBeDisabled();
     });
   });
+
+  describe("microphone button", () => {
+    const props = { value: "", onChange: () => {}, onSubmit: () => {}, busy: false };
+
+    it("does not render without a handler", () => {
+      render(<Composer {...props} />);
+      expect(screen.queryByLabelText("Ask by voice")).toBeNull();
+    });
+
+    it("renders in the idle state with a handler", () => {
+      render(<Composer {...props} onMicrophone={vi.fn()} micState="idle" />);
+      expect(screen.getByLabelText("Ask by voice")).toBeTruthy();
+    });
+
+    it("shows a stop control and the elapsed time while recording", () => {
+      render(<Composer {...props} onMicrophone={vi.fn()} micState="recording" micElapsedMs={65_000} />);
+      expect(screen.getByLabelText("Stop recording")).toBeTruthy();
+      expect(screen.getByText("1:05")).toBeTruthy();
+    });
+
+    it("stays pressable while recording so a misfiring auto-stop can be overridden", () => {
+      render(<Composer {...props} onMicrophone={vi.fn()} micState="recording" />);
+      expect(screen.getByLabelText("Stop recording")).not.toHaveProperty("disabled", true);
+    });
+
+    it("is not pressable while transcribing", () => {
+      render(<Composer {...props} onMicrophone={vi.fn()} micState="transcribing" />);
+      expect(screen.getByLabelText("Transcribing")).toHaveProperty("disabled", true);
+    });
+
+    it("is not pressable while a turn is in flight", () => {
+      render(<Composer {...props} onMicrophone={vi.fn()} micState="idle" busy />);
+      expect(screen.getByLabelText("Ask by voice")).toHaveProperty("disabled", true);
+    });
+
+    it("stays pressable while recording even once a turn starts, so a live microphone is never stranded", () => {
+      // The seam between Task 7 and Task 8: use-microphone.ts's toggle() lets a
+      // manual stop through unconditionally, even while `disabled` (a turn in
+      // flight) — otherwise submitting a typed message while recording would
+      // strand the microphone running with no way to end it. Both conditions must
+      // be true at once here, or a `disabled={busy || ...}` bug that only breaks
+      // when both are true would pass unnoticed.
+      render(<Composer {...props} onMicrophone={vi.fn()} micState="recording" busy />);
+      expect(screen.getByLabelText("Stop recording")).not.toHaveProperty("disabled", true);
+    });
+  });
 });

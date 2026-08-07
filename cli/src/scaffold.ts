@@ -2,7 +2,7 @@ import { cp, rm, rename, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { InstallOptions } from "./options.js";
-import { PROVIDER_IDS, VECTOR_STORE_IDS, resolveEmbeddingProvider } from "./options.js";
+import { PROVIDER_IDS, VECTOR_STORE_IDS, resolveEmbeddingProvider, resolveSpeechProvider } from "./options.js";
 import { PROVIDERS, VECTOR_STORES, providerDepsToRemove, API_ONLY_REMOVE_DEPS, FULL_APP_REMOVE_DEPS } from "./modules.js";
 import { prunePackageJson, removeTestTooling, pruneDockerCompose, pruneEnvExampleStores, generateEnv, generateSecret, setDbImage, setAppEnvOverrides, rewriteScriptsForApiOnly, removeServerScripts } from "./transforms/config.js";
 import { applySourceTransforms } from "./transforms/source.js";
@@ -32,17 +32,20 @@ const API_ONLY_DELETE_PATHS = [
   "src/lib/voice",
 ];
 
-// Compute the ten settings defaults from the chosen default provider + manifest.
+// Compute the up-to-twelve settings defaults from the chosen default provider + manifest.
 export function settingsDefaultsFor(o: InstallOptions) {
   const chat = PROVIDERS[o.defaultProvider];
   const embProvider = resolveEmbeddingProvider(o.providers, o.defaultProvider);
   const emb = PROVIDERS[embProvider];
+  const speechProvider = resolveSpeechProvider(o.providers, o.defaultProvider);
   return {
     chatProvider: o.defaultProvider, chatModel: chat.defaultChatModel,
     embeddingProvider: embProvider, embeddingModel: emb.defaultEmbeddingModel!,
     parserProvider: o.defaultProvider, parserModel: chat.defaultVisionModel,
     imageProvider: o.defaultProvider, imageModel: chat.defaultVisionModel,
     unifiedProvider: o.defaultProvider, unifiedModel: chat.defaultChatModel,
+    // null when the selection keeps no speech-capable provider.
+    speechProvider, speechModel: speechProvider ? PROVIDERS[speechProvider].defaultSpeechModel : null,
   };
 }
 

@@ -1,5 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import type { LanguageModel, EmbeddingModel } from "ai";
+import type { LanguageModel, EmbeddingModel, TranscriptionModel } from "ai";
 import { EMBEDDING_DIMENSIONS } from "./embedding";
 
 export function openaiChat(apiKey: string, model: string): LanguageModel {
@@ -8,4 +8,8 @@ export function openaiChat(apiKey: string, model: string): LanguageModel {
 
 export function openaiEmbedding(apiKey: string, model: string): EmbeddingModel<string> {
   return createOpenAI({ apiKey }).textEmbeddingModel(model, { dimensions: EMBEDDING_DIMENSIONS });
+}
+
+export function openaiTranscription(apiKey: string, model: string): TranscriptionModel {
+  return createOpenAI({ apiKey }).transcription(model);
 }

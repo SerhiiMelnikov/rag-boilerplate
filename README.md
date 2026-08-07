@@ -64,6 +64,17 @@ The generated app includes:
   browser (Ubuntu's default Chromium install, notably) can't reach the system's
   speech engine and reports no voices either — install a distribution-packaged
   browser to get the button back.
+- Questions can be asked by voice. The microphone button records, stops itself
+  after about a second and a half of silence (or at a hard 60-second cap, or
+  when you press it again), and sends what it heard as the next message. If it
+  hears no speech at all, or the provider comes back with nothing usable, it
+  says so instead of sending anything. Unlike spoken answers, this one costs
+  money and needs a key: transcription runs on the server through Google or
+  OpenAI — Anthropic and Ollama have no speech API at all — chosen under
+  **Admin → Settings → Models**, with its own rate limit under **Answering**.
+  The button is absent entirely when no capable provider is configured, and on
+  a browser that cannot record. Verified in Chrome; Safari records a container
+  no provider documents support for audio.
 - Workspaces: group documents and images, grant users access, and scope the
   assistant's answers to the active workspace plus the always-available General
   one (a file can belong to several workspaces)
@@ -77,8 +88,9 @@ The generated app includes:
   (retrieval, rate limits, system prompt) and *Access & email* (allowed domains,
   SMTP); user management; and rating analytics
 - **Rate limits** — under **Settings → Answering**, cap chat requests per minute and per day
-  (per user). Set either of them to `0` to disable that limit. **They are on
-  by default — see [Rate limits](#rate-limits) below.**
+  (per user), and voice transcriptions per minute and per day. Set any of them to
+  `0` to disable that limit. **They are on by default — see
+  [Rate limits](#rate-limits) below.**
 - A hand-rolled RAG engine: chunking, parsing (PDF/DOCX/Markdown/text),
   embeddings, hybrid (vector + keyword) retrieval, ingestion
 - Auth.js-based authentication with admin/user roles, enforced by the same
@@ -109,6 +121,13 @@ client could spend your entire budget. Read this before you rely on them.
   enforcing 20/min and 200/day per user the moment you run `db:migrate` — not
   when you first open Settings → Answering. A power user sending 250 messages a day will
   start seeing 429s with no notice. Set either to `0` to disable it.
+- **Voice transcription is capped separately**, on the same page: 10/minute and
+  100/day per user by default. A second budget rather than a share of the chat
+  one — transcription is billed per second of audio, not per token, and a spoken
+  question spends one transcription request *and* one chat request. Hitting the
+  cap answers 429 and sends nothing; what you said is not silently swallowed
+  into the chat. `0` disables. Only Google and OpenAI can transcribe, so an
+  install with neither never reaches this limit at all.
 - **The per-user chat cap bounds one account, not your total spend.**
   Registration is gated (see [Registration](#registration) below), so this is
   no longer "anyone can create unlimited accounts" — but an attacker who does

@@ -17,6 +17,7 @@ import { oauthExchange } from "@/api/auth/oauth/exchange/handler";
 import { oauthStart } from "@/api/auth/oauth/start/handler";
 import { registerUser } from "@/api/register/handler";
 import { handleChat } from "@/api/chat/handler";
+import { handleTranscribe, transcribeAvailability } from "@/api/chat/transcribe/handler";
 import { listConversationsResponse, createConversationResponse } from "@/api/conversations/handler";
 import { getConversationResponse, deleteConversationResponse, patchConversationResponse } from "@/api/conversations/[id]/handler";
 import { rateMessageResponse } from "@/api/messages/[id]/rating/handler";
@@ -115,6 +116,8 @@ export function createServer(): Hono {
 
   // --- Chat -----------------------------------------------------------------
   app.post("/api/chat", (c) => handleChat(c.req.raw));
+  app.post("/api/chat/transcribe", (c) => handleTranscribe(c.req.raw));
+  app.get("/api/chat/transcribe", (c) => transcribeAvailability(c.req.raw));
 
   // --- Conversations --------------------------------------------------------
   app.get("/api/conversations", (c) => listConversationsResponse(c.req.raw));

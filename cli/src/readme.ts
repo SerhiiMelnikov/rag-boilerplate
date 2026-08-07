@@ -264,9 +264,10 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("  API keys they authenticate with (encrypted at rest). Do the keys first: nothing");
   lines.push("  can be ingested or answered without them. A key can also be cleared here, which");
   lines.push("  stops every task using that provider.");
-  lines.push("- **Answering** — tune retrieval, set rate limits (chat requests per minute and per");
-  lines.push("  day per user). `0` disables a limit — see **Rate limits** below. The system");
-  lines.push("  prompt lives here too.");
+  lines.push("- **Answering** — tune retrieval, set rate limits (chat requests per minute and");
+  lines.push("  per day per user, and voice transcriptions per minute and per day).");
+  lines.push("  `0` disables a limit — see **Rate limits** below. The system prompt lives");
+  lines.push("  here too.");
   lines.push("- **Access & email** — the allowed-domains list and SMTP for registration; see");
   lines.push("  **Registration** below.");
   lines.push("");
@@ -287,6 +288,12 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("moment you run `db:migrate` — a user who was sending 250 messages a day will");
   lines.push("start getting 429s with no warning. Set either to `0` under **Settings →");
   lines.push("Answering** to disable it.", "");
+  lines.push("Voice transcriptions are capped separately, and default to 10/minute and 100/day");
+  lines.push("per user under the same **Settings → Answering** page. They are a second budget,");
+  lines.push("not a share of the chat one: a spoken question spends a transcription request");
+  lines.push("*and* a chat request, and transcription is billed per second of audio rather");
+  lines.push("than per token. Set either to `0` to disable it. Hitting the cap answers 429 and");
+  lines.push("sends nothing — what you said is not silently swallowed into the chat.", "");
   lines.push("The per-user chat cap bounds one account, not your total spend. Registration is");
   lines.push("gated (see **Registration** below), so this is no longer \"anyone can create");
   lines.push("unlimited accounts\" — but an attacker who does control a mailbox at an allowed");
@@ -402,6 +409,17 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("browser (Ubuntu's default Chromium install, notably) can't reach the system's");
   lines.push("speech engine and reports no voices either — install a distribution-packaged");
   lines.push("browser to get the button back.");
+  lines.push("");
+  lines.push("Questions can be asked by voice too. The microphone button records, stops");
+  lines.push("itself after about a second and a half of silence (or at a hard 60-second cap,");
+  lines.push("or when you press it again), and sends what it heard as the next message. If");
+  lines.push("it hears no speech at all, or the provider comes back with nothing usable, it");
+  lines.push("says so instead of sending anything. Unlike spoken answers this costs money and");
+  lines.push("needs a key: transcription runs on the server through Google or OpenAI —");
+  lines.push("Anthropic and Ollama have no speech API at all — chosen under **Admin →");
+  lines.push("Settings → Models**, with its own rate limit under **Answering**. The button");
+  lines.push("is absent entirely when no capable provider is configured, and on a browser");
+  lines.push("that cannot record.");
   lines.push("");
 
   return lines.join("\n");
@@ -529,6 +547,49 @@ function generateApiOnlyReadme(o: InstallOptions): string {
     "On by default: 20 chat requests/minute and 200/day per user, enforced the moment `db:migrate` runs. " +
       "Set either to `0` via `PUT /api/admin/settings` to disable it. This bounds one account, not your " +
       "total spend — combine it with the registration gate above.",
+  );
+  lines.push("");
+  lines.push(
+    "Voice transcription has its own pair — `transcribeRateLimitPerMinute` and " +
+      "`transcribeRateLimitPerDay`, defaulting to 10/minute and 100/day per user, set through the same " +
+      "`PUT /api/admin/settings`. It is a second budget rather than a share of the chat one: transcription " +
+      "is billed per second of audio, not per token, and a spoken question spends one of each. `0` disables.",
+  );
+  lines.push("");
+
+  lines.push("## Speech to text", "");
+  lines.push(
+    "There is no browser in this build, but the endpoint the full app's microphone posts to ships here too — " +
+      "point your own frontend at it.",
+  );
+  lines.push("");
+  lines.push("| Endpoint | Purpose |");
+  lines.push("| --- | --- |");
+  lines.push(
+    "| `POST /api/chat/transcribe` | `multipart/form-data` with one `audio` part. Answers `{ \"text\": \"...\" }`. " +
+      "The part's own content type must be one of `audio/webm`, `audio/mp4`, `audio/ogg`, `audio/wav` or " +
+      "`audio/mpeg` (a `;codecs=` parameter is fine and is stripped) — anything else is `415`. Over 10 MB is " +
+      "`413`, over the rate limit is `429`, no speech-capable provider configured is `503`, and a provider " +
+      "that itself failed is `502`. |",
+  );
+  lines.push(
+    // No pipe anywhere in this cell, deliberately. GFM splits table cells on
+    // every unescaped `|`, INCLUDING one inside a code span, and discards the
+    // cells past the header's column count — so `true|false` here silently ate
+    // the whole rest of the row in every generated README. `\|` would work, but
+    // it is invisible to anyone rewording this later; a cell with no pipe in it
+    // cannot regress the same way.
+    "| `GET /api/chat/transcribe` | Answers `{ \"available\": true }` when transcription can be served at " +
+      "all right now (a speech-capable provider selected, with a model and a key), and `false` otherwise. " +
+      "Call it once to decide whether to show a microphone in your own UI, rather than discovering the " +
+      "`503` after the user has already spoken. |",
+  );
+  lines.push("");
+  lines.push(
+    "`text` comes back empty when nothing intelligible was heard — a silent clip, or a model that answered " +
+      "the audio instead of transcribing it. Treat empty as \"nothing was said\" and send nothing; do NOT " +
+      "post it as a message. Only Google and OpenAI can transcribe; Anthropic and Ollama have no speech API " +
+      "at all, so a project scaffolded without either ships this endpoint permanently at `503`.",
   );
   lines.push("");
 

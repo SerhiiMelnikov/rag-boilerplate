@@ -7,6 +7,77 @@ const opts = (over: Partial<InstallOptions> = {}): InstallOptions => ({
   appKind: "full", git: false, install: false, packageManager: "npm", yes: true, ...over,
 });
 
+// --- Markdown table structure ----------------------------------------------
+//
+// A cell is split on every UNESCAPED `|`, which is what a GFM renderer does —
+// there is no exemption for a pipe inside a code span, and `\|` is the only
+// escape. This is not pedantry: a renderer discards the cells past the header's
+// column count, so one stray pipe deletes the whole rest of that row from the
+// rendered page while the source still looks complete.
+function splitRow(line: string): string[] {
+  const parts = line.trim().split(/(?<!\\)\|/);
+  // A well-formed row opens and closes with a pipe, so the outermost fragments
+  // are empty and are not cells.
+  if (parts.length && parts[0].trim() === "") parts.shift();
+  if (parts.length && parts[parts.length - 1].trim() === "") parts.pop();
+  return parts.map((c) => c.trim());
+}
+
+/** Every GFM table in `md`: a `|`-row immediately followed by a `| --- |` rule. */
+function markdownTables(md: string): { header: string[]; rows: string[][]; lineNo: number }[] {
+  const lines = md.split("\n");
+  const tables: { header: string[]; rows: string[][]; lineNo: number }[] = [];
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (!lines[i].trimStart().startsWith("|")) continue;
+    if (!/^\s*\|(\s*:?-{3,}:?\s*\|)+\s*$/.test(lines[i + 1])) continue;
+    const rows: string[][] = [];
+    let j = i + 2;
+    for (; j < lines.length && lines[j].trimStart().startsWith("|"); j++) rows.push(splitRow(lines[j]));
+    tables.push({ header: splitRow(lines[i]), rows, lineNo: i + 1 });
+    i = j - 1;
+  }
+  return tables;
+}
+
+// Nothing in this file asserted table STRUCTURE, which is how an unescaped `|`
+// inside a code span shipped: `{ "available": true|false }` split the cell in
+// two, and GFM dropped everything past the header's column count — the whole
+// "call it once to decide whether to show a microphone" guidance vanished from
+// every generated api-only README while the source still read correctly.
+//
+// Deliberately over EVERY table in BOTH builds, not just the row that was
+// found: this must catch the next stray pipe, wherever it lands.
+describe("generateReadme markdown tables render as written", () => {
+  for (const appKind of ["full", "api"] as const) {
+    it(`has no ${appKind} table row a renderer would silently truncate`, () => {
+      const tables = markdownTables(generateReadme(opts({ appKind })));
+      expect(tables.length, "expected this build to contain tables at all").toBeGreaterThan(0);
+      for (const table of tables) {
+        for (const row of table.rows) {
+          expect(
+            row.length,
+            `table at line ${table.lineNo} (${table.header.join(" | ")}): the row starting ` +
+              `"${row[0]}" splits into ${row.length} cells but the header declares ` +
+              `${table.header.length}. A renderer discards the extras — escape the stray pipe as \\| ` +
+              `or reword the cell to avoid it.`,
+          ).toBe(table.header.length);
+        }
+      }
+    });
+  }
+
+  // The specific content the truncation ate. Cell-count parity alone would pass
+  // against a row that was shortened rather than split.
+  it("keeps the whole GET /api/chat/transcribe guidance in its own cell", () => {
+    const tables = markdownTables(generateReadme(opts({ appKind: "api" })));
+    const row = tables.flatMap((t) => t.rows).find((r) => r[0].includes("GET /api/chat/transcribe"));
+    expect(row, "the api-only README must document GET /api/chat/transcribe").toBeDefined();
+    expect(row).toHaveLength(2);
+    expect(row![1]).toMatch(/whether to show a microphone in your own UI/);
+    expect(row![1]).toMatch(/already spoken/);
+  });
+});
+
 describe("generateReadme", () => {
   it("google + pgvector: mentions the project, Google, pgvector, npm run dev, and omits Qdrant/vectorstore:init", () => {
     const readme = generateReadme(opts({ providers: ["google"], defaultProvider: "google", vectorStore: "pgvector" }));
@@ -95,10 +166,15 @@ describe("generateReadme guidance", () => {
     expect(full).toMatch(/per device/i);                // not per account
     expect(full).toMatch(/flatpak-confined/i);          // snap/flatpak browsers can't reach the system voice
     expect(full).toMatch(/distribution-packaged/i);     // the remedy: install a distro-packaged browser
+    // The microphone paragraph, not just its neighbours — see cli/src/readme.ts's
+    // "Questions can be asked by voice too" line.
+    expect(full).toMatch(/microphone button records, stops/i);
+    expect(full).toMatch(/hears no speech at all, or the provider comes back with nothing usable/i);
 
     const api = generateReadme(opts({ appKind: "api" }));
     expect(api).not.toContain("## Voice");
     expect(api).not.toMatch(/speaker button/i);
+    expect(api).not.toMatch(/microphone button records, stops/i);
   });
 
   it("tells the admin to set provider keys before anything else", () => {
@@ -109,6 +185,16 @@ describe("generateReadme guidance", () => {
     const out = generateReadme(opts());
     expect(out).toContain("rate limits");
     expect(out).toContain("`0` disables a limit");
+  });
+
+  // The transcription limits shipped with the microphone and were never written
+  // down anywhere. A limit an operator does not know about is one they meet as
+  // an unexplained 429.
+  it("names the voice transcription limits alongside the chat ones", () => {
+    const out = generateReadme(opts());
+    expect(out).toMatch(/voice transcriptions per minute and per day/i);
+    expect(out).toMatch(/10\/minute and 100\/day/);
+    expect(out).toMatch(/second budget/i);
   });
 
   // Registration is gated (see the Registration section), but the per-account chat
@@ -365,6 +451,30 @@ describe("generateReadme appKind: api", () => {
     const readme = generateReadme(opts({ appKind: "api" }));
     expect(readme).toContain("npm run dev");
     expect(readme).toContain("npm run start");
+  });
+
+  // src/server/routes.ts serves both transcribe routes and API_ONLY_DELETE_PATHS
+  // does not touch src/api, so this endpoint SHIPS in this build — it was simply
+  // undocumented, which for a headless build means undiscoverable. The empty-text
+  // contract is the load-bearing part: a consumer that posts "" as a message
+  // reintroduces, in their own frontend, the exact defect this feature's server
+  // guards exist to prevent.
+  it("documents the transcribe endpoints that ship in this build", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("POST /api/chat/transcribe");
+    expect(readme).toContain("GET /api/chat/transcribe");
+    expect(readme).toMatch(/multipart\/form-data/);
+    expect(readme).toMatch(/audio\/webm/);
+    expect(readme).toMatch(/`415`/);
+    expect(readme).toMatch(/`503`/);
+    expect(readme).toMatch(/empty.*nothing was heard|nothing was said/i);
+    expect(readme).toMatch(/do NOT[\s\S]{0,40}post it as a message/);
+  });
+
+  it("documents the transcription rate limits, not only the chat ones", () => {
+    const readme = generateReadme(opts({ appKind: "api" }));
+    expect(readme).toContain("transcribeRateLimitPerMinute");
+    expect(readme).toContain("transcribeRateLimitPerDay");
   });
 });
 

@@ -7,6 +7,7 @@ import "./paths/health";
 import "./paths/auth";
 import "./paths/register";
 import "./paths/chat";
+import "./paths/chat-transcribe";
 import "./paths/conversations";
 import "./paths/messages";
 import "./paths/workspaces";

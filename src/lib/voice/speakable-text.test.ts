@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { speakableText } from "./speakable-text";
+import { speakableText, trimUrlTail } from "./speakable-text";
 
 describe("speakableText", () => {
   it("drops emphasis, strikethrough and inline-code markers but keeps the words", () => {
@@ -81,5 +81,48 @@ describe("speakableText", () => {
   it("leaves ordinary prose untouched", () => {
     const plain = "The answer stands on 3 passages. It cites them below.";
     expect(speakableText(plain)).toBe(plain);
+  });
+});
+
+describe("URLs with parentheses", () => {
+  it("swallows a closing paren that belongs to the URL", () => {
+    // Wikipedia's disambiguation style. Without this the paren is orphaned and
+    // read aloud: "See link) for more."
+    expect(speakableText("See https://en.wikipedia.org/wiki/Foo_(bar) for more."))
+      .toBe("See link for more.");
+  });
+
+  it("still leaves a paren that closes the sentence, not the URL", () => {
+    expect(speakableText("(see https://example.com) for more"))
+      .toBe("(see link) for more");
+  });
+
+  it("still leaves sentence punctuation after a URL", () => {
+    expect(speakableText("See https://example.com.")).toBe("See link.");
+    expect(speakableText("See https://example.com, then stop.")).toBe("See link, then stop.");
+  });
+
+  it("handles nested parens inside the URL", () => {
+    expect(speakableText("https://example.com/a_(b_(c)) end")).toBe("link end");
+  });
+});
+
+describe("trimUrlTail", () => {
+  it("keeps a balanced closing paren", () => {
+    expect(trimUrlTail("https://en.wikipedia.org/wiki/Foo_(bar)")).toBe("https://en.wikipedia.org/wiki/Foo_(bar)");
+  });
+
+  it("drops an unmatched closing paren", () => {
+    expect(trimUrlTail("https://example.com)")).toBe("https://example.com");
+  });
+
+  it("drops a trailing full stop, comma, and stacked punctuation", () => {
+    expect(trimUrlTail("https://example.com.")).toBe("https://example.com");
+    expect(trimUrlTail("https://example.com,")).toBe("https://example.com");
+    expect(trimUrlTail("https://example.com?!")).toBe("https://example.com");
+  });
+
+  it("leaves a URL that ends in an ordinary character alone", () => {
+    expect(trimUrlTail("https://example.com/path")).toBe("https://example.com/path");
   });
 });

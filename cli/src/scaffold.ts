@@ -53,13 +53,19 @@ export function settingsDefaultsFor(o: InstallOptions) {
 // `--package-lock-only` rewrites the lockfile to match package.json without touching
 // node_modules: entries for pruned dependencies go, and the resolved versions of
 // everything retained stay exactly as this repository tests them. `--ignore-scripts`
-// because nothing should execute during a scaffold.
+// because nothing should execute during a scaffold. `timeout` bounds the other
+// failure mode a refused connection does not cover: a blackholed network (a
+// captive portal, a firewalled CI runner) leaves npm to burn its own multi-minute
+// fetch timeout and retries instead of failing fast. "Scaffolding must never fail
+// because of this step" cuts both ways — an indefinite hang is worse than a clean
+// failure. `execFile` kills the child and delivers it to the callback as `err` on
+// timeout, so the caller's existing catch-and-delete still applies.
 async function reconcileLockfile(dir: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     execFile(
       "npm",
       ["install", "--package-lock-only", "--ignore-scripts"],
-      { cwd: dir },
+      { cwd: dir, timeout: 60_000 },
       (err) => (err ? reject(err) : resolve()),
     );
   });

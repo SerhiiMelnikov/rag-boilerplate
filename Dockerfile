@@ -3,9 +3,14 @@
 # Node 22 LTS, not latest: the Qdrant client breaks on Node >= 26.
 FROM node:22-alpine AS deps
 WORKDIR /app
-# Every lockfile is globbed so it is optional: the CLI ships no lockfile (it is
-# excluded from the template) and supports npm/pnpm/yarn/bun, so a generated
-# project may carry any one of these — or none, when scaffolded with --no-install.
+# Every lockfile is globbed so it is optional. The CLI does ship a
+# package-lock.json, reconciled against the pruned package.json at scaffold time
+# (see cli/src/scaffold.ts's reconcileLockfile) — but that reconcile deletes it
+# on failure (no network, npm missing, a non-zero exit) rather than leave a
+# mismatched one behind, and the CLI also supports pnpm/yarn/bun, each of which
+# resolves its own lockfile instead of npm's. So a generated project may carry
+# any one of these — or none, when scaffolded with --no-install or when the
+# reconcile could not run.
 COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* bun.lockb* bun.lock* .npmrc* ./
 RUN \
   if [ -f package-lock.json ]; then npm ci; \

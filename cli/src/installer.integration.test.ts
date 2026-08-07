@@ -43,6 +43,24 @@ async function typeCheck(target: string): Promise<void> {
   }
 }
 
+// Confirms the scaffolded project's package-lock.json actually AGREES with its
+// pruned package.json, not merely that it exists. The build-template guard test
+// proves the lockfile reaches the template, and scaffold.test.ts's unit tests
+// prove delete-on-failure/keep-on-success against a mocked reconcile — but
+// nothing else exercises the real `npm install --package-lock-only` reconcile
+// against a real, pruned package.json. `npm ci --dry-run` is exactly the check
+// the generated Dockerfile's `npm ci` performs, so a clean run here is the
+// strongest evidence the reconcile step actually works, not just that it ran. A
+// lockfile that disagrees fails this hard, which is the whole point: this is
+// the regression class (work silently dropped/broken in every generated
+// project) this repo has been bitten by four times already.
+function assertLockfileAgreesWithPackageJson(target: string): void {
+  if (!existsSync(join(target, "package-lock.json"))) {
+    throw new Error("expected the scaffolded project to carry a reconciled package-lock.json");
+  }
+  execFileSync("npm", ["ci", "--dry-run"], { cwd: target, stdio: "inherit" });
+}
+
 // Recursively collect every file under `dir` (used below to confirm no
 // surviving api-only source file imports the pruned src/auth.ts).
 async function collectFiles(dir: string): Promise<string[]> {
@@ -79,6 +97,10 @@ describe.runIf(RUN)("installer (integration)", () => {
       const full: InstallOptions = { projectName: "app", providers: ["google"], defaultProvider: "google", vectorStore: "pgvector", appKind: "full", git: false, install: false, packageManager: "npm", yes: true, ...c.o } as InstallOptions;
       await scaffold(full, { templateDir, targetDir: target });
 
+      // The reconciled lockfile must actually agree with this combo's pruned
+      // package.json — see assertLockfileAgreesWithPackageJson's comment above.
+      assertLockfileAgreesWithPackageJson(target);
+
       // Pruned modules absent; selected present.
       const pkg = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
       if (full.vectorStore !== "chroma") expect(pkg.dependencies["chromadb"]).toBeUndefined();
@@ -111,6 +133,12 @@ describe.runIf(RUN)("installer (integration): appKind", () => {
     const target = join(parent, "app");
     const o: InstallOptions = { projectName: "app", providers: ["google"], defaultProvider: "google", vectorStore: "pgvector", appKind: "api", git: false, install: false, packageManager: "npm", yes: true };
     await scaffold(o, { templateDir, targetDir: target });
+
+    // scaffold.ts reconciles the lockfile after the appKind branch prunes
+    // package.json a second time (Next.js/React deps stripped for api-only), so
+    // this confirms the lockfile agrees with THAT further-pruned manifest, not
+    // just the provider/vector-store pruning every combo above already covers.
+    assertLockfileAgreesWithPackageJson(target);
 
     for (const rel of [
       "src/app", "middleware.ts", "next.config.ts", "next-env.d.ts", "tailwind.config.ts", "postcss.config.mjs",

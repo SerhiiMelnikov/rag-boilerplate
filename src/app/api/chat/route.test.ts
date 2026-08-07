@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { handleChat, type ChatDeps } from "@/api/chat/handler";
+import { buildAnswerSystemPrompt } from "@/lib/chat/answer-prompt";
 import { MissingProviderKeyError } from "@/lib/providers/types";
 import type { addMessage } from "@/lib/chat/conversations";
 import type { prepareContext } from "@/lib/rag/answer";
@@ -157,13 +158,25 @@ describe("handleChat", () => {
     expect(retrievalQuery).toContain("his brother");
   });
 
-  it("no-context: does not call the model, persists fallback assistant message, returns 200", async () => {
+  // Inverted deliberately in 0.6.4. The canned no-context reply never reached the
+  // model, so a question about the conversation itself hit a wall no prompt change
+  // could open. The model is now always called, and told plainly that nothing matched.
+  it("no-context: still calls the model, with a prompt saying no passages matched", async () => {
     const deps = baseDeps({ prepareContextFn: vi.fn(async () => ({ hasContext: false, context: "", sources: [] })) });
     const res = await chat(body(msg("unknown topic")), deps);
     expect(res.status).toBe(200);
-    expect(deps.streamTextFn).not.toHaveBeenCalled();
-    // User message persisted first, fallback assistant second with usage: null
-    expect(deps.addMessageFn).toHaveBeenNthCalledWith(2, expect.objectContaining({ role: "assistant", usage: null }));
+    expect(deps.streamTextFn).toHaveBeenCalled();
+    const { system } = deps.streamTextFn.mock.calls[0][0] as { system: string };
+    expect(system).toBe(buildAnswerSystemPrompt({ systemPrompt: "sp", context: "", hasContext: false }));
+  });
+
+  // Asserts the composition, not just that some string was passed: re-inlining the
+  // old template literal here would silently un-share the rule with the eval harness.
+  it("builds the system prompt through the shared builder", async () => {
+    const deps = baseDeps();
+    await chat(body(msg("why is the sky blue?")), deps);
+    const { system } = deps.streamTextFn.mock.calls[0][0] as { system: string };
+    expect(system).toBe(buildAnswerSystemPrompt({ systemPrompt: "sp", context: "ctx", hasContext: true }));
   });
 
   it("provider key missing: streams the error as the assistant message, no model call, 200", async () => {

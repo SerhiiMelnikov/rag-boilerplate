@@ -1,6 +1,7 @@
 import { streamText, createDataStreamResponse, formatDataStreamPart } from "ai";
 import { requireUser, errorToResponse } from "@/lib/auth/guards";
 import { getAuthUserById } from "@/lib/auth/users";
+import { buildAnswerSystemPrompt } from "@/lib/chat/answer-prompt";
 import { isConversationOwned, addMessage, setConversationTitleIfDefault } from "@/lib/chat/conversations";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
 import { consume } from "@/lib/ratelimit/store";
@@ -15,8 +16,6 @@ import { createWorkspaceRepo, type WorkspaceRepo } from "@/lib/workspaces/repo";
 import { resolveActiveWorkspaceId, resolveAllowedDocumentIds, resolveAllowedImageIds } from "@/lib/workspaces/access";
 import { parseActiveWorkspaceCookie } from "@/lib/workspaces/cookie";
 
-const NO_CONTEXT_ANSWER =
-  "I don't have any relevant information in the knowledge base to answer that.";
 const IMAGE_TOP_N = 3;
 // Candidates handed to the relevance verifier before trimming to IMAGE_TOP_N.
 const IMAGE_CANDIDATES = 8;
@@ -209,11 +208,6 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
     throw err;
   }
 
-  // No-context: stream fallback text without calling the model (budget efficiency).
-  if (!prepared.hasContext) {
-    return replyWithMessage(NO_CONTEXT_ANSWER);
-  }
-
   let chatModel;
   try {
     chatModel = getChatModelFn(settings);
@@ -224,9 +218,14 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
 
   const result = streamTextFn({
     model: chatModel,
-    // Retrieved context goes in the system prompt; the actual turn-by-turn
-    // conversation is passed as messages so the model keeps context across turns.
-    system: `${settings.systemPrompt}\n\nUse the following context to answer the user's latest question. If the answer is not in the context, say you don't know.\n\nContext:\n${prepared.context}`,
+    // The grounding rule and the context block are composed in one shared place so
+    // the eval harness scores answers against exactly the prompt production uses.
+    // Turn-by-turn conversation stays in `messages`, not in the system prompt.
+    system: buildAnswerSystemPrompt({
+      systemPrompt: settings.systemPrompt,
+      context: prepared.context,
+      hasContext: prepared.hasContext,
+    }),
     messages: history,
     temperature: settings.temperature,
     onFinish: async ({ text, usage }: { text: string; usage?: { promptTokens?: number; completionTokens?: number } }) => {

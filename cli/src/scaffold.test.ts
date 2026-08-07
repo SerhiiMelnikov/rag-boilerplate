@@ -137,9 +137,12 @@ describe("scaffold", () => {
     expect(dc).toContain("profiles:");
   });
 
-  // A lockfile that disagrees with the pruned package.json is WORSE than none: the
-  // generated Dockerfile runs `npm ci`, which fails hard on a mismatch, while an
-  // absent lockfile is globbed as optional. So a failed reconcile must delete it.
+  // A lockfile left behind by a FAILED reconcile is worse than none: it may be
+  // half-written, or genuinely violate the pruned package.json's ranges, and either
+  // breaks the `npm ci` the generated Dockerfile runs — while an absent lockfile is
+  // globbed as optional. So a failed reconcile must delete it. (A merely
+  // unreconciled superset is the different, tolerated case: `npm ci` accepts it.
+  // See scaffold.ts step 8c.)
   it("removes the lockfile when the reconcile fails, rather than leaving a mismatched one", async () => {
     // The real, built lockfile (see cli/scripts/build-template.ts), not a hand-rolled
     // stand-in: run `npm run build:template` first, or this cp throws ENOENT and this

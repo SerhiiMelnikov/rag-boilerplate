@@ -39,9 +39,14 @@ const num = (v: unknown): number => (typeof v === "number" ? v : Number(v ?? 0))
 // query below uses, including the ones with no join, precisely so these compose.
 //
 // `usage is not null` excludes every reply that short-circuits before a model
-// call — `replyWithMessage` in src/api/chat/handler.ts serves the image path,
-// the no-context fallback, and every provider-error fallback this way — those
-// rows have no tokens to attribute, so excluding them is correct rather than a gap.
+// call — `replyWithMessage` in src/api/chat/handler.ts serves the image path and
+// every provider-error fallback this way — those rows have no tokens to
+// attribute, so excluding them is correct rather than a gap.
+//
+// Since 0.6.4 a question the retrieved context does not cover is NO LONGER one of
+// those: the no-context fallback was removed, so such a turn reaches the model
+// like any other, records real usage, and is counted here. That is intended — it
+// costs tokens, so it belongs in the token totals and in the `answers` count.
 const SCOPE = sql`m.role = 'assistant' and m.usage is not null and m.created_at >= now() - make_interval(days => ${USAGE_WINDOW_DAYS})`;
 // Cast through numeric, not int: a provider that ever reports a fractional token
 // count would make `::int` throw, and because these fragments are shared, that one

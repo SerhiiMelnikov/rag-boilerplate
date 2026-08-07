@@ -169,11 +169,21 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
   }
 
   // 8c. The template ships this repo's own lockfile, so npm users inherit the exact
-  // dependency tree these tests run against — transitives included. It must be
-  // reconciled against the pruned package.json first: `npm ci` (which the generated
-  // Dockerfile runs) fails hard on a mismatch. If that cannot be done, DELETE the
-  // lockfile. A missing one is globbed as optional and breaks nothing; a mismatched
-  // one breaks every Docker build. Scaffolding never fails because of this step.
+  // dependency tree these tests run against — transitives included. It is reconciled
+  // against the pruned package.json so the lockfile describes the project that was
+  // actually generated.
+  //
+  // Not because skipping it would break the build: pruning only REMOVES
+  // dependencies, so an unreconciled lockfile is a SUPERSET of the pruned
+  // package.json, and `npm ci` tolerates that. Measured (see the branch report): a
+  // no-op reconcile left a disagreeing lockfile and `npm ci --dry-run` passed. npm
+  // ci fails on genuine version-range violations, not on orphaned entries.
+  //
+  // The delete-on-failure rule below stands regardless, for a different reason: a
+  // reconcile that threw may have left a half-written or genuinely range-violating
+  // lockfile, and THAT does break the `npm ci` the generated Dockerfile runs, while
+  // an absent lockfile is globbed as optional and breaks nothing. Scaffolding never
+  // fails because of this step.
   const lockPath = join(opts.targetDir, "package-lock.json");
   if (existsSync(lockPath)) {
     try {

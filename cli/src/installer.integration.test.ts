@@ -43,17 +43,23 @@ async function typeCheck(target: string): Promise<void> {
   }
 }
 
-// Confirms the scaffolded project's package-lock.json actually AGREES with its
-// pruned package.json, not merely that it exists. The build-template guard test
-// proves the lockfile reaches the template, and scaffold.test.ts's unit tests
-// prove delete-on-failure/keep-on-success against a mocked reconcile — but
+// Confirms the scaffolded project's package-lock.json is actually INSTALLABLE
+// against its pruned package.json, not merely that it exists. The build-template
+// guard test proves the lockfile reaches the template, and scaffold.test.ts's unit
+// tests prove delete-on-failure/keep-on-success against a mocked reconcile — but
 // nothing else exercises the real `npm install --package-lock-only` reconcile
-// against a real, pruned package.json. `npm ci --dry-run` is exactly the check
-// the generated Dockerfile's `npm ci` performs, so a clean run here is the
-// strongest evidence the reconcile step actually works, not just that it ran. A
-// lockfile that disagrees fails this hard, which is the whole point: this is
-// the regression class (work silently dropped/broken in every generated
-// project) this repo has been bitten by four times already.
+// against a real, pruned package.json. `npm ci --dry-run` is exactly the check the
+// generated Dockerfile's `npm ci` performs, so a clean run here is evidence the
+// reconcile produced something npm will install, not just that it ran.
+//
+// What it does NOT catch, stated plainly so nobody trusts it further than it goes:
+// a reconcile that silently did nothing. Measured on this branch, a no-op reconcile
+// left a superset lockfile and this same `npm ci --dry-run` passed — npm ci
+// tolerates orphaned entries and fails only on genuine version-range violations,
+// and pruning a package.json only ever removes dependencies. This assertion catches
+// a BROKEN lockfile; the "silently dropped from every generated project" class (the
+// one this repo's roadmap records being bitten by six times) needs the scaffold and
+// build-template guards, not this one.
 function assertLockfileAgreesWithPackageJson(target: string): void {
   if (!existsSync(join(target, "package-lock.json"))) {
     throw new Error("expected the scaffolded project to carry a reconciled package-lock.json");

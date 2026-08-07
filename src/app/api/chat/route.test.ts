@@ -159,6 +159,54 @@ describe("handleChat", () => {
     expect(retrievalQuery).toContain("his brother");
   });
 
+  // The shape of the user-reported defect (2026-08-07): an image turn, then a question
+  // about that turn. Before 0.6.4 the second turn reached a model that had been told to
+  // answer only from retrieved passages and had been handed no trace of the first turn,
+  // so it answered "I don't know" — correctly, given what it was given.
+  it("a follow-up about a previous turn reaches the model with that turn's content", async () => {
+    const deps = baseDeps();
+    const convo = {
+      messages: [
+        { role: "user", content: "Show me a young, muscular man." },
+        { role: "assistant", content: "Here are the images that best match your description:\n\n- A young man flexing his biceps." },
+        { role: "user", content: "Why did you choose that picture?" },
+      ],
+      conversationId: "c1",
+    };
+    await chat(body(convo), deps);
+    expect(deps.streamTextFn).toHaveBeenCalled();
+    const { messages, system } = deps.streamTextFn.mock.calls[0][0] as {
+      messages: Array<{ role: string; content: string }>;
+      system: string;
+    };
+    // The prior assistant turn — captions included — is what makes the question answerable.
+    expect(messages.some((m) => m.role === "assistant" && m.content.includes("flexing his biceps"))).toBe(true);
+    // And the rule it is answering under must permit discussing the conversation.
+    expect(system).toContain("this conversation itself");
+  });
+
+  // Same shape, but the follow-up retrieves nothing. This is the combination that had
+  // TWO walls in front of it: the canned no-context reply, and the absolute rule.
+  it("a follow-up that retrieves nothing still reaches the model with the history", async () => {
+    const deps = baseDeps({ prepareContextFn: vi.fn(async () => ({ hasContext: false, context: "", sources: [] })) });
+    const convo = {
+      messages: [
+        { role: "user", content: "What does the handbook say about leave?" },
+        { role: "assistant", content: "It allows 20 days a year." },
+        { role: "user", content: "Can you say that more briefly?" },
+      ],
+      conversationId: "c1",
+    };
+    await chat(body(convo), deps);
+    expect(deps.streamTextFn).toHaveBeenCalled();
+    const { messages, system } = deps.streamTextFn.mock.calls[0][0] as {
+      messages: Array<{ role: string; content: string }>;
+      system: string;
+    };
+    expect(messages.some((m) => m.role === "assistant" && m.content.includes("20 days"))).toBe(true);
+    expect(system).toContain("No passages from the knowledge base matched");
+  });
+
   // Inverted deliberately in 0.6.4. The canned no-context reply never reached the
   // model, so a question about the conversation itself hit a wall no prompt change
   // could open. The model is now always called, and told plainly that nothing matched.

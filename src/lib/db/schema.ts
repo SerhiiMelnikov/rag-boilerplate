@@ -120,7 +120,13 @@ export const settings = pgTable("settings", {
   topK: integer("top_k").notNull().default(5), // retrieval chunk count
   minSimilarity: real("min_similarity").notNull().default(0.3),
   contextTokenBudget: integer("context_token_budget").notNull().default(3000),
-  systemPrompt: text("system_prompt").notNull().default("You are a helpful assistant. Answer using only the provided context."),
+  // Deliberately says nothing about grounding. src/lib/chat/answer-prompt.ts
+  // prepends this verbatim to GROUNDING_RULE, and the old default ("...Answer
+  // using only the provided context.") contradicted the very next line it was
+  // glued to — every fresh install shipped a self-contradicting prompt.
+  // Migration 0022 rewrites existing rows that still hold the old default,
+  // and only those.
+  systemPrompt: text("system_prompt").notNull().default("You are a helpful assistant."),
   // Rate limits. 0 disables the rule. Defaults are deliberately generous enough
   // for a real person and far too tight for a script.
   chatRateLimitPerMinute: integer("chat_rate_limit_per_minute").notNull().default(20),

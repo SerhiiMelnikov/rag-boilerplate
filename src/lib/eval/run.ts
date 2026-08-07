@@ -2,6 +2,7 @@ import { generateText } from "ai";
 import type { RuntimeSettings } from "@/lib/config/settings-service";
 import { prepareContext } from "@/lib/rag/answer";
 import { getChatModel } from "@/lib/providers";
+import { buildAnswerSystemPrompt } from "@/lib/chat/answer-prompt";
 import { computeRetrievalMetrics, aggregateResults, type AggregateInput } from "./metrics";
 import { judgeAnswer } from "./judge";
 import { evalRepo, type EvalRepo } from "./repo";
@@ -9,7 +10,8 @@ import type { RetrievedDoc } from "./types";
 
 export interface EvalRunDeps {
   prepareContextFn?: typeof prepareContext;
-  generateAnswer?: (context: string, question: string, settings: RuntimeSettings) => Promise<string>;
+  /** Takes an already-composed system prompt — see buildAnswerSystemPrompt. */
+  generateAnswer?: (system: string, question: string, settings: RuntimeSettings) => Promise<string>;
   judge?: typeof judgeAnswer;
   repo?: EvalRepo;
 }
@@ -36,10 +38,10 @@ export async function runEvaluation(runId: string, settings: RuntimeSettings, de
   const judge = deps.judge ?? judgeAnswer;
   const generateAnswer =
     deps.generateAnswer ??
-    (async (context: string, question: string, s: RuntimeSettings) => {
+    (async (system: string, question: string, s: RuntimeSettings) => {
       const { text } = await generateText({
         model: getChatModel(s, "Answer evaluation"),
-        system: `${s.systemPrompt}\n\nUse the following context to answer the user's question. If the answer is not in the context, say you don't know.\n\nContext:\n${context}`,
+        system,
         messages: [{ role: "user", content: question }],
         temperature: s.temperature,
       });
@@ -54,7 +56,21 @@ export async function runEvaluation(runId: string, settings: RuntimeSettings, de
       try {
         const prepared = await prepareContextFn(q.question, settings, {});
         const m = computeRetrievalMetrics(uniqueDocIds(prepared.sources), q.expectedDocumentIds);
-        const answer = prepared.hasContext ? await generateAnswer(prepared.context, q.question, settings) : "";
+        // hasContext is literally true here: this branch only runs when it is. Eval
+        // deliberately keeps its no-context guard even though the chat handler dropped
+        // its own — a golden question whose documents were never retrieved must score
+        // as an empty answer, not receive a conversational one.
+        const answer = prepared.hasContext
+          ? await generateAnswer(
+              buildAnswerSystemPrompt({
+                systemPrompt: settings.systemPrompt,
+                context: prepared.context,
+                hasContext: true,
+              }),
+              q.question,
+              settings,
+            )
+          : "";
         const judged = await judge({ question: q.question, context: prepared.context, answer, reference: q.referenceAnswer }, settings);
         await repo.addResult({
           runId, questionId: q.id, questionText: q.question, retrieved: dedupRetrieved(prepared.sources),

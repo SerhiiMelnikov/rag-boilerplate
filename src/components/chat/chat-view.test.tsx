@@ -357,6 +357,88 @@ describe("ChatView", () => {
     );
   });
 
+  // A failed turn leaves ai-sdk's local messages one assistant entry ahead of the
+  // database (status parks at "error", so the ready-only refetch never ran). The next
+  // successful turn's refetch then SHRINKS the list, moving turnKey backwards, and
+  // useSpokenAnswer reads that as a new turn and re-reads the whole answer aloud.
+  it("refetches history when a turn fails, so the client does not run ahead of the database", async () => {
+    const fetchSpy = stubFetch(async () => new Response(JSON.stringify({ messages: [] }), { status: 200 }));
+    const historyCalls = () =>
+      fetchSpy.mock.calls.filter((c) => String(c[0]).includes("/api/conversations/c1")).length;
+
+    const { rerender } = render(<ChatView initialConversationId="c1" />);
+    // The mount-time load has to land first, or the assertion below races it.
+    await waitFor(() => expect(historyCalls()).toBe(1));
+
+    // A real turn: streaming, then a failure. The transition is what matters —
+    // mounting straight into "error" leaves prevStatus already at "error" and the
+    // guard correctly does nothing (which is why the retry test below is unaffected).
+    chatState.status = "streaming";
+    rerender(<ChatView initialConversationId="c1" />);
+    chatState.status = "error";
+    rerender(<ChatView initialConversationId="c1" />);
+
+    await waitFor(() => expect(historyCalls()).toBe(2));
+  });
+
+  it("keeps the newer history load's result when an older, error-triggered load resolves after it", async () => {
+    // The race the sequence guard above closes: the error branch and the ready
+    // branch both call loadHistory independently, so two GETs for the same
+    // conversation can be in flight together. Here the OLDER call (fired by the
+    // failure) is made to resolve AFTER the NEWER call (fired by the retry's
+    // success) — the exact out-of-order arrival that would let the stale,
+    // post-failure snapshot clobber the fresh, post-success one. Resolution
+    // order is driven by hand via `resolvers`, not left to real timing.
+    const resolvers: Array<(body: unknown) => void> = [];
+    let historyCallCount = 0;
+    stubFetch(async (url) => {
+      if (url === "/api/conversations/c1") {
+        const mine = historyCallCount++;
+        return new Promise<Response>((resolve) => {
+          resolvers[mine] = (body) => resolve(new Response(JSON.stringify(body), { status: 200 }));
+        });
+      }
+      return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+    });
+
+    const { rerender } = render(<ChatView initialConversationId="c1" />);
+    // Settle the mount-time load (call 0) before the two racing calls below.
+    resolvers[0]({ messages: [] });
+    await waitFor(() => expect(setMessagesMock).toHaveBeenCalledWith([]));
+
+    // Call 1: the error-triggered load. Fired, then left pending.
+    chatState.status = "streaming";
+    rerender(<ChatView initialConversationId="c1" />);
+    chatState.status = "error";
+    rerender(<ChatView initialConversationId="c1" />);
+    await waitFor(() => expect(historyCallCount).toBe(2));
+
+    // Call 2: the ready-triggered load from a fast, successful retry. Also left
+    // pending — both calls are now in flight at once.
+    chatState.status = "ready";
+    rerender(<ChatView initialConversationId="c1" />);
+    await waitFor(() => expect(historyCallCount).toBe(3));
+
+    const stale: MockMessage[] = [{ id: "stale-1", role: "assistant", content: "STALE post-failure snapshot" }];
+    const fresh: MockMessage[] = [{ id: "fresh-1", role: "assistant", content: "FRESH post-success snapshot" }];
+
+    // The NEWER call (2) resolves FIRST...
+    resolvers[2]({ messages: fresh });
+    await waitFor(() => expect(setMessagesMock).toHaveBeenCalledWith(fresh));
+
+    // ...and the OLDER call (1) resolves LAST. Without the guard this would call
+    // setMessages again with the stale snapshot, overwriting the fresh one just
+    // applied above. Flushed inside act() since, with the guard in place,
+    // nothing further updates — there is no later condition to waitFor.
+    await act(async () => {
+      resolvers[1]({ messages: stale });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(chatState.messages).toEqual(fresh);
+    expect(screen.queryByText("STALE post-failure snapshot")).toBeNull();
+  });
+
   it("says so when the conversation could not be created", async () => {
     // Before: `if (!res.ok) return;` — the user pressed Send on their first message
     // and absolutely nothing happened, on screen or in the transcript's error slot.
@@ -558,6 +640,100 @@ describe("ChatView", () => {
     // (stubSpeechSynthesis's fake constructor sets .text and .lang on it), not the
     // (text, lang) pair SpeechEngine.speak takes in use-spoken-answer.test.tsx.
     expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: "Paris is the capital of France." }));
+  });
+
+  it("does not read the previous answer aloud when a turn fails", async () => {
+    // The failure branch's history refetch replaces `messages` with the database
+    // snapshot, which does NOT contain the failed turn's partial assistant entry.
+    // Two things therefore move in the same commit: the assistant-turn count falls,
+    // so turnKey goes BACKWARDS and useSpokenAnswer resets its spoken counter to 0;
+    // and `answer` reverts to the PREVIOUS turn's text, with status parked at
+    // "error" so completedSentences flushes it whole. Left alone, a failed turn
+    // reads the previous answer aloud from the top — the very defect the refetch
+    // was added to prevent, moved from the next successful turn onto the failure.
+    //
+    // Falsification: drop `status !== "error"` from useSpokenAnswer's `enabled`
+    // argument in chat-view.tsx and this test fails on the PREVIOUS-answer
+    // assertion below.
+    window.localStorage.setItem("speak_answers", "1");
+    const speak = vi.fn();
+    stubSpeechSynthesis({ speak });
+    chatState.input = "why did you show that one?";
+
+    // Two sentences, not one: the retry step at the end of this test needs an
+    // answer with a COMPLETED sentence in front of the trailing one. A single
+    // sentence sits at the very end of the arrived text, which completedSentences
+    // withholds while status is "submitted"/"streaming" — so a one-sentence
+    // previous answer would stay silent at the retry for a reason that has nothing
+    // to do with the fix, and the second-order assertion would pass either way.
+    const PREV_1 = "Paris is the capital of France.";
+    const PREVIOUS = `${PREV_1} The Eiffel Tower stands there.`;
+    const persisted: MockMessage[] = [
+      { id: "db-user-1", role: "user", content: "where is the Eiffel Tower?" },
+      { id: "db-1", role: "assistant", content: PREVIOUS },
+    ];
+    // Every load hands back the SAME snapshot: the failed turn never reached the
+    // database, which is exactly why the local list has to shrink back to this one.
+    let historyCalls = 0;
+    stubFetch(async (url) => {
+      if (url === "/api/conversations/c1") {
+        historyCalls += 1;
+        return new Response(JSON.stringify({ messages: persisted }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+    });
+
+    const { rerender } = render(<ChatView initialConversationId="c1" />);
+    // The toggle rendered "on" (localStorage was read) and the mount load landed,
+    // so the previous answer is on screen before the live turn starts.
+    await screen.findByRole("button", { name: /stop speaking answers/i });
+    await waitFor(() => expect(historyCalls).toBe(1));
+
+    // A real turn: sent (which is what arms hasLiveTurn), then streaming under
+    // ai-sdk's own ids, then failing. The partial answer deliberately ends without
+    // terminal punctuation, so nothing is legitimately speakable at any point here.
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    chatState.status = "streaming";
+    chatState.messages = [
+      ...persisted,
+      { id: "live-user-2", role: "user", content: "why did you show that one?" },
+      { id: "live-2", role: "assistant", content: "Because the caption" },
+    ];
+    rerender(<ChatView initialConversationId="c1" />);
+    speak.mockClear();
+
+    chatState.status = "error";
+    chatState.error = new Error(JSON.stringify({ error: "The provider is unavailable." }));
+    rerender(<ChatView initialConversationId="c1" />);
+
+    // The resync lands and the list shrinks back to the database's two messages.
+    await waitFor(() => expect(historyCalls).toBe(2));
+    await waitFor(() => expect(chatState.messages).toEqual(persisted));
+    // Let every effect the shrink schedules run before asserting a negative.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(speak).not.toHaveBeenCalledWith(expect.objectContaining({ text: PREV_1 }));
+    // Nor is the failed turn's own partial answer flushed: status reaching "error"
+    // makes completedSentences flush, and a turn that failed has nothing to read.
+    expect(speak).not.toHaveBeenCalled();
+
+    // Second order. The user retries: status leaves "error" while the PREVIOUS
+    // answer is still the last assistant message on screen (ai-sdk has not
+    // appended the new one yet). Speech becomes possible again here, and it must
+    // ADOPT that answer rather than start reading it. This is what rules out the
+    // narrower fix of skipping the speak loop while status is "error": that leaves
+    // the spoken count at 0 and wasEnabled true, so this very commit speaks every
+    // completed sentence of the previous answer.
+    chatState.status = "submitted";
+    chatState.error = undefined;
+    rerender(<ChatView initialConversationId="c1" />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(speak).not.toHaveBeenCalled();
   });
 
   it("sends a voice transcript through append, not handleSubmit", async () => {

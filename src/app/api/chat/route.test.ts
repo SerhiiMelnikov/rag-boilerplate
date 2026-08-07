@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { handleChat, type ChatDeps } from "@/api/chat/handler";
+import { buildAnswerSystemPrompt } from "@/lib/chat/answer-prompt";
 import { MissingProviderKeyError } from "@/lib/providers/types";
 import type { addMessage } from "@/lib/chat/conversations";
 import type { prepareContext } from "@/lib/rag/answer";
@@ -7,6 +8,7 @@ import type { searchImages, ImageSearchHit } from "@/lib/images/search";
 import type { getAuthUserById } from "@/lib/auth/users";
 import type { getRuntimeSettings } from "@/lib/config/settings-service";
 import type { getChatModel } from "@/lib/providers";
+import { imageAnswerText } from "@/lib/chat/image-answer";
 
 const settings = {
   chatProvider: "google", chatModel: "gemma-4-31b-it",
@@ -157,13 +159,73 @@ describe("handleChat", () => {
     expect(retrievalQuery).toContain("his brother");
   });
 
-  it("no-context: does not call the model, persists fallback assistant message, returns 200", async () => {
+  // The shape of the user-reported defect (2026-08-07): an image turn, then a question
+  // about that turn. Before 0.6.4 the second turn reached a model that had been told to
+  // answer only from retrieved passages and had been handed no trace of the first turn,
+  // so it answered "I don't know" — correctly, given what it was given.
+  it("a follow-up about a previous turn reaches the model with that turn's content", async () => {
+    const deps = baseDeps();
+    const convo = {
+      messages: [
+        { role: "user", content: "Show me a young, muscular man." },
+        { role: "assistant", content: "Here are the images that best match your description:\n\n- A young man flexing his biceps." },
+        { role: "user", content: "Why did you choose that picture?" },
+      ],
+      conversationId: "c1",
+    };
+    await chat(body(convo), deps);
+    expect(deps.streamTextFn).toHaveBeenCalled();
+    const { messages, system } = deps.streamTextFn.mock.calls[0][0] as {
+      messages: Array<{ role: string; content: string }>;
+      system: string;
+    };
+    // The prior assistant turn — captions included — is what makes the question answerable.
+    expect(messages.some((m) => m.role === "assistant" && m.content.includes("flexing his biceps"))).toBe(true);
+    // And the rule it is answering under must permit discussing the conversation.
+    expect(system).toContain("this conversation itself");
+  });
+
+  // Same shape, but the follow-up retrieves nothing. This is the combination that had
+  // TWO walls in front of it: the canned no-context reply, and the absolute rule.
+  it("a follow-up that retrieves nothing still reaches the model with the history", async () => {
+    const deps = baseDeps({ prepareContextFn: vi.fn(async () => ({ hasContext: false, context: "", sources: [] })) });
+    const convo = {
+      messages: [
+        { role: "user", content: "What does the handbook say about leave?" },
+        { role: "assistant", content: "It allows 20 days a year." },
+        { role: "user", content: "Can you say that more briefly?" },
+      ],
+      conversationId: "c1",
+    };
+    await chat(body(convo), deps);
+    expect(deps.streamTextFn).toHaveBeenCalled();
+    const { messages, system } = deps.streamTextFn.mock.calls[0][0] as {
+      messages: Array<{ role: string; content: string }>;
+      system: string;
+    };
+    expect(messages.some((m) => m.role === "assistant" && m.content.includes("20 days"))).toBe(true);
+    expect(system).toContain("No passages from the knowledge base matched");
+  });
+
+  // Inverted deliberately in 0.6.4. The canned no-context reply never reached the
+  // model, so a question about the conversation itself hit a wall no prompt change
+  // could open. The model is now always called, and told plainly that nothing matched.
+  it("no-context: still calls the model, with a prompt saying no passages matched", async () => {
     const deps = baseDeps({ prepareContextFn: vi.fn(async () => ({ hasContext: false, context: "", sources: [] })) });
     const res = await chat(body(msg("unknown topic")), deps);
     expect(res.status).toBe(200);
-    expect(deps.streamTextFn).not.toHaveBeenCalled();
-    // User message persisted first, fallback assistant second with usage: null
-    expect(deps.addMessageFn).toHaveBeenNthCalledWith(2, expect.objectContaining({ role: "assistant", usage: null }));
+    expect(deps.streamTextFn).toHaveBeenCalled();
+    const { system } = deps.streamTextFn.mock.calls[0][0] as { system: string };
+    expect(system).toBe(buildAnswerSystemPrompt({ systemPrompt: "sp", context: "", hasContext: false }));
+  });
+
+  // Asserts the composition, not just that some string was passed: re-inlining the
+  // old template literal here would silently un-share the rule with the eval harness.
+  it("builds the system prompt through the shared builder", async () => {
+    const deps = baseDeps();
+    await chat(body(msg("why is the sky blue?")), deps);
+    const { system } = deps.streamTextFn.mock.calls[0][0] as { system: string };
+    expect(system).toBe(buildAnswerSystemPrompt({ systemPrompt: "sp", context: "ctx", hasContext: true }));
   });
 
   it("provider key missing: streams the error as the assistant message, no model call, 200", async () => {
@@ -195,7 +257,7 @@ describe("handleChat", () => {
     expect(assistantCall?.[0].content).toMatch(/no API key for provider "openai"/);
   });
 
-  it("IMAGE intent: persists images + streams the intro, skips prepareContext", async () => {
+  it("IMAGE intent: persists images + a body carrying their captions, skips prepareContext", async () => {
     const prepareContextFn = vi.fn();
     const deps = baseDeps({
       prepareContextFn,
@@ -204,9 +266,12 @@ describe("handleChat", () => {
     });
     const res = await chat(body(msg("show me a red bike")), deps);
     expect(res.status).toBe(200);
-    // assistant message persisted with the images
     const assistantCall = deps.addMessageFn.mock.calls.find((c) => c[0].role === "assistant");
     expect(assistantCall?.[0].images).toEqual([{ imageId: "img-1", caption: "a red bicycle" }]);
+    // The caption must reach `content`: history for the next turn is rebuilt from
+    // content alone, so anything left only in images[] is invisible to the model.
+    expect(assistantCall?.[0].content).toContain("a red bicycle");
+    expect(assistantCall?.[0].content).toBe(imageAnswerText("Here are the images that best match your description:", [{ caption: "a red bicycle" }]));
     expect(prepareContextFn).not.toHaveBeenCalled();
   });
 

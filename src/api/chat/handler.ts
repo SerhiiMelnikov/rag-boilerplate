@@ -1,6 +1,7 @@
 import { streamText, createDataStreamResponse, formatDataStreamPart } from "ai";
 import { requireUser, errorToResponse } from "@/lib/auth/guards";
 import { getAuthUserById } from "@/lib/auth/users";
+import { buildAnswerSystemPrompt } from "@/lib/chat/answer-prompt";
 import { isConversationOwned, addMessage, setConversationTitleIfDefault } from "@/lib/chat/conversations";
 import { getRuntimeSettings } from "@/lib/config/settings-service";
 import { consume } from "@/lib/ratelimit/store";
@@ -11,12 +12,11 @@ import { isProviderError } from "@/lib/providers/types";
 import { routeIntent } from "@/lib/chat/route-intent";
 import { searchImages } from "@/lib/images/search";
 import { verifyImageMatches } from "@/lib/images/verify";
+import { imageAnswerText } from "@/lib/chat/image-answer";
 import { createWorkspaceRepo, type WorkspaceRepo } from "@/lib/workspaces/repo";
 import { resolveActiveWorkspaceId, resolveAllowedDocumentIds, resolveAllowedImageIds } from "@/lib/workspaces/access";
 import { parseActiveWorkspaceCookie } from "@/lib/workspaces/cookie";
 
-const NO_CONTEXT_ANSWER =
-  "I don't have any relevant information in the knowledge base to answer that.";
 const IMAGE_TOP_N = 3;
 // Candidates handed to the relevance verifier before trimming to IMAGE_TOP_N.
 const IMAGE_CANDIDATES = 8;
@@ -198,7 +198,10 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
     }
     if (matches.length === 0) return replyWithMessage(NO_IMAGE_ANSWER);
     const images = matches.map((h) => ({ imageId: h.imageId, caption: h.caption }));
-    return replyWithMessage(IMAGE_INTRO, images);
+    // The captions go in the CONTENT, not only in images[]: the next turn's history
+    // is rebuilt from content alone (see the history block above), so this is the
+    // only channel through which the assistant can later say what it showed.
+    return replyWithMessage(imageAnswerText(IMAGE_INTRO, images), images);
   }
 
   let prepared;
@@ -207,11 +210,6 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
   } catch (err) {
     if (isProviderError(err)) return replyWithMessage((err as Error).message);
     throw err;
-  }
-
-  // No-context: stream fallback text without calling the model (budget efficiency).
-  if (!prepared.hasContext) {
-    return replyWithMessage(NO_CONTEXT_ANSWER);
   }
 
   let chatModel;
@@ -224,9 +222,24 @@ export async function handleChat(request: Request, deps: ChatDeps = {}) {
 
   const result = streamTextFn({
     model: chatModel,
-    // Retrieved context goes in the system prompt; the actual turn-by-turn
-    // conversation is passed as messages so the model keeps context across turns.
-    system: `${settings.systemPrompt}\n\nUse the following context to answer the user's latest question. If the answer is not in the context, say you don't know.\n\nContext:\n${prepared.context}`,
+    // The grounding rule and the context block are composed in one shared place so
+    // the eval harness scores answers against exactly the prompt production uses.
+    // Turn-by-turn conversation stays in `messages`, not in the system prompt.
+    //
+    // hasContext is passed through, NOT used as a guard: there is deliberately no
+    // "no passages matched, skip the model" short-circuit here any more. A user who
+    // asks why an image was chosen, or what the assistant can do, retrieves nothing
+    // and must still get a real reply — buildAnswerSystemPrompt swaps in
+    // NO_PASSAGES_NOTE and the rule keeps the model off its general knowledge.
+    // src/lib/eval/run.ts KEEPS the equivalent guard on purpose, and the two must
+    // stay divergent: a golden question whose documents were never retrieved has to
+    // score as an empty answer, not as a conversational one. Both sides document
+    // this; change neither without the other.
+    system: buildAnswerSystemPrompt({
+      systemPrompt: settings.systemPrompt,
+      context: prepared.context,
+      hasContext: prepared.hasContext,
+    }),
     messages: history,
     temperature: settings.temperature,
     onFinish: async ({ text, usage }: { text: string; usage?: { promptTokens?: number; completionTokens?: number } }) => {

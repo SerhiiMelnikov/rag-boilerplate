@@ -102,7 +102,7 @@ export const settings = pgTable("settings", {
   topK: integer("top_k").notNull().default(5), // retrieval chunk count
   minSimilarity: real("min_similarity").notNull().default(0.3),
   contextTokenBudget: integer("context_token_budget").notNull().default(3000),
-  systemPrompt: text("system_prompt").notNull().default("You are a helpful assistant. Answer using only the provided context."),
+  systemPrompt: text("system_prompt").notNull().default("You are a helpful assistant."),
   // Provider API keys, encrypted at rest (nullable until an admin sets them).
   googleKey: text("google_key"),
   openaiKey: text("openai_key"),

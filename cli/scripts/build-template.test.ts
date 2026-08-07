@@ -41,6 +41,16 @@ describe("template EXCLUDE", () => {
       expect(existsSync(join(templateDir, "src", "app", "fonts", file)), file).toBe(true);
     }
   });
+
+  // Generated projects had no lockfile at all, so a fresh install could resolve
+  // different transitive versions than this repo tests against — observed once as a
+  // web-worker warning via @scalar/snippetz, present in a scaffolded build and absent
+  // here. The lockfile only helps if it actually reaches the template.
+  it("ships the lockfile", () => {
+    expect(EXCLUDE.has("package-lock.json")).toBe(false);
+    expect(existsSync(templateDir), "run `npm run build:template` first").toBe(true);
+    expect(existsSync(join(templateDir, "package-lock.json"))).toBe(true);
+  });
 });
 
 describe("template EXCLUDE stays in sync with .gitignore", () => {

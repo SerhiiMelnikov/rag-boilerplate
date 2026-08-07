@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile, readFile, cp } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -53,6 +53,13 @@ beforeEach(async () => {
   await writeFile(join(templateDir, "src/lib/providers/anthropic.ts"), "export const x = 1;");
   await writeFile(join(templateDir, "src/lib/vectorstore/chroma/store.ts"), "export const x = 1;");
   await writeFile(join(templateDir, "src/lib/vectorstore/weaviate/store.ts"), "export const x = 1;");
+  // Deliberately NOT copying a package-lock.json here: this fixture is shared by
+  // every test in the file, and scaffold()'s reconcile step only runs when a
+  // lockfile exists in the target. The two reconcile-specific tests below add
+  // their own — everything else must stay lockfile-free so it never reaches the
+  // real npm default and shells out (that regressed once: 12 of these tests were
+  // silently invoking real npm, ~9x slower and network-coupled, see the reconcile
+  // tests' own setup for the fix).
 });
 afterEach(async () => { await rm(templateDir, { recursive: true, force: true }); await rm(targetParent, { recursive: true, force: true }); });
 
@@ -128,6 +135,42 @@ describe("scaffold", () => {
     const dc = await readFile(join(targetDir, "docker-compose.yml"), "utf8");
     expect(dc).toContain("app:");
     expect(dc).toContain("profiles:");
+  });
+
+  // A lockfile left behind by a FAILED reconcile is worse than none: it may be
+  // half-written, or genuinely violate the pruned package.json's ranges, and either
+  // breaks the `npm ci` the generated Dockerfile runs — while an absent lockfile is
+  // globbed as optional. So a failed reconcile must delete it. (A merely
+  // unreconciled superset is the different, tolerated case: `npm ci` accepts it.
+  // See scaffold.ts step 8c.)
+  it("removes the lockfile when the reconcile fails, rather than leaving a mismatched one", async () => {
+    // The real, built lockfile (see cli/scripts/build-template.ts), not a hand-rolled
+    // stand-in: run `npm run build:template` first, or this cp throws ENOENT and this
+    // test fails during setup rather than at its real assertion. Copied only here
+    // (not in the shared beforeEach) so every other test in this file stays
+    // lockfile-free and never reaches scaffold()'s real npm default.
+    await cp(join(REPO_ROOT, "cli", "template", "package-lock.json"), join(templateDir, "package-lock.json"));
+    const targetDir = join(targetParent, "app-reconcile-fail");
+    await scaffold(opts({ vectorStore: "pgvector" }), {
+      templateDir,
+      targetDir,
+      reconcileLockfile: async () => { throw new Error("no network"); },
+    });
+    expect(existsSync(join(targetDir, "package-lock.json"))).toBe(false);
+    // ...and the scaffold still produced a complete project.
+    expect(existsSync(join(targetDir, "package.json"))).toBe(true);
+    expect(existsSync(join(targetDir, "README.md"))).toBe(true);
+  });
+
+  it("keeps the lockfile when the reconcile succeeds", async () => {
+    // See the comment on the previous test: copied here, not in beforeEach, so
+    // this stays the only other test that carries a lockfile at all.
+    await cp(join(REPO_ROOT, "cli", "template", "package-lock.json"), join(templateDir, "package-lock.json"));
+    const targetDir = join(targetParent, "app-reconcile-ok");
+    const reconcileLockfile = vi.fn(async () => {});
+    await scaffold(opts({ vectorStore: "pgvector" }), { templateDir, targetDir, reconcileLockfile });
+    expect(reconcileLockfile).toHaveBeenCalledWith(targetDir);
+    expect(existsSync(join(targetDir, "package-lock.json"))).toBe(true);
   });
 });
 

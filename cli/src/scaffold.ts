@@ -1,5 +1,6 @@
 import { cp, rm, rename, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { execFile } from "node:child_process";
 import { join } from "node:path";
 import type { InstallOptions } from "./options.js";
 import { PROVIDER_IDS, VECTOR_STORE_IDS, resolveEmbeddingProvider, resolveSpeechProvider } from "./options.js";
@@ -49,7 +50,28 @@ export function settingsDefaultsFor(o: InstallOptions) {
   };
 }
 
-export async function scaffold(o: InstallOptions, opts: { templateDir: string; targetDir: string }): Promise<void> {
+// `--package-lock-only` rewrites the lockfile to match package.json without touching
+// node_modules: entries for pruned dependencies go, and the resolved versions of
+// everything retained stay exactly as this repository tests them. `--ignore-scripts`
+// because nothing should execute during a scaffold. `timeout` bounds the other
+// failure mode a refused connection does not cover: a blackholed network (a
+// captive portal, a firewalled CI runner) leaves npm to burn its own multi-minute
+// fetch timeout and retries instead of failing fast. "Scaffolding must never fail
+// because of this step" cuts both ways — an indefinite hang is worse than a clean
+// failure. `execFile` kills the child and delivers it to the callback as `err` on
+// timeout, so the caller's existing catch-and-delete still applies.
+async function reconcileLockfile(dir: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    execFile(
+      "npm",
+      ["install", "--package-lock-only", "--ignore-scripts"],
+      { cwd: dir, timeout: 60_000 },
+      (err) => (err ? reject(err) : resolve()),
+    );
+  });
+}
+
+export async function scaffold(o: InstallOptions, opts: { templateDir: string; targetDir: string; reconcileLockfile?: (dir: string) => Promise<void> }): Promise<void> {
   // 1. Copy the template.
   await cp(opts.templateDir, opts.targetDir, { recursive: true });
   // 2. _gitignore -> .gitignore
@@ -144,6 +166,31 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
 
     const fullPkg = prunePackageJson(await readFile(pkgPath, "utf8"), FULL_APP_REMOVE_DEPS);
     await writeFile(pkgPath, removeServerScripts(fullPkg));
+  }
+
+  // 8c. The template ships this repo's own lockfile, so npm users inherit the exact
+  // dependency tree these tests run against — transitives included. It is reconciled
+  // against the pruned package.json so the lockfile describes the project that was
+  // actually generated.
+  //
+  // Not because skipping it would break the build: pruning only REMOVES
+  // dependencies, so an unreconciled lockfile is a SUPERSET of the pruned
+  // package.json, and `npm ci` tolerates that. Measured (see the branch report): a
+  // no-op reconcile left a disagreeing lockfile and `npm ci --dry-run` passed. npm
+  // ci fails on genuine version-range violations, not on orphaned entries.
+  //
+  // The delete-on-failure rule below stands regardless, for a different reason: a
+  // reconcile that threw may have left a half-written or genuinely range-violating
+  // lockfile, and THAT does break the `npm ci` the generated Dockerfile runs, while
+  // an absent lockfile is globbed as optional and breaks nothing. Scaffolding never
+  // fails because of this step.
+  const lockPath = join(opts.targetDir, "package-lock.json");
+  if (existsSync(lockPath)) {
+    try {
+      await (opts.reconcileLockfile ?? reconcileLockfile)(opts.targetDir);
+    } catch {
+      await rm(lockPath, { force: true });
+    }
   }
 
   // 9. Generate a README tailored to this selection (the template ships none).

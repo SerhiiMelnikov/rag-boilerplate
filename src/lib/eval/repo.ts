@@ -141,7 +141,15 @@ export const evalRepo: EvalRepo = {
     await database.update(evalRuns).set({ status }).where(eq(evalRuns.id, id));
   },
   async finishRun(id, aggregate, database = defaultDb) {
-    await database.update(evalRuns).set({ status: "done", aggregate }).where(eq(evalRuns.id, id));
+    // Invariant: `error` is non-null only when `status = 'error'`. Before the
+    // reaper, that held for free -- failRun was the only writer of `error`, and
+    // a run that failed never reached finishRun. reapStaleRuns broke that: it
+    // writes `error` to a run that is still alive and can still complete, so a
+    // falsely-reaped-then-completed run would otherwise land here as "done"
+    // while still carrying STALE_RUN_MESSAGE. finishRun is now the place that
+    // has to restore the invariant on every completion, hence the explicit
+    // `error: null` alongside `status: "done"`.
+    await database.update(evalRuns).set({ status: "done", aggregate, error: null }).where(eq(evalRuns.id, id));
   },
   async failRun(id, error, database = defaultDb) {
     await database.update(evalRuns).set({ status: "error", error }).where(eq(evalRuns.id, id));
@@ -186,7 +194,8 @@ export const evalRepo: EvalRepo = {
     // caller assumes. The cost of swallowing is only ever one stale heartbeat
     // tick, which the next question's addResult call corrects; a run reaped
     // because of it is non-destructive (it keeps writing, and finishRun sets it
-    // back to "done" when it actually completes).
+    // back to "done" -- clearing the reaper's `error` too -- when it actually
+    // completes, so the finished row carries no trace of the false reap).
     try {
       await database.update(evalRuns).set({ heartbeatAt: sql`now()` }).where(eq(evalRuns.id, input.runId));
     } catch (err) {

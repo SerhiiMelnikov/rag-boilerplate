@@ -134,7 +134,7 @@ describe("evalRepo.setRunStatus", () => {
 });
 
 describe("evalRepo.finishRun", () => {
-  it("sets status done and stores the aggregate", async () => {
+  it("sets status done, stores the aggregate, and clears any error", async () => {
     let setValues: unknown;
     const aggregate = { avgRecall: 0.9, avgPrecision: 0.8, avgMrr: 0.7, avgJudgeScore: 4.2, passRate: 0.95, questionCount: 10 };
     const db = {
@@ -146,7 +146,13 @@ describe("evalRepo.finishRun", () => {
       }),
     } as never;
     await evalRepo.finishRun("run-1", aggregate as never, db);
-    expect(setValues).toMatchObject({ status: "done", aggregate });
+    // error: null is not optional here -- reapStaleRuns is the only other writer
+    // of `error`, and it can fire on a run that is still alive. Without this,
+    // finishRun would leave a "done" row carrying the reaper's stale message.
+    // toEqual (not toMatchObject) so a dropped `error` key fails this test too,
+    // not just the integration test that proves the full reap-then-finish
+    // sequence against a real row.
+    expect(setValues).toEqual({ status: "done", aggregate, error: null });
   });
 });
 

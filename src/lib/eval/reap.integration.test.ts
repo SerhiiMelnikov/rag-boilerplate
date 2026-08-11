@@ -98,4 +98,26 @@ describe.runIf(RUN)("reapStaleRuns (integration)", () => {
     // This is what stops the admin panel polling forever: one list call heals it.
     expect((await statusOf(id)).status).toBe("error");
   });
+
+  // Before the reaper existed, `error` was non-null only when `status = 'error'`
+  // (failRun was the only writer of both, together, and a failed run never
+  // reached finishRun). The reaper broke that: it writes `error` to a run that
+  // is still alive and can still complete. This proves finishRun restores the
+  // invariant -- a run that was falsely reaped and then genuinely finishes must
+  // not carry the reaper's message into its "done" row.
+  it("clears the reaper's error when a falsely-reaped run goes on to finish", async () => {
+    const id = await seed("running", STALE_RUN_TIMEOUT_MINUTES + 1);
+
+    await evalRepo.reapStaleRuns(db);
+    expect(await statusOf(id)).toMatchObject({ status: "error", error: STALE_RUN_MESSAGE });
+
+    const aggregate = { avgRecall: 1, avgPrecision: 1, avgMrr: 1, avgJudgeScore: 5, passRate: 1, questionCount: 1 };
+    await evalRepo.finishRun(id, aggregate, db);
+
+    // Both halves matter: a finishRun that only fixed `status` (the shape this
+    // task shipped without the fix) would still leave `error` set here, and a
+    // done run silently carrying "Interrupted..." is the exact lie this test
+    // exists to catch.
+    expect(await statusOf(id)).toMatchObject({ status: "done", error: null });
+  });
 });

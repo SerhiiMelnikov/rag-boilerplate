@@ -119,11 +119,12 @@ describe("qdrant store", () => {
   it("listChunks pages forward across scroll cursors, sorts by chunkIndex nulls last, honours limit/offset, and total is the full scrolled count", async () => {
     // Scroll's cursor order is arbitrary (point id order), not chunkIndex order —
     // point 3 (no chunkIndex — pre-Task-1 legacy chunk) surfaces before point 1.
-    const scroll = vi.fn()
-      .mockResolvedValueOnce({ points: [{ payload: { content: "c3", contentHash: "h3" } }], next_page_offset: "cursor-1" })
+    // id is required by the real Record (point) type but unused by listChunks.
+    const scroll = vi.fn<QdrantClient["scroll"]>()
+      .mockResolvedValueOnce({ points: [{ id: "p3", payload: { content: "c3", contentHash: "h3" } }], next_page_offset: "cursor-1" })
       .mockResolvedValueOnce({ points: [
-        { payload: { content: "c1", contentHash: "h1", chunkIndex: 1 } },
-        { payload: { content: "c0", contentHash: "h0", chunkIndex: 0 } },
+        { id: "p1", payload: { content: "c1", contentHash: "h1", chunkIndex: 1 } },
+        { id: "p0", payload: { content: "c0", contentHash: "h0", chunkIndex: 0 } },
       ], next_page_offset: null });
     const client = fakeClient({ scroll });
     const out = await createQdrantStore(client as never, "c").listChunks("d1", { limit: 2, offset: 0 });
@@ -133,7 +134,11 @@ describe("qdrant store", () => {
       { chunkIndex: 1, content: "c1", contentHash: "h1" },
     ], total: 3 });
     expect(scroll).toHaveBeenCalledTimes(2);
-    expect(scroll.mock.calls[1][1].offset).toBe("cursor-1");
+    // scroll's real signature makes the second argument optional, so the
+    // recorded call is typed as possibly undefined even though this call site
+    // always supplies one; `?.` satisfies that without loosening the check —
+    // an actually-missing argument still fails the assertion below.
+    expect(scroll.mock.calls[1][1]?.offset).toBe("cursor-1");
   });
 
   it("listChunks enumerates every scroll batch before sorting/slicing — an early page must not leak an arbitrary scroll-order window", async () => {
@@ -144,10 +149,11 @@ describe("qdrant store", () => {
     // implementation that quits as soon as it's collected offset+limit points
     // would see only batch 1 (chunkIndex 299..44) and never reach the chunks
     // that actually belong at the front of the document (0..9).
-    const toPoint = (idx: number) => ({ payload: { content: `c${idx}`, contentHash: `h${idx}`, chunkIndex: idx } });
+    // id is required by the real Record (point) type but unused by listChunks.
+    const toPoint = (idx: number) => ({ id: `p${idx}`, payload: { content: `c${idx}`, contentHash: `h${idx}`, chunkIndex: idx } });
     const batch1 = Array.from({ length: 256 }, (_, i) => 299 - i); // 299..44, descending
     const batch2 = Array.from({ length: 44 }, (_, i) => 43 - i); // 43..0, descending
-    const scroll = vi.fn()
+    const scroll = vi.fn<QdrantClient["scroll"]>()
       .mockResolvedValueOnce({ points: batch1.map(toPoint), next_page_offset: "cursor-2" })
       .mockResolvedValueOnce({ points: batch2.map(toPoint), next_page_offset: null });
     const client = fakeClient({ scroll });

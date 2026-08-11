@@ -81,10 +81,12 @@ export const STALE_RUN_TIMEOUT_MINUTES = 10;
 export const STALE_RUN_MESSAGE = "Interrupted — the run stopped reporting progress.";
 
 // Lazy expiry: a read path that writes. Called from listRuns and createRun rather
-// than from a scheduler, because this repo has no scheduler and both build modes
-// must be covered -- listRuns is what heals the admin panel within a single poll
-// tick, and createRun is the only one of the two that api-only ever reaches, since
-// there is no admin panel there and nothing lists runs.
+// than from a scheduler, because this repo has no scheduler -- listRuns is what
+// heals the admin panel (or any other client polling GET
+// /api/admin/evaluation/runs; that route survives api-only pruning, so this is
+// not admin-panel-only) within a single poll tick. createRun reaps too, as
+// belt-and-braces for a caller that only ever POSTs a run and never lists one --
+// e.g. the CLI's createRun -> getRun path in cli.ts never calls listRuns.
 //
 // now() is Postgres's clock, deliberately, never the JS process's: the CLI and the
 // app can run on different machines, and the comparison must be between a stored

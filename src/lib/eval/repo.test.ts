@@ -92,10 +92,11 @@ describe("evalRepo.createRun", () => {
     let inserted: unknown;
     let reapCalled = false;
     const db = {
-      // createRun now reaps stale runs before inserting (api-only has no admin
-      // panel and never calls listRuns, so createRun is the only lazy-expiry
-      // hook it gets); the fake must answer this update chain too, or the call
-      // throws before the insert this test is actually about is ever reached.
+      // createRun now reaps stale runs before inserting, belt-and-braces for a
+      // caller that only ever creates runs and never lists them (e.g. the
+      // CLI's createRun -> getRun path); the fake must answer this update
+      // chain too, or the call throws before the insert this test is
+      // actually about is ever reached.
       update: () => ({
         set: () => ({
           where: async () => {

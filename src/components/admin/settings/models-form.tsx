@@ -100,9 +100,13 @@ export function ModelsForm() {
   const [pendingClear, setPendingClear] = useState<KeyedProvider | null>(null);
   const [clearing, setClearing] = useState(false);
 
-  // One frame, one width, three bodies. The `const header` and its three
-  // near-identical returns existed only because the width had to be repeated
-  // alongside each body.
+  // `frame` factors out the page chrome (width, title, description) shared by
+  // every state this component can render. The first two returns below exist
+  // because of load-error / loading branching, not because the width needed
+  // repeating. The third is not `return frame(...)` like the other Settings
+  // forms' third return: it wraps `frame(...)` alongside a sibling
+  // <ConfirmDialog>, since the key-clear confirmation lives outside the page
+  // frame -- so it was never near-identical to the other two.
   const frame = (body: React.ReactNode) => (
     <Page
       width="form"

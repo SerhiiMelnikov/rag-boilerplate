@@ -193,12 +193,11 @@ describe("runEvaluation", () => {
     logged.mockRestore();
   });
 
-  // Regression test for the interaction between run.ts's outer per-question
-  // try/catch and repo.ts's real addResult: this deliberately uses the REAL
-  // evalRepo.addResult (bound to a fake db whose heartbeat update throws),
-  // not a mock that reimplements it, so a regression in addResult's own
-  // try/catch would actually be caught here.
-  it("a heartbeat-write failure does not make run.ts record a duplicate failure row", async () => {
+  // Regression test for repo.ts's addResult heartbeat guard: this deliberately
+  // uses the REAL evalRepo.addResult (bound to a fake db whose heartbeat update
+  // throws), not a mock that reimplements it, so a regression in that guard
+  // would actually be caught here.
+  it("a heartbeat-write failure does not drop the question from finishRun's aggregate", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     const inserted: unknown[] = [];
     const fakeDb = {
@@ -225,16 +224,20 @@ describe("runEvaluation", () => {
       generateAnswer: vi.fn(async () => "A cat is an animal."),
       judge: vi.fn(async () => ({ score: 5, rationale: "grounded" })),
     });
-    // If the heartbeat failure propagated out of addResult, run.ts's outer catch
-    // would treat the question as failed and call addResult a second time,
-    // inserting a spurious duplicate eval_results row. It must not: exactly one
-    // call, exactly one insert, and the run finishes normally rather than
-    // failing the question.
+    // If addResult's heartbeat guard were removed, the heartbeat failure would
+    // propagate out of addResult, and run.ts would never reach the forAgg.push
+    // that follows its addResult call -- even though the row above was already
+    // inserted. The row and the aggregate would then disagree: one stored
+    // result, zero questions counted. The four assertions immediately below
+    // hold with or without the guard (its job was never to prevent a second
+    // insert); only the questionCount assertion after them is what the guard
+    // is actually for, and what this test's name refers to.
     expect(repo.addResult).toHaveBeenCalledTimes(1);
     expect(inserted).toHaveLength(1);
     expect(inserted[0]).toMatchObject({ runId: "run-1", hit: true });
     expect(repo.failRun).not.toHaveBeenCalled();
     expect(repo.finishRun).toHaveBeenCalled();
+    // This is the assertion the guard is for: without it, questionCount is 0.
     expect(repo.finishRun.mock.calls[0][1].questionCount).toBe(1);
     logged.mockRestore();
   });

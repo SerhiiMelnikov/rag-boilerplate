@@ -70,10 +70,24 @@ export interface EvalRepo {
 //
 // Ten minutes is far above any healthy per-question cost (one retrieval, one
 // generation, one judge call) while staying inside a delay a person will wait out.
-// Getting it wrong is cheap in one direction and free in the other: the reap is NOT
-// destructive. A live run that does cross the threshold on one slow question keeps
-// writing, and finishRun sets "done" at the end -- a wrongly reaped run corrects
-// itself.
+//
+// Getting it wrong is cheap for the STORED ROW but not for the ADMIN PANEL -- the
+// two do not recover the same way. The row self-heals: a live run that crosses
+// the threshold on one slow question keeps writing, and finishRun sets "done"
+// (clearing the reaper's `error`) when it actually completes, so a wrongly reaped
+// run's database state ends up indistinguishable from one that was never reaped.
+// The panel does not self-heal. The reap flips status to "error", which makes
+// runs-panel.tsx's hasInFlight go false; its poll effect then clears the
+// interval, and neither load() nor loadDetail() fires again, so RunStatusBadge is
+// left showing a red "Interrupted" error for a run that is, underneath, still
+// executing and will finish normally. Concretely, and new on this branch (before
+// the reap existed, a stalled run simply kept the panel polling until it filled
+// in): a golden-set run that stalls past ten minutes on one question -- a
+// provider's 429 back-off, a slow judge call -- shows the admin a false
+// "Interrupted" error, freezes the live results table mid-run, and never brings
+// the eventual "done" plus its aggregate to the screen without a manual reload.
+// Raising this number trades fewer of those false alarms for a slower reclaim of
+// truly dead runs; lowering it trades the other way.
 export const STALE_RUN_TIMEOUT_MINUTES = 10;
 
 // Shown verbatim in the admin panel. It must read as an interruption, not as an
@@ -186,18 +200,26 @@ export const evalRepo: EvalRepo = {
       error: input.error,
     });
     // Every recorded question -- a success or a recorded failure -- is progress.
-    // This write can never throw out of addResult: run.ts's per-question loop
-    // wraps addResult in a try/catch and, on catch, calls addResult AGAIN to
-    // record the question as failed. If this touch threw after the insert above
-    // already committed, that second call would insert a spurious duplicate
-    // eval_results row for a question that was in fact answered and judged
-    // correctly. Swallowing here keeps addResult's contract simple and true:
-    // "the result is stored, or I threw before storing it" -- exactly what every
-    // caller assumes. The cost of swallowing is only ever one stale heartbeat
-    // tick, which the next question's addResult call corrects; a run reaped
-    // because of it is non-destructive (it keeps writing, and finishRun sets it
-    // back to "done" -- clearing the reaper's `error` too -- when it actually
-    // completes, so the finished row carries no trace of the false reap).
+    // This touch must never throw out of addResult: in run.ts, each call site
+    // pushes into forAgg only once its addResult call has returned. If this
+    // heartbeat write threw after the insert above already committed, addResult
+    // would throw too -- the row would be stored but the question would never
+    // reach forAgg, breaking the rule this file states elsewhere: the aggregate
+    // describes exactly the rows that were actually stored. Swallowing here keeps
+    // addResult's contract simple and true: "the result is stored, and nothing
+    // unrelated to storing it makes me throw" -- exactly what every caller
+    // assumes. (This guard predates that rule and was originally added for a
+    // different hazard: run.ts's per-question loop used to share one try/catch
+    // across compute and the write, so a throw here would have looked like a
+    // compute failure and triggered a second addResult call, inserting a
+    // spurious duplicate eval_results row; a later commit split the write into
+    // its own try whose catch only console.error's, closing that path, leaving
+    // the aggregate-consistency reason above as the one that still applies.) The
+    // cost of swallowing is only ever one stale heartbeat tick, which the next
+    // question's addResult call corrects; a run reaped because of it is
+    // non-destructive (it keeps writing, and finishRun sets it back to "done" --
+    // clearing the reaper's `error` too -- when it actually completes, so the
+    // finished row carries no trace of the false reap).
     try {
       await database.update(evalRuns).set({ heartbeatAt: sql`now()` }).where(eq(evalRuns.id, input.runId));
     } catch (err) {

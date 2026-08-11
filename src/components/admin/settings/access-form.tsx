@@ -16,9 +16,11 @@ export function AccessForm() {
   // is submitted only when the admin types something.
   const [smtpPasswordInput, setSmtpPasswordInput] = useState("");
 
-  // One frame, one width, three bodies. The `const header` and its three
-  // near-identical returns existed only because the width had to be repeated
-  // alongside each body.
+  // `frame` factors out the page chrome (width, title, description) shared by
+  // every state this component can render. The three returns below exist
+  // because of load-error / loading / content branching, not because the width
+  // needed repeating -- `frame` just avoids repeating the chrome alongside each
+  // branch.
   const frame = (body: React.ReactNode) => (
     <Page
       width="form"

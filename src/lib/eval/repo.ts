@@ -1,4 +1,4 @@
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and, inArray, lt } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { evalQuestions, evalRuns, evalResults } from "@/lib/db/schema";
 import type { EvalSettingsSnapshot, EvalAggregate, RetrievedDoc } from "./types";
@@ -57,9 +57,52 @@ export interface EvalRepo {
   finishRun(id: string, aggregate: EvalAggregate, database?: typeof defaultDb): Promise<void>;
   failRun(id: string, error: string, database?: typeof defaultDb): Promise<void>;
   listRuns(database?: typeof defaultDb): Promise<RunRow[]>;
+  reapStaleRuns(database?: typeof defaultDb): Promise<void>;
   getRun(id: string, database?: typeof defaultDb): Promise<RunRow | null>;
   getResults(runId: string, database?: typeof defaultDb): Promise<ResultRow[]>;
   addResult(input: ResultInput, database?: typeof defaultDb): Promise<void>;
+}
+
+// How long a run may go without recording a question before it is presumed dead.
+// A Ctrl-C'd `npm run eval`, or a server restart mid-run, leaves a row in
+// "running" forever; the admin panel then polls the list AND the open run's detail
+// every 2.5s for as long as the tab stays open.
+//
+// Ten minutes is far above any healthy per-question cost (one retrieval, one
+// generation, one judge call) while staying inside a delay a person will wait out.
+// Getting it wrong is cheap in one direction and free in the other: the reap is NOT
+// destructive. A live run that does cross the threshold on one slow question keeps
+// writing, and finishRun sets "done" at the end -- a wrongly reaped run corrects
+// itself.
+export const STALE_RUN_TIMEOUT_MINUTES = 10;
+
+// Shown verbatim in the admin panel. It must read as an interruption, not as an
+// evaluation failure: nothing was wrong with the run's answers.
+export const STALE_RUN_MESSAGE = "Interrupted — the run stopped reporting progress.";
+
+// Lazy expiry: a read path that writes. Called from listRuns and createRun rather
+// than from a scheduler, because this repo has no scheduler and both build modes
+// must be covered -- listRuns is what heals the admin panel within a single poll
+// tick, and createRun is the only one of the two that api-only ever reaches, since
+// there is no admin panel there and nothing lists runs.
+//
+// now() is Postgres's clock, deliberately, never the JS process's: the CLI and the
+// app can run on different machines, and the comparison must be between a stored
+// database timestamp and the database's own idea of the present.
+//
+// A free function rather than a method the others call through `this`: evalRepo is
+// an object literal, so `const { listRuns } = evalRepo` would leave `this`
+// undefined and take the reap down with it at the first destructuring call site.
+async function reapStaleRunsCore(database: typeof defaultDb): Promise<void> {
+  await database
+    .update(evalRuns)
+    .set({ status: "error", error: STALE_RUN_MESSAGE })
+    .where(
+      and(
+        inArray(evalRuns.status, ["pending", "running"]),
+        lt(evalRuns.heartbeatAt, sql`now() - make_interval(mins => ${STALE_RUN_TIMEOUT_MINUTES})`),
+      ),
+    );
 }
 
 export const evalRepo: EvalRepo = {
@@ -90,6 +133,7 @@ export const evalRepo: EvalRepo = {
     return r.length > 0;
   },
   async createRun(snapshot, database = defaultDb) {
+    await reapStaleRunsCore(database);
     const [r] = await database.insert(evalRuns).values({ status: "pending", settingsSnapshot: snapshot }).returning({ id: evalRuns.id });
     return r;
   },
@@ -102,7 +146,11 @@ export const evalRepo: EvalRepo = {
   async failRun(id, error, database = defaultDb) {
     await database.update(evalRuns).set({ status: "error", error }).where(eq(evalRuns.id, id));
   },
+  async reapStaleRuns(database = defaultDb) {
+    await reapStaleRunsCore(database);
+  },
   async listRuns(database = defaultDb) {
+    await reapStaleRunsCore(database);
     return database.select().from(evalRuns).orderBy(desc(evalRuns.createdAt)) as unknown as RunRow[];
   },
   async getRun(id, database = defaultDb) {

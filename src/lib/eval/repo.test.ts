@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { eq } from "drizzle-orm";
-import { evalRepo } from "./repo";
+import { evalRepo, STALE_RUN_MESSAGE } from "./repo";
 import { evalRuns } from "@/lib/db/schema";
 
 describe("evalRepo.listQuestions", () => {
@@ -88,9 +88,21 @@ describe("evalRepo.deleteQuestion", () => {
 });
 
 describe("evalRepo.createRun", () => {
-  it("inserts a pending run with the snapshot and returns its id", async () => {
+  it("reaps stale runs, then inserts a pending run with the snapshot and returns its id", async () => {
     let inserted: unknown;
+    let reapCalled = false;
     const db = {
+      // createRun now reaps stale runs before inserting (api-only has no admin
+      // panel and never calls listRuns, so createRun is the only lazy-expiry
+      // hook it gets); the fake must answer this update chain too, or the call
+      // throws before the insert this test is actually about is ever reached.
+      update: () => ({
+        set: () => ({
+          where: async () => {
+            reapCalled = true;
+          },
+        }),
+      }),
       insert: () => ({
         values: (v: unknown) => {
           inserted = v;
@@ -99,6 +111,7 @@ describe("evalRepo.createRun", () => {
       }),
     } as never;
     const out = await evalRepo.createRun({ topK: 5 } as never, db);
+    expect(reapCalled).toBe(true);
     expect(out).toEqual({ id: "id-1" });
     expect(inserted).toMatchObject({ status: "pending", settingsSnapshot: { topK: 5 } });
   });
@@ -154,10 +167,54 @@ describe("evalRepo.failRun", () => {
 });
 
 describe("evalRepo.listRuns", () => {
-  it("returns runs ordered by createdAt desc", async () => {
+  it("reaps stale runs, then returns runs ordered by createdAt desc", async () => {
     const rows = [{ id: "run-1", status: "done", settingsSnapshot: { topK: 5 }, aggregate: null, error: null, createdAt: new Date(0) }];
-    const db = { select: () => ({ from: () => ({ orderBy: async () => rows }) }) } as never;
+    let reapCalled = false;
+    const db = {
+      // listRuns is what heals the admin panel within a single poll tick, so it
+      // must reap before it selects; the fake needs to answer that update chain
+      // or the call throws before the select this test is actually about.
+      update: () => ({
+        set: () => ({
+          where: async () => {
+            reapCalled = true;
+          },
+        }),
+      }),
+      select: () => ({ from: () => ({ orderBy: async () => rows }) }),
+    } as never;
     expect(await evalRepo.listRuns(db)).toEqual(rows);
+    expect(reapCalled).toBe(true);
+  });
+});
+
+describe("evalRepo.reapStaleRuns", () => {
+  it("issues a single UPDATE scoped to pending/running runs whose heartbeat is stale", async () => {
+    let updatedTable: unknown;
+    let setValues: unknown;
+    let whereCondition: unknown;
+    const db = {
+      update: (table: unknown) => {
+        updatedTable = table;
+        return {
+          set: (v: unknown) => {
+            setValues = v;
+            return {
+              where: (cond: unknown) => {
+                whereCondition = cond;
+                return Promise.resolve(undefined);
+              },
+            };
+          },
+        };
+      },
+    } as never;
+    await evalRepo.reapStaleRuns(db);
+    expect(updatedTable).toBe(evalRuns);
+    expect(setValues).toMatchObject({ status: "error", error: STALE_RUN_MESSAGE });
+    // and(...) over an inArray + lt is opaque as a plain object; just confirm a
+    // WHERE was actually supplied rather than the UPDATE running unconditionally.
+    expect(whereCondition).toBeDefined();
   });
 });
 

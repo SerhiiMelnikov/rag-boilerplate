@@ -10,7 +10,7 @@ import { activeGroup } from "@/components/shell/nav-config";
 // they drifted apart in the first place, and how one of them could go missing.
 //
 // No auth check here on purpose: each admin page still calls its own guard, but
-// it is requirePageAdmin/requirePageSuperAdmin from ../../guards -- the same
+// it is requirePageAdmin/requirePageSuperAdmin from ../guards -- the same
 // database-backed check the (app) layout above already runs, not next-auth's
 // `auth()`. This layout adds no additional guard and changes no authorisation.
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

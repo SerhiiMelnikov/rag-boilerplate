@@ -79,8 +79,9 @@ export interface EvalRepo {
 // The panel does not self-heal. The reap flips status to "error", which makes
 // runs-panel.tsx's hasInFlight go false; its poll effect then clears the
 // interval, and neither load() nor loadDetail() fires again, so RunStatusBadge is
-// left showing a red "Interrupted" error for a run that is, underneath, still
-// executing and will finish normally. Concretely, and new on this branch (before
+// left showing a red "error" badge whose title (on hover) carries the
+// interruption message, for a run that is, underneath, still executing and
+// will finish normally. Concretely, and new on this branch (before
 // the reap existed, a stalled run simply kept the panel polling until it filled
 // in): a golden-set run that stalls past ten minutes on one question -- a
 // provider's 429 back-off, a slow judge call -- shows the admin a false
@@ -204,7 +205,7 @@ export const evalRepo: EvalRepo = {
     // pushes into forAgg only once its addResult call has returned. If this
     // heartbeat write threw after the insert above already committed, addResult
     // would throw too -- the row would be stored but the question would never
-    // reach forAgg, breaking the rule this file states elsewhere: the aggregate
+    // reach forAgg, breaking the rule run.ts states: the aggregate
     // describes exactly the rows that were actually stored. Swallowing here keeps
     // addResult's contract simple and true: "the result is stored, and nothing
     // unrelated to storing it makes me throw" -- exactly what every caller

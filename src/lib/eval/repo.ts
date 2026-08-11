@@ -128,10 +128,21 @@ export const evalRepo: EvalRepo = {
       error: input.error,
     });
     // Every recorded question -- a success or a recorded failure -- is progress.
-    // Deliberately not in a transaction with the insert above: if the result is
-    // stored and this touch fails, the run loses one heartbeat tick and the next
-    // question restores it. Coupling them would let a heartbeat failure roll back
-    // a result that was computed correctly.
-    await database.update(evalRuns).set({ heartbeatAt: sql`now()` }).where(eq(evalRuns.id, input.runId));
+    // This write can never throw out of addResult: run.ts's per-question loop
+    // wraps addResult in a try/catch and, on catch, calls addResult AGAIN to
+    // record the question as failed. If this touch threw after the insert above
+    // already committed, that second call would insert a spurious duplicate
+    // eval_results row for a question that was in fact answered and judged
+    // correctly. Swallowing here keeps addResult's contract simple and true:
+    // "the result is stored, or I threw before storing it" -- exactly what every
+    // caller assumes. The cost of swallowing is only ever one stale heartbeat
+    // tick, which the next question's addResult call corrects; a run reaped
+    // because of it is non-destructive (it keeps writing, and finishRun sets it
+    // back to "done" when it actually completes).
+    try {
+      await database.update(evalRuns).set({ heartbeatAt: sql`now()` }).where(eq(evalRuns.id, input.runId));
+    } catch (err) {
+      console.error(`eval: could not touch heartbeat for run ${input.runId}`, err);
+    }
   },
 };

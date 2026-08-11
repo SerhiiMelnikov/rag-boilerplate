@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { eq } from "drizzle-orm";
 import { evalRepo } from "./repo";
+import { evalRuns } from "@/lib/db/schema";
 
 describe("evalRepo.listQuestions", () => {
   it("returns questions ordered by createdAt desc", async () => {
@@ -186,7 +188,59 @@ describe("evalRepo.getResults", () => {
 });
 
 describe("evalRepo.addResult", () => {
-  it("inserts a fully-populated result", async () => {
+  const input = {
+    runId: "run-1",
+    questionId: "q1",
+    questionText: "What is X?",
+    retrieved: [{ documentId: "d1", filename: "a.pdf", score: 0.9 }],
+    hit: true,
+    recall: 1,
+    precision: 0.5,
+    mrr: 1,
+    judgeScore: 4,
+    judgeRationale: "Good answer",
+    generatedAnswer: "X is Y",
+    error: null,
+  };
+
+  it("inserts a fully-populated result, then touches the run's heartbeat by id", async () => {
+    let inserted: unknown;
+    let updatedTable: unknown;
+    let setValues: unknown;
+    let whereCondition: unknown;
+    const db = {
+      insert: () => ({
+        values: (v: unknown) => {
+          inserted = v;
+          return Promise.resolve(undefined);
+        },
+      }),
+      update: (table: unknown) => {
+        updatedTable = table;
+        return {
+          set: (v: unknown) => {
+            setValues = v;
+            return {
+              where: (cond: unknown) => {
+                whereCondition = cond;
+                return Promise.resolve(undefined);
+              },
+            };
+          },
+        };
+      },
+    } as never;
+    await evalRepo.addResult(input as never, db);
+    expect(inserted).toMatchObject(input);
+    // Not just "some update happened": the right table, with a heartbeat value,
+    // scoped to exactly this run. A dropped `where` (which would touch every
+    // run) or a wrong id would fail this.
+    expect(updatedTable).toBe(evalRuns);
+    expect(setValues).toHaveProperty("heartbeatAt");
+    expect(whereCondition).toEqual(eq(evalRuns.id, input.runId));
+  });
+
+  it("does not let a heartbeat-write failure propagate out of addResult", async () => {
     let inserted: unknown;
     const db = {
       insert: () => ({
@@ -196,24 +250,18 @@ describe("evalRepo.addResult", () => {
         },
       }),
       update: () => ({
-        set: () => ({ where: async () => undefined }),
+        set: () => ({
+          where: async () => {
+            throw new Error("heartbeat db down");
+          },
+        }),
       }),
     } as never;
-    const input = {
-      runId: "run-1",
-      questionId: "q1",
-      questionText: "What is X?",
-      retrieved: [{ documentId: "d1", filename: "a.pdf", score: 0.9 }],
-      hit: true,
-      recall: 1,
-      precision: 0.5,
-      mrr: 1,
-      judgeScore: 4,
-      judgeRationale: "Good answer",
-      generatedAnswer: "X is Y",
-      error: null,
-    };
-    await evalRepo.addResult(input as never, db);
+    // The insert already committed by the time the heartbeat write throws.
+    // addResult must still resolve, not reject -- callers (run.ts) rely on that
+    // to tell "the result is stored" from "it isn't" without a second, spurious
+    // write.
+    await expect(evalRepo.addResult(input as never, db)).resolves.toBeUndefined();
     expect(inserted).toMatchObject(input);
   });
 });

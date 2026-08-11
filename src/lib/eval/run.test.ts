@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { runEvaluation } from "./run";
+import { evalRepo } from "./repo";
 import type { EvalRepo, ResultInput } from "./repo";
 import type { EvalAggregate } from "./types";
 import { buildAnswerSystemPrompt } from "@/lib/chat/answer-prompt";
@@ -157,6 +158,52 @@ describe("runEvaluation", () => {
     // whose row could not be written is not counted.
     expect(repo.finishRun.mock.calls[0][1].questionCount).toBe(1);
     expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
+  });
+
+  // Regression test for the interaction between run.ts's outer per-question
+  // try/catch and repo.ts's real addResult: this deliberately uses the REAL
+  // evalRepo.addResult (bound to a fake db whose heartbeat update throws),
+  // not a mock that reimplements it, so a regression in addResult's own
+  // try/catch would actually be caught here.
+  it("a heartbeat-write failure does not make run.ts record a duplicate failure row", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const inserted: unknown[] = [];
+    const fakeDb = {
+      insert: () => ({
+        values: (v: unknown) => {
+          inserted.push(v);
+          return Promise.resolve(undefined);
+        },
+      }),
+      update: () => ({
+        set: () => ({
+          where: async () => {
+            throw new Error("heartbeat db down");
+          },
+        }),
+      }),
+    } as never;
+    const repo = fakeRepo({
+      addResult: vi.fn((input: ResultInput) => evalRepo.addResult(input, fakeDb)),
+    });
+    await runEvaluation("run-1", settings, {
+      repo: asRepo(repo),
+      prepareContextFn: vi.fn(async () => ({ hasContext: true, context: "cats are animals", sources: [{ documentId: "d1", filename: "cats.md", chunkId: "c1", score: 0.9 }] })),
+      generateAnswer: vi.fn(async () => "A cat is an animal."),
+      judge: vi.fn(async () => ({ score: 5, rationale: "grounded" })),
+    });
+    // If the heartbeat failure propagated out of addResult, run.ts's outer catch
+    // would treat the question as failed and call addResult a second time,
+    // inserting a spurious duplicate eval_results row. It must not: exactly one
+    // call, exactly one insert, and the run finishes normally rather than
+    // failing the question.
+    expect(repo.addResult).toHaveBeenCalledTimes(1);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toMatchObject({ runId: "run-1", hit: true });
+    expect(repo.failRun).not.toHaveBeenCalled();
+    expect(repo.finishRun).toHaveBeenCalled();
+    expect(repo.finishRun.mock.calls[0][1].questionCount).toBe(1);
     logged.mockRestore();
   });
 });

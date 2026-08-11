@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, within, fireEvent, waitFor, act } from "@testing-library/react";
 import { FilesManager } from "./files-manager";
 
 const FILES = [
@@ -127,7 +127,14 @@ describe("FilesManager", () => {
     });
 
     // Quiet the still-pending promise so it cannot resolve into a later test.
-    resolveWorkspaces({ ok: true, json: async () => ({ workspaces: WORKSPACES }) });
+    // Resolving inside act() lets the component's own .then run and its setState
+    // flush while React is still expecting updates. Left bare, this resolution
+    // lands after the test body ends and React warns -- six times across these two
+    // tests. The resolution itself is not optional: the promise must not stay
+    // pending into a later test.
+    await act(async () => {
+      resolveWorkspaces({ ok: true, json: async () => ({ workspaces: WORKSPACES }) });
+    });
   });
 
   // Same regression, the URL-ingest path: the JSON body must not carry
@@ -156,7 +163,14 @@ describe("FilesManager", () => {
     const posted = await waitFor(() => calls.find((c) => c.url.includes("/documents/url"))!);
     expect(posted.body).toEqual({ url: "https://example.com/early" });
 
-    resolveWorkspaces({ ok: true, json: async () => ({ workspaces: WORKSPACES }) });
+    // Resolving inside act() lets the component's own .then run and its setState
+    // flush while React is still expecting updates. Left bare, this resolution
+    // lands after the test body ends and React warns -- six times across these two
+    // tests. The resolution itself is not optional: the promise must not stay
+    // pending into a later test.
+    await act(async () => {
+      resolveWorkspaces({ ok: true, json: async () => ({ workspaces: WORKSPACES }) });
+    });
   });
 
   it("filters the list to unassigned files", async () => {

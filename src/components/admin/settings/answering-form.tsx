@@ -1,6 +1,6 @@
 "use client";
 
-import { PageHeader, PageBody } from "@/components/ui/page-header";
+import { Page } from "@/components/ui/page";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,30 +19,23 @@ const HAS_SPEECH = SPEECH_PROVIDER_IDS.length > 0;
 export function AnsweringForm() {
   const { settings, patch, save, saving, saved, saveError, loadError } = useAdminSettings();
 
-  const header = (
-    <PageHeader
-      className="mx-auto max-w-2xl"
+  // `frame` factors out the page chrome (width, title, description) shared by
+  // every state this component can render. The three returns below exist
+  // because of load-error / loading / content branching, not because the width
+  // needed repeating -- `frame` just avoids repeating the chrome alongside each
+  // branch.
+  const frame = (body: React.ReactNode) => (
+    <Page
+      width="form"
       title="Answering"
       description="How much context an answer is built from, how often it may be asked for, and what shapes it."
-    />
+    >
+      {body}
+    </Page>
   );
 
-  if (loadError) {
-    return (
-      <>
-        {header}
-        <PageBody className="mx-auto max-w-2xl"><Alert tone="danger">{loadError}</Alert></PageBody>
-      </>
-    );
-  }
-  if (!settings) {
-    return (
-      <>
-        {header}
-        <PageBody className="mx-auto max-w-2xl"><Loading label="Loading settings" /></PageBody>
-      </>
-    );
-  }
+  if (loadError) return frame(<Alert tone="danger">{loadError}</Alert>);
+  if (!settings) return frame(<Loading label="Loading settings" />);
 
   const s = settings;
   const num = (key: keyof AdminSettings) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -68,64 +61,59 @@ export function AnsweringForm() {
     });
   }
 
-  return (
-    <>
-      {header}
-      <PageBody className="mx-auto max-w-2xl">
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <Card title="Retrieval" description="How much context an answer is built from.">
-            <div className="flex flex-col gap-4">
-              <Field label="Temperature">
-                {(control) => <Input {...control} type="number" step="0.1" value={s.temperature} onChange={num("temperature")} />}
-              </Field>
-              <Field label="Top-K" description="How many chunks are retrieved per question.">
-                {(control) => <Input {...control} type="number" value={s.topK} onChange={num("topK")} />}
-              </Field>
-              <Field label="Min similarity">
-                {(control) => <Input {...control} type="number" step="0.05" value={s.minSimilarity} onChange={num("minSimilarity")} />}
-              </Field>
-              <Field label="Context token budget">
-                {(control) => <Input {...control} type="number" value={s.contextTokenBudget} onChange={num("contextTokenBudget")} />}
-              </Field>
-            </div>
-          </Card>
+  return frame(
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <Card title="Retrieval" description="How much context an answer is built from.">
+        <div className="flex flex-col gap-4">
+          <Field label="Temperature">
+            {(control) => <Input {...control} type="number" step="0.1" value={s.temperature} onChange={num("temperature")} />}
+          </Field>
+          <Field label="Top-K" description="How many chunks are retrieved per question.">
+            {(control) => <Input {...control} type="number" value={s.topK} onChange={num("topK")} />}
+          </Field>
+          <Field label="Min similarity">
+            {(control) => <Input {...control} type="number" step="0.05" value={s.minSimilarity} onChange={num("minSimilarity")} />}
+          </Field>
+          <Field label="Context token budget">
+            {(control) => <Input {...control} type="number" value={s.contextTokenBudget} onChange={num("contextTokenBudget")} />}
+          </Field>
+        </div>
+      </Card>
 
-          <Card title="Limits" description="Per user, not per install.">
-            <div className="flex flex-col gap-4">
-              <Field label="Chat requests / minute" description="0 turns the limit off.">
-                {(control) => <Input {...control} type="number" value={s.chatRateLimitPerMinute} onChange={num("chatRateLimitPerMinute")} />}
+      <Card title="Limits" description="Per user, not per install.">
+        <div className="flex flex-col gap-4">
+          <Field label="Chat requests / minute" description="0 turns the limit off.">
+            {(control) => <Input {...control} type="number" value={s.chatRateLimitPerMinute} onChange={num("chatRateLimitPerMinute")} />}
+          </Field>
+          <Field label="Chat requests / day" description="0 turns the limit off.">
+            {(control) => <Input {...control} type="number" value={s.chatRateLimitPerDay} onChange={num("chatRateLimitPerDay")} />}
+          </Field>
+          {HAS_SPEECH && (
+            <>
+              <Field label="Voice transcriptions / minute" description="0 turns the limit off.">
+                {(control) => <Input {...control} type="number" value={s.transcribeRateLimitPerMinute} onChange={num("transcribeRateLimitPerMinute")} />}
               </Field>
-              <Field label="Chat requests / day" description="0 turns the limit off.">
-                {(control) => <Input {...control} type="number" value={s.chatRateLimitPerDay} onChange={num("chatRateLimitPerDay")} />}
+              <Field label="Voice transcriptions / day" description="0 turns the limit off.">
+                {(control) => <Input {...control} type="number" value={s.transcribeRateLimitPerDay} onChange={num("transcribeRateLimitPerDay")} />}
               </Field>
-              {HAS_SPEECH && (
-                <>
-                  <Field label="Voice transcriptions / minute" description="0 turns the limit off.">
-                    {(control) => <Input {...control} type="number" value={s.transcribeRateLimitPerMinute} onChange={num("transcribeRateLimitPerMinute")} />}
-                  </Field>
-                  <Field label="Voice transcriptions / day" description="0 turns the limit off.">
-                    {(control) => <Input {...control} type="number" value={s.transcribeRateLimitPerDay} onChange={num("transcribeRateLimitPerDay")} />}
-                  </Field>
-                </>
-              )}
-            </div>
-          </Card>
+            </>
+          )}
+        </div>
+      </Card>
 
-          <Card title="System prompt" description="Prepended to every answer the assistant gives.">
-            <Field label="System prompt">
-              {(control) => (
-                <Textarea {...control} rows={5} value={s.systemPrompt} onChange={(e) => patch({ systemPrompt: e.target.value })} />
-              )}
-            </Field>
-          </Card>
+      <Card title="System prompt" description="Prepended to every answer the assistant gives.">
+        <Field label="System prompt">
+          {(control) => (
+            <Textarea {...control} rows={5} value={s.systemPrompt} onChange={(e) => patch({ systemPrompt: e.target.value })} />
+          )}
+        </Field>
+      </Card>
 
-          {saveError && <Alert tone="danger">{saveError}</Alert>}
-          <div className="flex items-center gap-3">
-            <Button type="submit" loading={saving}>Save</Button>
-            {saved && <span className="text-sm text-success">Saved</span>}
-          </div>
-        </form>
-      </PageBody>
-    </>
+      {saveError && <Alert tone="danger">{saveError}</Alert>}
+      <div className="flex items-center gap-3">
+        <Button type="submit" loading={saving}>Save</Button>
+        {saved && <span className="text-sm text-success">Saved</span>}
+      </div>
+    </form>,
   );
 }

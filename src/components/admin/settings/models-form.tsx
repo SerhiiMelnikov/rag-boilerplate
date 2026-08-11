@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PageHeader, PageBody } from "@/components/ui/page-header";
+import { Page } from "@/components/ui/page";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,30 +100,25 @@ export function ModelsForm() {
   const [pendingClear, setPendingClear] = useState<KeyedProvider | null>(null);
   const [clearing, setClearing] = useState(false);
 
-  const header = (
-    <PageHeader
-      className="mx-auto max-w-2xl"
+  // `frame` factors out the page chrome (width, title, description) shared by
+  // every state this component can render. The first two returns below exist
+  // because of load-error / loading branching, not because the width needed
+  // repeating. The third is not `return frame(...)` like the other Settings
+  // forms' third return: it wraps `frame(...)` alongside a sibling
+  // <ConfirmDialog>, since the key-clear confirmation lives outside the page
+  // frame -- so it was never near-identical to the other two.
+  const frame = (body: React.ReactNode) => (
+    <Page
+      width="form"
       title="Models"
       description="Which model answers each task, and the keys it authenticates with."
-    />
+    >
+      {body}
+    </Page>
   );
 
-  if (loadError) {
-    return (
-      <>
-        {header}
-        <PageBody className="mx-auto max-w-2xl"><Alert tone="danger">{loadError}</Alert></PageBody>
-      </>
-    );
-  }
-  if (!settings) {
-    return (
-      <>
-        {header}
-        <PageBody className="mx-auto max-w-2xl"><Loading label="Loading settings" /></PageBody>
-      </>
-    );
-  }
+  if (loadError) return frame(<Alert tone="danger">{loadError}</Alert>);
+  if (!settings) return frame(<Loading label="Loading settings" />);
 
   const s = settings;
   // `saved` comes from the hook, which only knows about edits routed through `patch`.
@@ -181,8 +176,7 @@ export function ModelsForm() {
 
   return (
     <>
-      {header}
-      <PageBody className="mx-auto max-w-2xl">
+      {frame(
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <Card title="Models">
             <div className="flex flex-col gap-4">
@@ -283,8 +277,8 @@ export function ModelsForm() {
             <Button type="submit" loading={saving}>Save</Button>
             {saved && !dirty && <span className="text-sm text-success">Saved</span>}
           </div>
-        </form>
-      </PageBody>
+        </form>,
+      )}
 
       <ConfirmDialog
         open={pendingClear !== null}

@@ -5,13 +5,18 @@ import { describe, it, expect } from "vitest";
 const css = readFileSync(fileURLToPath(new URL("./globals.css", import.meta.url)), "utf8");
 
 // Pull the `--c-*: R G B;` declarations out of one selector's block.
-function parseTokens(selector: string): Record<string, [number, number, number]> {
-  const start = css.indexOf(`${selector} {`);
+function parseTokens(selector: string, source: string = css): Record<string, [number, number, number]> {
+  // Strip CSS comments first, before locating the block -- exactly as
+  // declaredProperties below does, and for the same reason: a `}` inside a comment
+  // would otherwise truncate the block search. Stripping AFTER the boundary is
+  // found is a no-op, which is how the sibling's first fix attempt went wrong.
+  const strippedSource = source.replace(/\/\*[\s\S]*?\*\//g, "");
+  const start = strippedSource.indexOf(`${selector} {`);
   if (start === -1) throw new Error(`globals.css has no "${selector} {" block`);
-  const end = css.indexOf("}", start);
+  const end = strippedSource.indexOf("}", start);
   if (end === -1) throw new Error(`"${selector}" block is never closed`);
   const out: Record<string, [number, number, number]> = {};
-  for (const m of css.slice(start, end).matchAll(/--c-([a-z0-9-]+):\s*(\d+)\s+(\d+)\s+(\d+)\s*;/g)) {
+  for (const m of strippedSource.slice(start, end).matchAll(/--c-([a-z0-9-]+):\s*(\d+)\s+(\d+)\s+(\d+)\s*;/g)) {
     out[m[1]] = [Number(m[2]), Number(m[3]), Number(m[4])];
   }
   return out;
@@ -131,4 +136,22 @@ it("declares the same set of custom properties in :root and .dark", () => {
   const light = [...declaredProperties(":root")].sort();
   const dark = [...declaredProperties(".dark")].sort();
   expect(dark).toEqual(light);
+});
+
+describe("parseTokens", () => {
+  it("ignores a closing brace inside a comment", () => {
+    // The `}` sits near the START of the comment, with real declarations after it.
+    // This shape catches BOTH broken orderings, not just one:
+    //  - stripping never happens (or happens on the raw source only): the block
+    //    boundary lands on the in-comment `}`, before either declaration.
+    //  - stripping happens AFTER the boundary is located (the sibling's first-attempt
+    //    bug): the boundary index, found on the raw string, is stale once the comment
+    //    text is removed and no longer lines up with the stripped string's offsets --
+    //    with this fixture that stale offset undershoots and the slice comes up empty,
+    //    same as the unstripped case. A fixture with the `}` deep inside the comment
+    //    (e.g. near its end) does not catch this: the stale offset can then overshoot
+    //    far enough to accidentally include every real declaration anyway.
+    const fixture = `:root {\n  /* } stray brace in a comment */\n  --c-a: 1 2 3;\n  --c-b: 4 5 6;\n}`;
+    expect(parseTokens(":root", fixture)).toEqual({ a: [1, 2, 3], b: [4, 5, 6] });
+  });
 });

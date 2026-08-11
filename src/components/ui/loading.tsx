@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 // title popped in after the data and the page appeared to jump.
 //
 // The rule this encodes: draw the frame first, load into it. A caller renders its
-// PageHeader and its Cards immediately and puts this inside, so what arrives is
+// Page and its Cards immediately and puts this inside, so what arrives is
 // content, not the page itself.
 export function Loading({
   label = "Loading",

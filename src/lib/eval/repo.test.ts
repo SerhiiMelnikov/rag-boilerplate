@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { evalRepo } from "./repo";
+import { eq } from "drizzle-orm";
+import { evalRepo, STALE_RUN_MESSAGE } from "./repo";
+import { evalRuns } from "@/lib/db/schema";
 
 describe("evalRepo.listQuestions", () => {
   it("returns questions ordered by createdAt desc", async () => {
@@ -86,9 +88,22 @@ describe("evalRepo.deleteQuestion", () => {
 });
 
 describe("evalRepo.createRun", () => {
-  it("inserts a pending run with the snapshot and returns its id", async () => {
+  it("reaps stale runs, then inserts a pending run with the snapshot and returns its id", async () => {
     let inserted: unknown;
+    let reapCalled = false;
     const db = {
+      // createRun now reaps stale runs before inserting, belt-and-braces for a
+      // caller that only ever creates runs and never lists them (e.g. the
+      // CLI's createRun -> getRun path); the fake must answer this update
+      // chain too, or the call throws before the insert this test is
+      // actually about is ever reached.
+      update: () => ({
+        set: () => ({
+          where: async () => {
+            reapCalled = true;
+          },
+        }),
+      }),
       insert: () => ({
         values: (v: unknown) => {
           inserted = v;
@@ -97,6 +112,7 @@ describe("evalRepo.createRun", () => {
       }),
     } as never;
     const out = await evalRepo.createRun({ topK: 5 } as never, db);
+    expect(reapCalled).toBe(true);
     expect(out).toEqual({ id: "id-1" });
     expect(inserted).toMatchObject({ status: "pending", settingsSnapshot: { topK: 5 } });
   });
@@ -119,7 +135,7 @@ describe("evalRepo.setRunStatus", () => {
 });
 
 describe("evalRepo.finishRun", () => {
-  it("sets status done and stores the aggregate", async () => {
+  it("sets status done, stores the aggregate, and clears any error", async () => {
     let setValues: unknown;
     const aggregate = { avgRecall: 0.9, avgPrecision: 0.8, avgMrr: 0.7, avgJudgeScore: 4.2, passRate: 0.95, questionCount: 10 };
     const db = {
@@ -131,7 +147,13 @@ describe("evalRepo.finishRun", () => {
       }),
     } as never;
     await evalRepo.finishRun("run-1", aggregate as never, db);
-    expect(setValues).toMatchObject({ status: "done", aggregate });
+    // error: null is not optional here -- reapStaleRuns is the only other writer
+    // of `error`, and it can fire on a run that is still alive. Without this,
+    // finishRun would leave a "done" row carrying the reaper's stale message.
+    // toEqual (not toMatchObject) so a dropped `error` key fails this test too,
+    // not just the integration test that proves the full reap-then-finish
+    // sequence against a real row.
+    expect(setValues).toEqual({ status: "done", aggregate, error: null });
   });
 });
 
@@ -152,10 +174,54 @@ describe("evalRepo.failRun", () => {
 });
 
 describe("evalRepo.listRuns", () => {
-  it("returns runs ordered by createdAt desc", async () => {
+  it("reaps stale runs, then returns runs ordered by createdAt desc", async () => {
     const rows = [{ id: "run-1", status: "done", settingsSnapshot: { topK: 5 }, aggregate: null, error: null, createdAt: new Date(0) }];
-    const db = { select: () => ({ from: () => ({ orderBy: async () => rows }) }) } as never;
+    let reapCalled = false;
+    const db = {
+      // listRuns is what heals the admin panel within a single poll tick, so it
+      // must reap before it selects; the fake needs to answer that update chain
+      // or the call throws before the select this test is actually about.
+      update: () => ({
+        set: () => ({
+          where: async () => {
+            reapCalled = true;
+          },
+        }),
+      }),
+      select: () => ({ from: () => ({ orderBy: async () => rows }) }),
+    } as never;
     expect(await evalRepo.listRuns(db)).toEqual(rows);
+    expect(reapCalled).toBe(true);
+  });
+});
+
+describe("evalRepo.reapStaleRuns", () => {
+  it("issues a single UPDATE scoped to pending/running runs whose heartbeat is stale", async () => {
+    let updatedTable: unknown;
+    let setValues: unknown;
+    let whereCondition: unknown;
+    const db = {
+      update: (table: unknown) => {
+        updatedTable = table;
+        return {
+          set: (v: unknown) => {
+            setValues = v;
+            return {
+              where: (cond: unknown) => {
+                whereCondition = cond;
+                return Promise.resolve(undefined);
+              },
+            };
+          },
+        };
+      },
+    } as never;
+    await evalRepo.reapStaleRuns(db);
+    expect(updatedTable).toBe(evalRuns);
+    expect(setValues).toMatchObject({ status: "error", error: STALE_RUN_MESSAGE });
+    // and(...) over an inArray + lt is opaque as a plain object; just confirm a
+    // WHERE was actually supplied rather than the UPDATE running unconditionally.
+    expect(whereCondition).toBeDefined();
   });
 });
 
@@ -186,7 +252,59 @@ describe("evalRepo.getResults", () => {
 });
 
 describe("evalRepo.addResult", () => {
-  it("inserts a fully-populated result", async () => {
+  const input = {
+    runId: "run-1",
+    questionId: "q1",
+    questionText: "What is X?",
+    retrieved: [{ documentId: "d1", filename: "a.pdf", score: 0.9 }],
+    hit: true,
+    recall: 1,
+    precision: 0.5,
+    mrr: 1,
+    judgeScore: 4,
+    judgeRationale: "Good answer",
+    generatedAnswer: "X is Y",
+    error: null,
+  };
+
+  it("inserts a fully-populated result, then touches the run's heartbeat by id", async () => {
+    let inserted: unknown;
+    let updatedTable: unknown;
+    let setValues: unknown;
+    let whereCondition: unknown;
+    const db = {
+      insert: () => ({
+        values: (v: unknown) => {
+          inserted = v;
+          return Promise.resolve(undefined);
+        },
+      }),
+      update: (table: unknown) => {
+        updatedTable = table;
+        return {
+          set: (v: unknown) => {
+            setValues = v;
+            return {
+              where: (cond: unknown) => {
+                whereCondition = cond;
+                return Promise.resolve(undefined);
+              },
+            };
+          },
+        };
+      },
+    } as never;
+    await evalRepo.addResult(input as never, db);
+    expect(inserted).toMatchObject(input);
+    // Not just "some update happened": the right table, with a heartbeat value,
+    // scoped to exactly this run. A dropped `where` (which would touch every
+    // run) or a wrong id would fail this.
+    expect(updatedTable).toBe(evalRuns);
+    expect(setValues).toHaveProperty("heartbeatAt");
+    expect(whereCondition).toEqual(eq(evalRuns.id, input.runId));
+  });
+
+  it("does not let a heartbeat-write failure propagate out of addResult", async () => {
     let inserted: unknown;
     const db = {
       insert: () => ({
@@ -195,22 +313,19 @@ describe("evalRepo.addResult", () => {
           return Promise.resolve(undefined);
         },
       }),
+      update: () => ({
+        set: () => ({
+          where: async () => {
+            throw new Error("heartbeat db down");
+          },
+        }),
+      }),
     } as never;
-    const input = {
-      runId: "run-1",
-      questionId: "q1",
-      questionText: "What is X?",
-      retrieved: [{ documentId: "d1", filename: "a.pdf", score: 0.9 }],
-      hit: true,
-      recall: 1,
-      precision: 0.5,
-      mrr: 1,
-      judgeScore: 4,
-      judgeRationale: "Good answer",
-      generatedAnswer: "X is Y",
-      error: null,
-    };
-    await evalRepo.addResult(input as never, db);
+    // The insert already committed by the time the heartbeat write throws.
+    // addResult must still resolve, not reject -- callers (run.ts) rely on that
+    // to tell "the result is stored" from "it isn't" without a second, spurious
+    // write.
+    await expect(evalRepo.addResult(input as never, db)).resolves.toBeUndefined();
     expect(inserted).toMatchObject(input);
   });
 });

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, within, fireEvent, waitFor, act } from "@testing-library/react";
 import { FilesManager } from "./files-manager";
 
 const FILES = [
@@ -127,7 +127,14 @@ describe("FilesManager", () => {
     });
 
     // Quiet the still-pending promise so it cannot resolve into a later test.
-    resolveWorkspaces({ ok: true, json: async () => ({ workspaces: WORKSPACES }) });
+    // Resolving inside act() lets the component's own .then run and its setState
+    // flush while React is still expecting updates. Left bare, this resolution
+    // lands after the test body ends and React warns -- six times across these two
+    // tests. The resolution itself is not optional: the promise must not stay
+    // pending into a later test.
+    await act(async () => {
+      resolveWorkspaces({ ok: true, json: async () => ({ workspaces: WORKSPACES }) });
+    });
   });
 
   // Same regression, the URL-ingest path: the JSON body must not carry
@@ -156,7 +163,14 @@ describe("FilesManager", () => {
     const posted = await waitFor(() => calls.find((c) => c.url.includes("/documents/url"))!);
     expect(posted.body).toEqual({ url: "https://example.com/early" });
 
-    resolveWorkspaces({ ok: true, json: async () => ({ workspaces: WORKSPACES }) });
+    // Resolving inside act() lets the component's own .then run and its setState
+    // flush while React is still expecting updates. Left bare, this resolution
+    // lands after the test body ends and React warns -- six times across these two
+    // tests. The resolution itself is not optional: the promise must not stay
+    // pending into a later test.
+    await act(async () => {
+      resolveWorkspaces({ ok: true, json: async () => ({ workspaces: WORKSPACES }) });
+    });
   });
 
   it("filters the list to unassigned files", async () => {
@@ -262,7 +276,7 @@ describe("FilesManager", () => {
   });
 
   // Before the actions row learned to wrap (see the "wraps instead of
-  // overflowing" test below and PageHeader itself), a toolbar wide enough to
+  // overflowing" test below and Page itself), a toolbar wide enough to
   // include the URL form pushed the header past the viewport and scrolled the
   // whole page sideways on mobile. Wrapping fixed the overflow, but the URL
   // form still belongs in its own row: it is a second, independent way to add
@@ -293,8 +307,8 @@ describe("FilesManager", () => {
     render(<FilesManager />);
     const upload = await screen.findByLabelText("Upload file");
     // The actual flex-wrap container is this inner div (the one FilesManager
-    // passes as PageHeader's `actions`), not page-actions itself -- see
-    // files-manager.tsx and the comment on PageHeader's own wrapper.
+    // passes as Page's `actions`), not page-actions itself -- see
+    // files-manager.tsx and the comment on Page's own wrapper.
     const actionsRow = upload.closest("div.flex.items-center.gap-2")!;
     expect(actionsRow.className).toContain("flex-wrap");
     expect(actionsRow.className).toContain("justify-end");

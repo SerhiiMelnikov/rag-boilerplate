@@ -118,7 +118,7 @@ export function QuestionsManager() {
     return documents.find((d) => d.id === id)?.filename ?? id;
   }
 
-  // The card first, its rows into it: this and RunsPanel share one PageBody, so
+  // The card first, its rows into it: this and RunsPanel share one Page body, so
   // two bare "Loading..." strings used to sit one above the other with nothing
   // saying which belonged to what.
   if (!rows) {

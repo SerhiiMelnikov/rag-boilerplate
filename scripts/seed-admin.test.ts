@@ -144,15 +144,21 @@ describe("ensureAdminUser", () => {
   });
 
   // scripts/seed-admin.ts is the only path that puts an address in the database
-  // without passing z.string().email(), which rejects padded input in every
-  // form (verified: "\ta@b.com", " a@b.com" and "a@b.com " are all rejected).
-  // A tab or NBSP in a .env would otherwise be stored verbatim and then be
-  // unfindable by every runtime lookup, all of which normalise.
+  // without passing z.string().email(). In production this is defence-in-depth,
+  // not a regression guard on a reachable bug: getUserByEmail and createUser
+  // both already normalise internally (src/lib/auth/users.ts:168,86), so a
+  // padded ADMIN_EMAIL was never actually stored verbatim. What this test
+  // guards is ensureAdminUser's OWN contract — that it normalises its input
+  // itself rather than relying on its callees to keep doing so — using a fake
+  // lookup that is deliberately stricter (exact-match, no trim/lowercase) than
+  // the real getUserByEmail it stands in for. Do not read a failure here as
+  // evidence of a live production bug; it is a guard on this seam's
+  // self-sufficiency, not on end-to-end behaviour.
   it("normalises a padded, mixed-case ADMIN_EMAIL before looking it up or writing it", async () => {
     // Seed the row under the NORMALISED address; pass the padded, mixed-case
     // form in. The injected lookup below is an EXACT match (no trim/lowercase
-    // of its own), modelling what happens if ensureAdminUser forwards the raw
-    // address unnormalised: the lookup misses and nothing is written.
+    // of its own) — deliberately stricter than the real getUserByEmail, so it
+    // only finds the row if ensureAdminUser normalises before calling it.
     const { db, getCurrent } = fakeDbWithRow({
       id: "u1",
       email: "boss@corp.com",

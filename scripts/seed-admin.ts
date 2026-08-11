@@ -53,12 +53,12 @@ export async function ensureAdminUser(
   // which rejects a padded address. Normalise here so the stored value matches
   // what every runtime lookup will search for.
   //
-  // This also closes the only reachable case of a known divergence: migration
-  // 0020 canonicalises with SQL trim(), which is btrim(x, ' ') — spaces only —
-  // while normalizeEmail's JS .trim() also strips tabs, NBSP and BOM. A repair
-  // migration was rejected deliberately: .trim() cannot be reproduced faithfully
-  // in SQL (NBSP, BOM), so it would approximate while looking complete. With
-  // this line a padded address can no longer be written in the first place.
+  // Defence-in-depth, not a bug fix: every callee below (getUserByEmail,
+  // createUser) already normalises internally, so this line changes no
+  // production behaviour today. What it buys is that this function's own
+  // contract — "you may pass it whatever ADMIN_EMAIL contains" — no longer
+  // depends on every callee continuing to normalise on its own behalf; the
+  // seam stays correct even if that assumption ever stops holding.
   const email = normalizeEmail(rawEmail);
 
   const existing = await getUserByEmailFn(email, database);

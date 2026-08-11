@@ -195,6 +195,9 @@ describe("evalRepo.addResult", () => {
           return Promise.resolve(undefined);
         },
       }),
+      update: () => ({
+        set: () => ({ where: async () => undefined }),
+      }),
     } as never;
     const input = {
       runId: "run-1",

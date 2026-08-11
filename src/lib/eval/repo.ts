@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { evalQuestions, evalRuns, evalResults } from "@/lib/db/schema";
 import type { EvalSettingsSnapshot, EvalAggregate, RetrievedDoc } from "./types";
@@ -18,6 +18,7 @@ export interface RunRow {
   aggregate: EvalAggregate | null;
   error: string | null;
   createdAt: Date;
+  heartbeatAt: Date;
 }
 
 export interface ResultRow {
@@ -126,5 +127,11 @@ export const evalRepo: EvalRepo = {
       generatedAnswer: input.generatedAnswer,
       error: input.error,
     });
+    // Every recorded question -- a success or a recorded failure -- is progress.
+    // Deliberately not in a transaction with the insert above: if the result is
+    // stored and this touch fails, the run loses one heartbeat tick and the next
+    // question restores it. Coupling them would let a heartbeat failure roll back
+    // a result that was computed correctly.
+    await database.update(evalRuns).set({ heartbeatAt: sql`now()` }).where(eq(evalRuns.id, input.runId));
   },
 };

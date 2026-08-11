@@ -253,6 +253,11 @@ export const evalRuns = pgTable("eval_runs", {
   aggregate: jsonb("aggregate").$type<EvalAggregate | null>(),
   error: text("error"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Progress, not age. A run is stale when it stops REPORTING, which is what makes
+  // reaping safe for a legitimately long run: a 500-question golden set may take
+  // hours, and reaping it on age alone would mark a live run as failed while it
+  // carries on writing results. addResult moves this on every completed question.
+  heartbeatAt: timestamp("heartbeat_at").notNull().defaultNow(),
 });
 
 export const evalResults = pgTable("eval_results", {

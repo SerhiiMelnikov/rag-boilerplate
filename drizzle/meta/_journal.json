@@ -162,6 +162,13 @@
       "when": 1786098940205,
       "tag": "0022_grounded_default_prompt",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786466372202,
+      "tag": "0023_eval_run_heartbeat",
+      "breakpoints": true
     }
   ]
 }

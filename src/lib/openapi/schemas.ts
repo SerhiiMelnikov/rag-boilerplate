@@ -168,6 +168,7 @@ export const EvalRun = registry.register("EvalRun", z.object({
   aggregate: EvalAggregate.nullable(),
   error: z.string().nullable(),
   createdAt: z.string().datetime(),
+  heartbeatAt: z.string().datetime(),
 }).openapi("EvalRun"));
 
 // Mirrors RetrievedDoc (src/lib/eval/types.ts), embedded in EvalResult.

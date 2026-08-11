@@ -1,0 +1,1 @@
+ALTER TABLE "eval_runs" ADD COLUMN "heartbeat_at" timestamp DEFAULT now() NOT NULL;

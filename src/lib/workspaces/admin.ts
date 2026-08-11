@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { workspaces, userWorkspaces, users, conversations } from "@/lib/db/schema";
 import { selectDefaultId } from "./repo";
@@ -13,12 +13,22 @@ export class DuplicateWorkspaceNameError extends Error {
   constructor() { super("A workspace with that name already exists."); this.name = "DuplicateWorkspaceNameError"; }
 }
 
-export interface WorkspaceRow {
+// Base projection shared by every workspace lookup that does NOT need the
+// userCount aggregate: loadWorkspace's guards below, and listWorkspacesCore's
+// narrow listing. Exported (rather than kept private) so callers like
+// listVisibleWorkspaces can type their dependency against it and never
+// silently reintroduce the join + count(*) scan by widening back to
+// WorkspaceRow.
+export interface WorkspaceSummary {
   id: string;
   name: string;
   description: string | null;
   isDefault: boolean;
   createdAt: Date;
+}
+
+export interface WorkspaceRow extends WorkspaceSummary {
+  userCount: number;
 }
 
 const COLUMNS = {
@@ -29,9 +39,42 @@ const COLUMNS = {
   createdAt: workspaces.createdAt,
 };
 
-// General first, then alphabetical.
-export async function listWorkspaces(database = defaultDb): Promise<WorkspaceRow[]> {
+// Narrow projection: no join, no aggregate — just an indexed scan over
+// workspaces. For callers that never read userCount, most notably the chat
+// header's GET /api/workspaces path (listVisibleWorkspaces), which every user
+// hits on every page load and cannot justify paying for a LEFT JOIN over
+// user_workspaces plus a full count(*) of users for a field it discards.
+export async function listWorkspacesCore(database = defaultDb): Promise<WorkspaceSummary[]> {
   return database.select(COLUMNS).from(workspaces).orderBy(desc(workspaces.isDefault), asc(workspaces.name));
+}
+
+// General first, then alphabetical. userCount follows the rule settled in the
+// spec, which mirrors listWorkspaceUsers' `granted` flag below: the default
+// workspace's access is implicit for every user, so its count is every row in
+// `users` — unfiltered, including blocked accounts, exactly what
+// listWorkspaceUsers counts — while every other workspace's count is its
+// explicit grants in user_workspaces. One query, one aggregate: the total-users
+// figure is a scalar subquery the planner evaluates once per group, not a
+// second round trip, so this stays N+1-free.
+//
+// This is the admin listing only — it carries the cost of the join + count(*)
+// scan on every call. Callers that don't read userCount should use
+// listWorkspacesCore instead (see its comment).
+export async function listWorkspaces(database = defaultDb): Promise<WorkspaceRow[]> {
+  // The `::int` casts are load-bearing, not decoration: sql<number> is an
+  // unchecked type assertion, not a runtime coercion, and postgres.js returns
+  // COUNT(*)/COUNT(col) as a string unless cast. Drop either cast and this
+  // still compiles, but userCount becomes a string at runtime while its type
+  // still claims number. The only test that reads this field is
+  // list.integration.test.ts, which is gated behind RUN_INTEGRATION=1 and
+  // does not run in the default suite — so a dropped cast would not fail CI.
+  const userCount = sql<number>`case when ${workspaces.isDefault} then (select count(*)::int from ${users}) else count(${userWorkspaces.userId})::int end`;
+  return database
+    .select({ ...COLUMNS, userCount })
+    .from(workspaces)
+    .leftJoin(userWorkspaces, eq(userWorkspaces.workspaceId, workspaces.id))
+    .groupBy(workspaces.id)
+    .orderBy(desc(workspaces.isDefault), asc(workspaces.name));
 }
 
 // Race-safe uniqueness: the unique index decides. No returned row = name taken.
@@ -49,7 +92,7 @@ export async function createWorkspace(
 }
 
 // Shared guard: load the target or 404.
-async function loadWorkspace(id: string, database: typeof defaultDb): Promise<WorkspaceRow> {
+async function loadWorkspace(id: string, database: typeof defaultDb): Promise<WorkspaceSummary> {
   const [row] = await database.select(COLUMNS).from(workspaces).where(eq(workspaces.id, id)).limit(1);
   if (!row) throw new WorkspaceNotFoundError();
   return row;

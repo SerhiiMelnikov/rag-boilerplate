@@ -143,6 +143,50 @@ describe("ensureAdminUser", () => {
     await expect(verifyPassword("the-real-admin-password", row.passwordHash)).resolves.toBe(true);
   });
 
+  // scripts/seed-admin.ts is the only path that puts an address in the database
+  // without passing z.string().email(). In production this is defence-in-depth,
+  // not a regression guard on a reachable bug: getUserByEmail and createUser
+  // both already normalise internally (src/lib/auth/users.ts:168,86), so a
+  // padded ADMIN_EMAIL was never actually stored verbatim. What this test
+  // guards is ensureAdminUser's OWN contract — that it normalises its input
+  // itself rather than relying on its callees to keep doing so — using a fake
+  // lookup that is deliberately stricter (exact-match, no trim/lowercase) than
+  // the real getUserByEmail it stands in for. Do not read a failure here as
+  // evidence of a live production bug; it is a guard on this seam's
+  // self-sufficiency, not on end-to-end behaviour.
+  it("normalises a padded, mixed-case ADMIN_EMAIL before looking it up or writing it", async () => {
+    // Seed the row under the NORMALISED address; pass the padded, mixed-case
+    // form in. The injected lookup below is an EXACT match (no trim/lowercase
+    // of its own) — deliberately stricter than the real getUserByEmail, so it
+    // only finds the row if ensureAdminUser normalises before calling it.
+    const { db, getCurrent } = fakeDbWithRow({
+      id: "u1",
+      email: "boss@corp.com",
+      passwordHash: await hashPassword("old-password"),
+      role: "user",
+      isSuperAdmin: false,
+      emailVerifiedAt: null,
+    });
+
+    const outcome = await ensureAdminUser("\tBoss@Corp.com ", "the-real-admin-password", {
+      database: db,
+      getUserByEmailFn: async (email: string) => {
+        const row = getCurrent();
+        return row.email === email ? { ...row } : null;
+      },
+      createUserFn: async () => {
+        throw new Error("must not create a new row — the row already existed");
+      },
+    });
+
+    expect(outcome).toBe("updated");
+    const row = getCurrent();
+    expect(row.role).toBe("admin");
+    expect(row.isSuperAdmin).toBe(true);
+    expect(row.emailVerifiedAt).not.toBeNull();
+    await expect(verifyPassword("the-real-admin-password", row.passwordHash)).resolves.toBe(true);
+  });
+
   it("creates a fresh verified super-admin when no row exists yet", async () => {
     const updates: Array<{ patch: unknown }> = [];
     const db = {

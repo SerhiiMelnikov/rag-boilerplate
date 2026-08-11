@@ -107,10 +107,10 @@ describe("FilesManager", () => {
     const workspacesResponse = new Promise<{ ok: true; json: () => Promise<{ workspaces: typeof WORKSPACES }> }>((resolve) => {
       resolveWorkspaces = resolve;
     });
-    global.fetch = vi.fn(async (url: string) => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       if (String(url).includes("workspaces")) return workspacesResponse; // never resolves during this test
       return { ok: true, json: async () => ({ files: FILES }) };
-    }) as unknown as typeof fetch;
+    }));
 
     render(<FilesManager />);
     await screen.findByText("report.pdf"); // the files load does not depend on the workspaces fetch
@@ -140,12 +140,12 @@ describe("FilesManager", () => {
       resolveWorkspaces = resolve;
     });
     const calls: { url: string; body: unknown }[] = [];
-    global.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
       if (String(url).includes("workspaces")) return workspacesResponse; // never resolves during this test
       if (String(url) === "/api/admin/files") return { ok: true, json: async () => ({ files: FILES }) };
       return { ok: true, json: async () => ({}) };
-    }) as unknown as typeof fetch;
+    }));
 
     render(<FilesManager />);
     await screen.findByText("report.pdf");
@@ -196,12 +196,12 @@ describe("FilesManager", () => {
   // URL ingest, not just on a file upload.
   it("sends the chosen upload workspaces with an ingested URL", async () => {
     const calls: { url: string; body: unknown }[] = [];
-    global.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
       return String(url).includes("workspaces")
         ? { ok: true, json: async () => ({ workspaces: WORKSPACES }) }
         : { ok: true, json: async () => ({ files: [] }) };
-    }) as unknown as typeof fetch;
+    }));
 
     render(<FilesManager />);
     const trigger = await screen.findByLabelText("Workspaces for upload");
@@ -443,9 +443,9 @@ describe("FilesManager", () => {
 
   describe("pagination", () => {
     beforeEach(() => {
-      global.fetch = vi.fn(async (url: string) => (String(url).includes("workspaces")
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => (String(url).includes("workspaces")
         ? { ok: true, json: async () => ({ workspaces: WORKSPACES }) }
-        : { ok: true, json: async () => ({ files: PAGED_FILES }) })) as unknown as typeof fetch;
+        : { ok: true, json: async () => ({ files: PAGED_FILES }) })));
     });
 
     it("renders one page of ten and says how far through the list it is", async () => {

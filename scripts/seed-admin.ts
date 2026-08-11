@@ -2,7 +2,7 @@ import "dotenv/config";
 import { eq } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
-import { createUser, getUserByEmail } from "@/lib/auth/users";
+import { createUser, getUserByEmail, normalizeEmail } from "@/lib/auth/users";
 import { hashPassword } from "@/lib/auth/password";
 import { ensureDefaultWorkspace } from "@/lib/workspaces/ensure-default";
 import { domainOf } from "@/lib/auth/seed-domains";
@@ -40,7 +40,7 @@ export interface EnsureAdminDeps {
 // The same trap catches an ordinary admin who registers, forgets to click the
 // link, and runs this script to "fix" it.
 export async function ensureAdminUser(
-  email: string,
+  rawEmail: string,
   password: string,
   deps: EnsureAdminDeps = {},
 ): Promise<"updated" | "created"> {
@@ -49,13 +49,26 @@ export async function ensureAdminUser(
   const createUserFn = deps.createUserFn ?? createUser;
   const hashPasswordFn = deps.hashPasswordFn ?? hashPassword;
 
+  // The only path that reaches the database without passing z.string().email(),
+  // which rejects a padded address. Normalise here so the stored value matches
+  // what every runtime lookup will search for.
+  //
+  // Defence-in-depth, not a bug fix: every callee below (getUserByEmail,
+  // createUser) already normalises internally, so this line changes no
+  // production behaviour today. What it buys is that this function's own
+  // contract — "you may pass it whatever ADMIN_EMAIL contains" — no longer
+  // depends on every callee continuing to normalise on its own behalf; the
+  // seam stays correct even if that assumption ever stops holding.
+  const email = normalizeEmail(rawEmail);
+
   const existing = await getUserByEmailFn(email, database);
   if (existing) {
     const passwordHash = await hashPasswordFn(password);
-    // By id, not by email: getUserByEmailFn already normalised its lookup, so
-    // `existing` can be a row whose stored email no longer matches the RAW
-    // (possibly mixed-case) ADMIN_EMAIL — e.g. once migration 0020 has
-    // lower-cased it. `users.email` is a case-sensitive `text` column, so
+    // By id, not by email: `email` above is normalised, but `existing.email` —
+    // the value actually stored on the row — is not guaranteed to match it. A
+    // row created before migration 0020 lower-cased stored addresses, or before
+    // this function started normalising its input, can still hold a mixed-case
+    // address today. `users.email` is a case-sensitive `text` column, so
     // `.where(eq(users.email, email))` would then match zero rows: no
     // password, no role, no isSuperAdmin, while this function still reports
     // "updated". The id from the row already fetched has no such mismatch.

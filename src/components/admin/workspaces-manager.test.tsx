@@ -1,18 +1,21 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { WorkspacesManager, editIntent } from "./workspaces-manager";
 
 // Bigger than one page, for the same reason as the other two admin screens.
 const PAGED_WORKSPACES = Array.from({ length: 25 }, (_, i) => ({
   id: `p${i}`, name: `Paged ${String(i).padStart(2, "0")}`, description: null,
-  isDefault: false, createdAt: `2026-02-${String(i + 1).padStart(2, "0")}T00:00:00Z`,
+  isDefault: false, createdAt: `2026-02-${String(i + 1).padStart(2, "0")}T00:00:00Z`, userCount: 0,
 }));
 
+// General's count (5) intentionally differs from its own grant rows (there are
+// none — access is implicit), so a rendering bug that swapped in a grant count
+// instead of the total-users figure would show 0, not 5.
 const WORKSPACES = [
-  { id: "w1", name: "General", description: null, isDefault: true, createdAt: "2026-01-01T00:00:00Z" },
-  { id: "w2", name: "Marketing", description: "team space", isDefault: false, createdAt: "2026-01-02T00:00:00Z" },
+  { id: "w1", name: "General", description: null, isDefault: true, createdAt: "2026-01-01T00:00:00Z", userCount: 5 },
+  { id: "w2", name: "Marketing", description: "team space", isDefault: false, createdAt: "2026-01-02T00:00:00Z", userCount: 2 },
 ];
 
 beforeEach(() => {
@@ -26,6 +29,19 @@ describe("WorkspacesManager", () => {
     expect(await screen.findByText("Marketing")).toBeInTheDocument();
     expect(screen.getByText("General")).toBeInTheDocument();
     expect(screen.getByText("default")).toBeInTheDocument();
+  });
+
+  // General's 5 is every user (access is implicit); Marketing's 2 is its own
+  // explicit grants. Distinct numbers so a column that rendered the wrong
+  // field for either row would be caught here.
+  it("shows how many users can reach each workspace", async () => {
+    render(<WorkspacesManager />);
+    await screen.findByText("Marketing");
+    const rows = screen.getAllByRole("row");
+    const generalRow = rows.find((r) => r.textContent?.includes("General"))!;
+    const marketingRow = rows.find((r) => r.textContent?.includes("Marketing"))!;
+    expect(within(generalRow).getByText("5")).toBeInTheDocument();
+    expect(within(marketingRow).getByText("2")).toBeInTheDocument();
   });
 
   it("does not offer delete for the General workspace", async () => {

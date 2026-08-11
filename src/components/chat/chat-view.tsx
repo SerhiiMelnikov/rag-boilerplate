@@ -88,13 +88,15 @@ export function ChatView({
     setSpeakAnswers(next);
   }
 
-  // Bumped at the start of every loadHistory() call. A monotonic counter, not a
-  // boolean "is this the latest call" flag: a flag is only good for telling the
-  // second of two calls apart from the first, and is defeated the moment a THIRD
-  // call supersedes the second before the second's own response lands — the
-  // second would then see the flag still saying "I'm latest" and write anyway.
-  // recorder.ts's `generation` counter documents the identical reasoning for
-  // start() superseding start().
+  // Bumped at the start of every loadHistory() call, and also directly by submit()
+  // and submitVoice() right before they send a new turn — invalidating any load
+  // already in flight without waiting for the post-turn loadHistory call to do it.
+  // A monotonic counter, not a boolean "is this the latest call" flag: a flag is
+  // only good for telling the second of two calls apart from the first, and is
+  // defeated the moment a THIRD call supersedes the second before the second's
+  // own response lands — the second would then see the flag still saying "I'm
+  // latest" and write anyway. recorder.ts's `generation` counter documents the
+  // identical reasoning for start() superseding start().
   const loadHistorySeq = useRef(0);
 
   const loadHistory = useCallback(async () => {
@@ -183,6 +185,13 @@ export function ChatView({
   async function submit() {
     const id = await ensureConversation();
     if (!id) return;
+    // A new turn supersedes any history load still in flight — including the one
+    // the failed turn started. loadHistory only compares itself against other
+    // loadHistory calls, so without this a pending GET resolves into the retry
+    // and drops its assistant entry, which regresses turnKey and re-speaks the
+    // previous answer. Bumped only once sending is certain: an abandoned
+    // ensureConversation must not discard a legitimate in-flight load.
+    loadHistorySeq.current++;
     handleSubmit(undefined, { body: { conversationId: id } });
     setHasLiveTurn(true);
   }
@@ -215,6 +224,7 @@ export function ChatView({
     }
     const id = await ensureConversation();
     if (!id) return;
+    loadHistorySeq.current++;
     void append({ role: "user", content: text }, { body: { conversationId: id } });
     // Must be set here too, or a spoken question's answer is never read aloud —
     // the two halves of this feature meet exactly at this line.

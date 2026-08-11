@@ -439,6 +439,50 @@ describe("ChatView", () => {
     expect(screen.queryByText("STALE post-failure snapshot")).toBeNull();
   });
 
+  // The same guard, against the other kind of superseding event. A submit is not
+  // a loadHistory, so before this fix the sequence counter never moved and an
+  // in-flight, post-failure GET could still land its snapshot on top of the
+  // retry the user had already started.
+  it("discards an in-flight history load when a new submit supersedes it", async () => {
+    const resolvers: Array<(body: unknown) => void> = [];
+    let historyCallCount = 0;
+    chatState.input = "why?";
+    stubFetch(async (url) => {
+      if (url === "/api/conversations/c1") {
+        const mine = historyCallCount++;
+        return new Promise<Response>((resolve) => {
+          resolvers[mine] = (body) => resolve(new Response(JSON.stringify(body), { status: 200 }));
+        });
+      }
+      return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+    });
+
+    const { rerender } = render(<ChatView initialConversationId="c1" />);
+    // Settle the mount-time load (call 0) before the racing call below.
+    resolvers[0]({ messages: [] });
+    await waitFor(() => expect(setMessagesMock).toHaveBeenCalledWith([]));
+
+    // The error-triggered load fires and is left pending.
+    chatState.status = "streaming";
+    rerender(<ChatView initialConversationId="c1" />);
+    chatState.status = "error";
+    rerender(<ChatView initialConversationId="c1" />);
+    await waitFor(() => expect(historyCallCount).toBe(2));
+
+    // The user retries while that GET is still in flight.
+    setMessagesMock.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(handleSubmitMock).toHaveBeenCalled());
+
+    // The stale GET now resolves. Without the bump its setMessages lands here.
+    await act(async () => {
+      resolvers[1]({ messages: [{ id: "stale-1", role: "assistant", content: "STALE post-failure snapshot" }] });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(setMessagesMock).not.toHaveBeenCalled();
+  });
+
   it("says so when the conversation could not be created", async () => {
     // Before: `if (!res.ok) return;` — the user pressed Send on their first message
     // and absolutely nothing happened, on screen or in the transcript's error slot.

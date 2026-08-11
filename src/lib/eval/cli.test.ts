@@ -101,6 +101,18 @@ describe("runEvalCli", () => {
     expect(text).toContain("no   0%      0%      0%      3/5    Where is the office?");
   });
 
+  // Guards the CLI side of the questions round trip: cli.ts already paid for
+  // listQuestions() once (for the guard above and the "Running N question(s)"
+  // message), so runEval must receive that same array instead of being left
+  // to fetch its own copy.
+  it("passes the already-fetched questions through to runEval", async () => {
+    const h = harness();
+    const code = await runEvalCli([], h.deps);
+    expect(code).toBe(0);
+    const questions = await h.repo.listQuestions.mock.results[0].value;
+    expect(h.deps.runEval).toHaveBeenCalledWith("run-1", SETTINGS, { questions });
+  });
+
   it("--json writes one JSON object and nothing else to stdout", async () => {
     const h = harness();
     const code = await runEvalCli(["--json"], h.deps);

@@ -100,6 +100,31 @@ describe("runEvaluation", () => {
     );
   });
 
+  it("uses pre-fetched questions instead of querying again", async () => {
+    const repo = fakeRepo();
+    await runEvaluation("run-1", settings, {
+      repo: asRepo(repo),
+      questions: [{ id: "q1", question: "what is a cat?", expectedDocumentIds: ["d1"], referenceAnswer: null, createdAt: new Date(0) }],
+      prepareContextFn: vi.fn(async () => ({ hasContext: true, context: "cats are animals", sources: [{ documentId: "d1", filename: "cats.md", chunkId: "c1", score: 0.9 }] })),
+      generateAnswer: vi.fn(async () => "A cat is an animal."),
+      judge: vi.fn(async () => ({ score: 5, rationale: "grounded" })),
+    });
+    expect(repo.listQuestions).not.toHaveBeenCalled();
+    expect(repo.addResult).toHaveBeenCalledTimes(1);
+  });
+
+  // The admin panel's background path supplies none, and must keep working.
+  it("still fetches its own questions when none are supplied", async () => {
+    const repo = fakeRepo();
+    await runEvaluation("run-1", settings, {
+      repo: asRepo(repo),
+      prepareContextFn: vi.fn(async () => ({ hasContext: true, context: "cats are animals", sources: [{ documentId: "d1", filename: "cats.md", chunkId: "c1", score: 0.9 }] })),
+      generateAnswer: vi.fn(async () => "A cat is an animal."),
+      judge: vi.fn(async () => ({ score: 5, rationale: "grounded" })),
+    });
+    expect(repo.listQuestions).toHaveBeenCalled();
+  });
+
   it("keeps going when the failure row itself cannot be written", async () => {
     // Silence the deliberate console.error this path emits.
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});

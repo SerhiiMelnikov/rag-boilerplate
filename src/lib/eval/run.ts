@@ -5,7 +5,7 @@ import { getChatModel } from "@/lib/providers";
 import { buildAnswerSystemPrompt } from "@/lib/chat/answer-prompt";
 import { computeRetrievalMetrics, aggregateResults, type AggregateInput } from "./metrics";
 import { judgeAnswer } from "./judge";
-import { evalRepo, type EvalRepo } from "./repo";
+import { evalRepo, type EvalRepo, type QuestionRow } from "./repo";
 import type { RetrievedDoc } from "./types";
 
 export interface EvalRunDeps {
@@ -14,6 +14,14 @@ export interface EvalRunDeps {
   generateAnswer?: (system: string, question: string, settings: RuntimeSettings) => Promise<string>;
   judge?: typeof judgeAnswer;
   repo?: EvalRepo;
+  /**
+   * Pre-fetched golden questions, so a caller that already called
+   * listQuestions() (e.g. the CLI, for its zero-question guard and its
+   * "Running N question(s)" message) doesn't pay for the round trip twice.
+   * Omit to have runEvaluation fetch them itself — the admin panel's
+   * background path does this.
+   */
+  questions?: QuestionRow[];
 }
 
 // Unique documentIds in retrieval rank order (retrieval returns one entry per chunk).
@@ -50,7 +58,7 @@ export async function runEvaluation(runId: string, settings: RuntimeSettings, de
 
   try {
     await repo.setRunStatus(runId, "running");
-    const questions = await repo.listQuestions();
+    const questions = deps.questions ?? (await repo.listQuestions());
     const forAgg: AggregateInput[] = [];
     for (const q of questions) {
       try {

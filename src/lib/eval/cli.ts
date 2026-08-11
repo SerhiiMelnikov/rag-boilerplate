@@ -12,15 +12,16 @@ export interface EvalCliDeps {
   err: (line: string) => void;
 }
 
-interface ParsedArgs { json: boolean; minJudge: number | null; minRecall: number | null }
+interface ParsedArgs { json: boolean; minJudge: number | null; minRecall: number | null; help: boolean }
 
 const USAGE = "Usage: npm run eval -- [--json] [--min-judge <0-5>] [--min-recall <0-1>]";
 
 // Returns the parsed flags, or a message explaining what was wrong with them.
 function parseArgs(argv: string[]): ParsedArgs | { error: string } {
-  const parsed: ParsedArgs = { json: false, minJudge: null, minRecall: null };
+  const parsed: ParsedArgs = { json: false, minJudge: null, minRecall: null, help: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+    if (arg === "--help" || arg === "-h") { parsed.help = true; continue; }
     if (arg === "--json") { parsed.json = true; continue; }
     if (arg === "--min-judge" || arg === "--min-recall") {
       const raw = argv[++i];
@@ -72,6 +73,7 @@ export async function runEvalCli(argv: string[], deps: EvalCliDeps): Promise<num
 
   const args = parseArgs(argv);
   if ("error" in args) { deps.err(args.error); return 1; }
+  if (args.help) { deps.out(USAGE); return 0; }
 
   // Everything past this point talks to the database and to model providers.
   // A blip in either must land CI on a clean exit code + diagnostic, never a
@@ -89,11 +91,16 @@ export async function runEvalCli(argv: string[], deps: EvalCliDeps): Promise<num
     const { id } = await repo.createRun(buildSettingsSnapshot(settings));
     // Diagnostics go to stderr so --json keeps stdout parseable.
     deps.err(`Running ${questions.length} question(s) as run ${id}...`);
-    await runEval(id, settings);
+    await runEval(id, settings, { questions });
 
     const run = await repo.getRun(id);
     if (!run) { deps.err(`Run ${id} disappeared while it was executing.`); return 1; }
-    if (run.status === "error") { deps.err(`Run failed: ${run.error ?? "unknown error"}`); return 1; }
+    if (run.status === "error") {
+      const message = run.error ?? "unknown error";
+      deps.err(`Run failed: ${message}`);
+      if (args.json) deps.out(JSON.stringify({ status: "error", error: message }));
+      return 1;
+    }
     const results = await repo.getResults(id);
 
     if (args.json) {
@@ -114,9 +121,12 @@ export async function runEvalCli(argv: string[], deps: EvalCliDeps): Promise<num
     if (failures.length) { for (const f of failures) deps.err(`Threshold not met: ${f}`); return 1; }
     return 0;
   } catch (e) {
-    // Never let this reach deps.out — a stray line on stdout breaks --json piping.
+    // The human-readable diagnostic never reaches deps.out — a stray line on
+    // stdout breaks --json piping — but --json itself needs a parseable line
+    // there so a consumer can tell a crashed run from an empty one.
     const message = e instanceof Error ? e.message : String(e);
     deps.err(`Evaluation run failed unexpectedly: ${message}`);
+    if (args.json) deps.out(JSON.stringify({ status: "error", error: message }));
     return 1;
   }
 }

@@ -40,6 +40,49 @@ function harness(repoOver: Record<string, unknown> = {}) {
 }
 
 describe("runEvalCli", () => {
+  it("--help prints usage on stdout and exits 0", async () => {
+    const { out, err, deps } = harness();
+    expect(await runEvalCli(["--help"], deps)).toBe(0);
+    expect(out.join("\n")).toContain("Usage: npm run eval");
+    expect(err).toEqual([]);
+  });
+
+  it("-h behaves the same as --help", async () => {
+    const { out, deps } = harness();
+    expect(await runEvalCli(["-h"], deps)).toBe(0);
+    expect(out.join("\n")).toContain("Usage: npm run eval");
+  });
+
+  // Without this a pipeline consuming --json gets silence on failure, and cannot
+  // tell a crashed run from one that simply produced no output.
+  it("--json emits a parseable error object when the run finishes with status error", async () => {
+    const { out, deps } = harness({
+      getRun: vi.fn(async () => ({ id: "run-1", status: "error", settingsSnapshot: SETTINGS, aggregate: null, error: "embed failed", createdAt: new Date(0) })),
+    });
+    expect(await runEvalCli(["--json"], deps)).toBe(1);
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0])).toEqual({ status: "error", error: "embed failed" });
+  });
+
+  it("--json emits a parseable error object when the run throws", async () => {
+    const { out, deps } = harness();
+    deps.runEval = vi.fn(async () => { throw new Error("provider exploded"); });
+    expect(await runEvalCli(["--json"], deps)).toBe(1);
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0]).status).toBe("error");
+    expect(JSON.parse(out[0]).error).toContain("provider exploded");
+  });
+
+  // The human output path must not start emitting JSON as a side effect.
+  it("without --json an errored run still writes nothing to stdout", async () => {
+    const { out, err, deps } = harness({
+      getRun: vi.fn(async () => ({ id: "run-1", status: "error", settingsSnapshot: SETTINGS, aggregate: null, error: "embed failed", createdAt: new Date(0) })),
+    });
+    expect(await runEvalCli([], deps)).toBe(1);
+    expect(out).toEqual([]);
+    expect(err.join("\n")).toContain("embed failed");
+  });
+
   it("runs an evaluation and reports the aggregate and one row per question", async () => {
     const h = harness();
     const code = await runEvalCli([], h.deps);
@@ -127,15 +170,17 @@ describe("runEvalCli", () => {
   // Every awaited repo call must sit inside the guard, not just the two above:
   // a refactor that moved one outside would turn a database blip back into an
   // unhandled rejection, which is the failure this module exists to prevent.
-  // --json is requested throughout, since a stray line on stdout is what would
-  // break a consumer piping the output.
+  // --json is requested throughout: any of these lands in the same outer catch
+  // as "the run throws" above, so it must produce the same single parseable
+  // error line on stdout rather than staying silent.
   it.each(["listQuestions", "createRun", "getRun", "getResults"] as const)(
     "resolves to 1 instead of rejecting when repo.%s throws",
     async (method) => {
       const h = harness({ [method]: vi.fn(async () => { throw new Error(`${method} exploded`); }) });
       await expect(runEvalCli(["--json"], h.deps)).resolves.toBe(1);
       expect(h.err.join("\n")).toContain(`${method} exploded`);
-      expect(h.out.join("\n")).toBe("");
+      expect(h.out).toHaveLength(1);
+      expect(JSON.parse(h.out[0])).toEqual({ status: "error", error: `${method} exploded` });
     },
   );
 
@@ -144,6 +189,7 @@ describe("runEvalCli", () => {
     h.deps.getSettings = async () => { throw new Error("settings unavailable"); };
     await expect(runEvalCli(["--json"], h.deps)).resolves.toBe(1);
     expect(h.err.join("\n")).toContain("settings unavailable");
-    expect(h.out.join("\n")).toBe("");
+    expect(h.out).toHaveLength(1);
+    expect(JSON.parse(h.out[0])).toEqual({ status: "error", error: "settings unavailable" });
   });
 });

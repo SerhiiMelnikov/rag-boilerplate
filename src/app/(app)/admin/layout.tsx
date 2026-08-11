@@ -9,10 +9,11 @@ import { activeGroup } from "@/components/shell/nav-config";
 // One layout gives all eight admin screens the same panel. Per-page chrome was how
 // they drifted apart in the first place, and how one of them could go missing.
 //
-// No auth check here on purpose: each admin page still calls its own guard, but
-// it is requirePageAdmin/requirePageSuperAdmin from ../guards -- the same
-// database-backed check the (app) layout above already runs, not next-auth's
-// `auth()`. This layout adds no additional guard and changes no authorisation.
+// No auth check here on purpose: each admin page still calls its own guard —
+// requirePageAdmin/requirePageSuperAdmin, defined in src/app/(app)/guards.ts —
+// the same database-backed check the (app) layout above already runs, not
+// next-auth's `auth()`. This layout adds no additional guard and changes no
+// authorisation.
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const group = activeGroup(pathname);

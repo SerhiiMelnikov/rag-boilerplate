@@ -88,13 +88,15 @@ export function ChatView({
     setSpeakAnswers(next);
   }
 
-  // Bumped at the start of every loadHistory() call. A monotonic counter, not a
-  // boolean "is this the latest call" flag: a flag is only good for telling the
-  // second of two calls apart from the first, and is defeated the moment a THIRD
-  // call supersedes the second before the second's own response lands — the
-  // second would then see the flag still saying "I'm latest" and write anyway.
-  // recorder.ts's `generation` counter documents the identical reasoning for
-  // start() superseding start().
+  // Bumped at the start of every loadHistory() call, and also directly by submit()
+  // and submitVoice() right before they send a new turn — invalidating any load
+  // already in flight without waiting for the post-turn loadHistory call to do it.
+  // A monotonic counter, not a boolean "is this the latest call" flag: a flag is
+  // only good for telling the second of two calls apart from the first, and is
+  // defeated the moment a THIRD call supersedes the second before the second's
+  // own response lands — the second would then see the flag still saying "I'm
+  // latest" and write anyway. recorder.ts's `generation` counter documents the
+  // identical reasoning for start() superseding start().
   const loadHistorySeq = useRef(0);
 
   const loadHistory = useCallback(async () => {

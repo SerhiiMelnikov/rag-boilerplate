@@ -64,10 +64,11 @@ export async function ensureAdminUser(
   const existing = await getUserByEmailFn(email, database);
   if (existing) {
     const passwordHash = await hashPasswordFn(password);
-    // By id, not by email: getUserByEmailFn already normalised its lookup, so
-    // `existing` can be a row whose stored email no longer matches the RAW
-    // (possibly mixed-case) ADMIN_EMAIL — e.g. once migration 0020 has
-    // lower-cased it. `users.email` is a case-sensitive `text` column, so
+    // By id, not by email: `email` above is normalised, but `existing.email` —
+    // the value actually stored on the row — is not guaranteed to match it. A
+    // row created before migration 0020 lower-cased stored addresses, or before
+    // this function started normalising its input, can still hold a mixed-case
+    // address today. `users.email` is a case-sensitive `text` column, so
     // `.where(eq(users.email, email))` would then match zero rows: no
     // password, no role, no isSuperAdmin, while this function still reports
     // "updated". The id from the row already fetched has no such mismatch.

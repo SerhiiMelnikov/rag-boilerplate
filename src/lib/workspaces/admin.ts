@@ -61,6 +61,13 @@ export async function listWorkspacesCore(database = defaultDb): Promise<Workspac
 // scan on every call. Callers that don't read userCount should use
 // listWorkspacesCore instead (see its comment).
 export async function listWorkspaces(database = defaultDb): Promise<WorkspaceRow[]> {
+  // The `::int` casts are load-bearing, not decoration: sql<number> is an
+  // unchecked type assertion, not a runtime coercion, and postgres.js returns
+  // COUNT(*)/COUNT(col) as a string unless cast. Drop either cast and this
+  // still compiles, but userCount becomes a string at runtime while its type
+  // still claims number. The only test that reads this field is
+  // list.integration.test.ts, which is gated behind RUN_INTEGRATION=1 and
+  // does not run in the default suite — so a dropped cast would not fail CI.
   const userCount = sql<number>`case when ${workspaces.isDefault} then (select count(*)::int from ${users}) else count(${userWorkspaces.userId})::int end`;
   return database
     .select({ ...COLUMNS, userCount })

@@ -13,12 +13,21 @@ export class DuplicateWorkspaceNameError extends Error {
   constructor() { super("A workspace with that name already exists."); this.name = "DuplicateWorkspaceNameError"; }
 }
 
-export interface WorkspaceRow {
+// Base projection shared by every workspace lookup that does NOT need the
+// userCount aggregate: loadWorkspace's guards below, and listWorkspacesCore's
+// narrow listing. Exported (rather than kept private) so callers like
+// listVisibleWorkspaces can type their dependency against it and never
+// silently reintroduce the join + count(*) scan by widening back to
+// WorkspaceRow.
+export interface WorkspaceSummary {
   id: string;
   name: string;
   description: string | null;
   isDefault: boolean;
   createdAt: Date;
+}
+
+export interface WorkspaceRow extends WorkspaceSummary {
   userCount: number;
 }
 
@@ -30,10 +39,14 @@ const COLUMNS = {
   createdAt: workspaces.createdAt,
 };
 
-// loadWorkspace (below) only ever needs the target's identity/isDefault flag for
-// its guards, not the aggregate — that column is listWorkspaces-only, and
-// computing it on every rename/delete/grant check would be pure waste.
-type WorkspaceTarget = Omit<WorkspaceRow, "userCount">;
+// Narrow projection: no join, no aggregate — just an indexed scan over
+// workspaces. For callers that never read userCount, most notably the chat
+// header's GET /api/workspaces path (listVisibleWorkspaces), which every user
+// hits on every page load and cannot justify paying for a LEFT JOIN over
+// user_workspaces plus a full count(*) of users for a field it discards.
+export async function listWorkspacesCore(database = defaultDb): Promise<WorkspaceSummary[]> {
+  return database.select(COLUMNS).from(workspaces).orderBy(desc(workspaces.isDefault), asc(workspaces.name));
+}
 
 // General first, then alphabetical. userCount follows the rule settled in the
 // spec, which mirrors listWorkspaceUsers' `granted` flag below: the default
@@ -43,6 +56,10 @@ type WorkspaceTarget = Omit<WorkspaceRow, "userCount">;
 // explicit grants in user_workspaces. One query, one aggregate: the total-users
 // figure is a scalar subquery the planner evaluates once per group, not a
 // second round trip, so this stays N+1-free.
+//
+// This is the admin listing only — it carries the cost of the join + count(*)
+// scan on every call. Callers that don't read userCount should use
+// listWorkspacesCore instead (see its comment).
 export async function listWorkspaces(database = defaultDb): Promise<WorkspaceRow[]> {
   const userCount = sql<number>`case when ${workspaces.isDefault} then (select count(*)::int from ${users}) else count(${userWorkspaces.userId})::int end`;
   return database
@@ -68,7 +85,7 @@ export async function createWorkspace(
 }
 
 // Shared guard: load the target or 404.
-async function loadWorkspace(id: string, database: typeof defaultDb): Promise<WorkspaceTarget> {
+async function loadWorkspace(id: string, database: typeof defaultDb): Promise<WorkspaceSummary> {
   const [row] = await database.select(COLUMNS).from(workspaces).where(eq(workspaces.id, id)).limit(1);
   if (!row) throw new WorkspaceNotFoundError();
   return row;

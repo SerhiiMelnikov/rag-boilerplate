@@ -33,6 +33,18 @@ beforeEach(() => {
   generateTextSpy.mockReset();
 });
 
+// The task-8 brief assumed a helper named transcribeWithGoogleReplying already
+// existed in this file. It did not -- the existing tests below all inline the
+// same three lines (mock generateText's reply, call transcribe with the default
+// google settings, assert on the result), so this helper is added here to name
+// that pattern rather than to introduce a new one. It goes through the real
+// transcribe() function, same as every other test in this file; nothing here
+// bypasses the code under test.
+async function transcribeWithGoogleReplying(replyText: string): Promise<string> {
+  generateTextSpy.mockResolvedValue({ text: replyText });
+  return transcribe(AUDIO, "audio/webm", settings());
+}
+
 describe("transcribe", () => {
   it("routes openai through the transcription model and returns the trimmed text", async () => {
     transcribeSpy.mockResolvedValue({ text: "  hello there  " });
@@ -251,6 +263,58 @@ describe("a prompt echo is not a transcript", () => {
     // as per-provider rather than shared.
     generateTextSpy.mockResolvedValue({ text: "Thank you." });
     expect(await transcribe(AUDIO, "audio/webm", settings())).toBe("Thank you.");
+  });
+});
+
+describe("preface stripping (google branch)", () => {
+  it("drops a conversational preamble and keeps the transcript", async () => {
+    await expect(transcribeWithGoogleReplying("Sure, here's the transcript: where is the invoice"))
+      .resolves.toBe("where is the invoice");
+  });
+
+  it("keeps a transcript whose own first sentence ends in a colon", async () => {
+    // A real utterance can contain a colon, and this one's arrives at character 36 --
+    // EARLIER than "Sure, here's the transcript" at 27 is long. Any rule that sorts
+    // on length alone truncates this sentence. The keyword is what saves it.
+    const spoken = "I need the following from the report: revenue, headcount and the churn number";
+    await expect(transcribeWithGoogleReplying(spoken)).resolves.toBe(spoken);
+  });
+
+  it("keeps a preface that never mentions a transcript", async () => {
+    // Deliberate non-goal, not a gap: "Sure, here you go:" is left alone. Catching it
+    // would mean dropping the vocabulary test, which is the only thing standing
+    // between this guard and the real sentence in the case above.
+    const reply = "Sure, here you go: where is the invoice";
+    await expect(transcribeWithGoogleReplying(reply)).resolves.toBe(reply);
+  });
+
+  it("keeps a reply that is nothing but a preface, since stripping would empty it", async () => {
+    // Nothing followed the colon, so there is no transcript to recover. Returning
+    // the text unchanged leaves the existing empty/echo handling in charge rather
+    // than inventing an empty result here.
+    const only = "Here is the transcript:";
+    await expect(transcribeWithGoogleReplying(only)).resolves.toBe(only);
+  });
+
+  it("keeps a multi-line transcript that merely happens to contain a colon", async () => {
+    const spoken = "note to self: buy milk";
+    await expect(transcribeWithGoogleReplying(spoken)).resolves.toBe(spoken);
+  });
+
+  // Added beyond the brief's five cases: falsifying PREFACE_MAX_LEN against only
+  // those five produces no failure, because the one case that pairs a colon with
+  // the word "transcript" (the full-instruction echo below) is also an echo, and
+  // survives on that path even if stripPreface mangles it first. That result does
+  // not mean the length bound is unexercised in principle -- this case is the one
+  // it actually exists for: a long, genuine question that names "transcript" once
+  // in its lead, is not an echo of the instruction, and so has no other matcher in
+  // this file to fall back on. Without the cap this reply is wrongly truncated to
+  // its tail; with it, the lead is recognised as too long to be a preamble at all.
+  it("keeps a long real question that names the word transcript but is not a preamble", async () => {
+    const reply =
+      "I have been asking about your transcript feature for weeks now because our team needs " +
+      "this automated: can you tell me if it also handles stereo audio files correctly?";
+    await expect(transcribeWithGoogleReplying(reply)).resolves.toBe(reply);
   });
 });
 

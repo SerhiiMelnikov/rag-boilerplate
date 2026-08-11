@@ -155,6 +155,55 @@ function isWhisperSilenceArtifact(text: string): boolean {
   return WHISPER_SILENCE_HALLUCINATIONS.has(normalize(text).replace(/[.!]$/, "").trim());
 }
 
+// A chat model told "no preamble" mostly obeys, and when it does not, the shape is
+// always the same: a short lead-in ending in a colon, then the transcript.
+// looksLikeEcho cannot see this -- it is not the instruction repeated back -- and
+// the sentinel matcher cannot either.
+//
+// UNLIKE every other matcher in this file, this one errs toward NOT acting. The
+// others accept a false positive because dropping one real utterance beats posting
+// a fabrication as the user's own message. Here the cost is inverted: a false
+// positive deletes the opening words of a genuine transcript and hands the user a
+// quietly truncated version of what they said. So: only a preamble SHORTER than the
+// cap, only before the first colon, and only when something follows it.
+//
+// A LENGTH CAP ALONE CANNOT DO THIS, and the obvious version gets it backwards.
+// "I need the following from the report: revenue, headcount and the churn number"
+// puts its colon at character 36 -- shorter than any cap generous enough to admit
+// "Sure, here's the transcript" (27). Sorting on length would truncate that real
+// sentence to "revenue, headcount and the churn number" and hand the user a
+// quietly mangled version of what they said.
+//
+// The discriminator is VOCABULARY, not size: a preamble of this kind is the model
+// acknowledging the instruction, so it names the thing it was told to produce. The
+// keyword is taken from ECHO_ANCHOR_TEXT ("...Output only the transcript") rather
+// than written as its own literal, in the discipline ECHO_FIRST_SENTENCE_LEN and
+// NO_SPEECH_MAX_LEN already follow -- reword the prompt and this moves with it.
+//
+// The length bound stays as a second condition, not the first: a preamble may be
+// no longer than the instruction clause it is acknowledging. It is not redundant
+// with the vocabulary check -- a long, genuine question that merely names
+// "transcript" once before a colon (e.g. "I've been asking about your transcript
+// feature for weeks now ... this automated: can you tell me if it also handles
+// stereo audio files?") has no echo/sentinel wording for looksLikeEcho to catch,
+// so without this bound it is truncated down to its tail. See the matching test
+// below for the falsification that confirmed it.
+const PREFACE_KEYWORD = "transcript";
+const PREFACE_MAX_LEN = normalize(ECHO_ANCHOR_TEXT).length;
+
+function stripPreface(text: string): string {
+  const colon = text.indexOf(":");
+  if (colon === -1) return text;
+  const lead = text.slice(0, colon);
+  if (normalize(lead).length > PREFACE_MAX_LEN) return text;
+  if (!normalize(lead).includes(PREFACE_KEYWORD)) return text;
+  const rest = text.slice(colon + 1).trim();
+  // Nothing after the colon means there is no transcript to recover; leave the reply
+  // alone and let the existing empty/echo handling decide what it is.
+  if (rest === "") return text;
+  return rest;
+}
+
 // Whether a transcription request can be served at all: a speech-capable
 // provider is selected, it has a model, and its key is set. No speech-capable
 // provider is key-less, so a missing keyName reads as unconfigured rather than
@@ -211,13 +260,20 @@ export async function transcribe(
         ],
       });
       const trimmed = text.trim();
+      // stripPreface runs first, on the raw trimmed reply, so a conversational
+      // lead-in ("Sure, here's the transcript: ...") is peeled off before the
+      // echo check sees the text. This ordering does not make an echo that
+      // also carries a colon harder to catch: PREFACE_MAX_LEN keeps stripPreface
+      // from touching a lead as long as the full instruction, so the echo
+      // reaches looksLikeEcho unchanged and is still recognised there.
+      const deprefaced = stripPreface(trimmed);
       // The echo backstop applies only here: Whisper (the openai branch above)
       // never sees TRANSCRIBE_PROMPT and so cannot echo it. Whisper's own
       // failure mode on silence is a hallucinated stock phrase rather than an
       // echo, which is why it gets its own, different backstop above. Neither
       // is the real fix — the caller's speech-detection gate is, for both
       // providers; these two catch what clears it.
-      return looksLikeEcho(trimmed) ? "" : trimmed;
+      return looksLikeEcho(deprefaced) ? "" : deprefaced;
     }
   } catch (err) {
     throw toProviderError(err, task, provider);

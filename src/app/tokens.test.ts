@@ -23,13 +23,16 @@ function parseTokens(selector: string): Record<string, [number, number, number]>
 // `--c-overlay: rgb(0 0 0 / .5)` or a non-colour `--radius-pop: 8px` must still
 // be caught if it exists in only one of the two blocks. parseTokens's own key set
 // would silently omit both, since neither matches its "R G B" pattern.
-function declaredProperties(selector: string): Set<string> {
-  const start = css.indexOf(`${selector} {`);
+function declaredProperties(selector: string, source: string = css): Set<string> {
+  // Strip CSS comments first, before locating the block. This prevents a `}` inside
+  // a comment from prematurely truncating the block search.
+  const strippedSource = source.replace(/\/\*[\s\S]*?\*\//g, "");
+  const start = strippedSource.indexOf(`${selector} {`);
   if (start === -1) throw new Error(`globals.css has no "${selector} {" block`);
-  const end = css.indexOf("}", start);
+  const end = strippedSource.indexOf("}", start);
   if (end === -1) throw new Error(`"${selector}" block is never closed`);
   const out = new Set<string>();
-  for (const m of css.slice(start, end).matchAll(/--([a-z0-9-]+):/g)) out.add(m[1]);
+  for (const m of strippedSource.slice(start, end).matchAll(/--([a-z0-9-]+):/g)) out.add(m[1]);
   return out;
 }
 
@@ -103,6 +106,27 @@ describe.each([
 // directly (every `--*`, not just the `--c-*` RGB triples parseTokens extracts),
 // so a token added to only one of them fails here instead of shipping unnoticed
 // -- whether or not it happens to be a colour.
+// The scan used a bare /--([a-z0-9-]+):/g over the block text, which cannot
+// tell a real declaration from one inside a comment. No false result today —
+// this is a tripwire against a future commented-out token being counted as
+// present in one block and absent in the other, which would fail the parity
+// test below for a reason that does not exist.
+it("ignores custom properties inside CSS comments", () => {
+  const source = ":root {\n  --c-real: 1 2 3;\n  /* --c-commented: 4 5 6; */\n}";
+  const found = declaredProperties(":root", source);
+  expect(found.has("c-real")).toBe(true);
+  expect(found.has("c-commented")).toBe(false);
+});
+
+// Comments containing `}` would truncate the block if comments were stripped after
+// locating the block boundary. This test ensures the block is found in comment-free
+// text so that a `}` inside a comment does not prematurely end the scan.
+it("finds declarations after a comment containing }", () => {
+  const source = ":root {\n  /* comment } with closing brace */\n  --c-real: 1 2 3;\n}";
+  const found = declaredProperties(":root", source);
+  expect(found.has("c-real")).toBe(true);
+});
+
 it("declares the same set of custom properties in :root and .dark", () => {
   const light = [...declaredProperties(":root")].sort();
   const dark = [...declaredProperties(".dark")].sort();

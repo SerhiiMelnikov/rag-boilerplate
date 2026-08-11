@@ -161,6 +161,38 @@ describe("runEvaluation", () => {
     logged.mockRestore();
   });
 
+  it("does not record a synthetic failure when only the success write fails", async () => {
+    // Silence the deliberate console.error this path emits.
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const added: ResultInput[] = [];
+    const repo = fakeRepo({
+      addResult: vi.fn(async (input: ResultInput) => {
+        added.push(input);
+        if (input.error === null) throw new Error("write failed");
+      }),
+    });
+    await runEvaluation("run-1", settings, {
+      repo: asRepo(repo),
+      prepareContextFn: vi.fn(async () => ({ hasContext: true, context: "cats are animals", sources: [{ documentId: "d1", filename: "cats.md", chunkId: "c1", score: 0.9 }] })),
+      generateAnswer: vi.fn(async () => "A cat is an animal."),
+      judge: vi.fn(async () => ({ score: 5, rationale: "grounded" })),
+    });
+
+    // Exactly one attempt: the successful result. The catch built for compute
+    // failures (prepareContext/generateAnswer/judge throwing) must not have run
+    // and written a second, error-shaped row over a question that was in fact
+    // answered and judged correctly.
+    expect(added).toHaveLength(1);
+    expect(added[0].error).toBeNull();
+    expect(repo.failRun).not.toHaveBeenCalled();
+    expect(repo.finishRun).toHaveBeenCalled();
+    // Nothing to aggregate: the write failed, so this question contributes no
+    // row and no aggregate entry, same rule the compute-failure catch follows.
+    expect(repo.finishRun.mock.calls[0][1].questionCount).toBe(0);
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
+  });
+
   // Regression test for the interaction between run.ts's outer per-question
   // try/catch and repo.ts's real addResult: this deliberately uses the REAL
   // evalRepo.addResult (bound to a fake db whose heartbeat update throws),

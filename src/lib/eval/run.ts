@@ -61,14 +61,18 @@ export async function runEvaluation(runId: string, settings: RuntimeSettings, de
     const questions = deps.questions ?? (await repo.listQuestions());
     const forAgg: AggregateInput[] = [];
     for (const q of questions) {
+      let prepared: Awaited<ReturnType<typeof prepareContextFn>>;
+      let m: ReturnType<typeof computeRetrievalMetrics>;
+      let answer: string;
+      let judged: Awaited<ReturnType<typeof judge>>;
       try {
-        const prepared = await prepareContextFn(q.question, settings, {});
-        const m = computeRetrievalMetrics(uniqueDocIds(prepared.sources), q.expectedDocumentIds);
+        prepared = await prepareContextFn(q.question, settings, {});
+        m = computeRetrievalMetrics(uniqueDocIds(prepared.sources), q.expectedDocumentIds);
         // hasContext is literally true here: this branch only runs when it is. Eval
         // deliberately keeps its no-context guard even though the chat handler dropped
         // its own — a golden question whose documents were never retrieved must score
         // as an empty answer, not receive a conversational one.
-        const answer = prepared.hasContext
+        answer = prepared.hasContext
           ? await generateAnswer(
               buildAnswerSystemPrompt({
                 systemPrompt: settings.systemPrompt,
@@ -79,13 +83,7 @@ export async function runEvaluation(runId: string, settings: RuntimeSettings, de
               settings,
             )
           : "";
-        const judged = await judge({ question: q.question, context: prepared.context, answer, reference: q.referenceAnswer }, settings);
-        await repo.addResult({
-          runId, questionId: q.id, questionText: q.question, retrieved: dedupRetrieved(prepared.sources),
-          hit: m.hit, recall: m.recall, precision: m.precision, mrr: m.mrr,
-          judgeScore: judged.score, judgeRationale: judged.rationale, generatedAnswer: answer, error: null,
-        });
-        forAgg.push({ recall: m.recall, precision: m.precision, mrr: m.mrr, judgeScore: judged.score });
+        judged = await judge({ question: q.question, context: prepared.context, answer, reference: q.referenceAnswer }, settings);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // If the database is the thing that's failing, this write throws too. Left
@@ -103,6 +101,27 @@ export async function runEvaluation(runId: string, settings: RuntimeSettings, de
         } catch (writeErr) {
           console.error(`eval: could not record the failure of question ${q.id}`, writeErr);
         }
+        continue;
+      }
+
+      // The write is deliberately OUTSIDE the compute try above. Sharing one catch
+      // with prepareContext/generateAnswer/judge let a transient write failure be
+      // recorded as though the question itself had failed -- a synthetic error row
+      // written over a result that was in fact computed correctly, plus a zero
+      // pushed into the aggregate for a question that actually scored. When only
+      // this write fails: log it and add nothing to forAgg, same rule the catch
+      // above already follows -- the aggregate describes exactly the rows that were
+      // actually stored, and there is no error to describe here, because nothing
+      // went wrong with the evaluation itself.
+      try {
+        await repo.addResult({
+          runId, questionId: q.id, questionText: q.question, retrieved: dedupRetrieved(prepared.sources),
+          hit: m.hit, recall: m.recall, precision: m.precision, mrr: m.mrr,
+          judgeScore: judged.score, judgeRationale: judged.rationale, generatedAnswer: answer, error: null,
+        });
+        forAgg.push({ recall: m.recall, precision: m.precision, mrr: m.mrr, judgeScore: judged.score });
+      } catch (writeErr) {
+        console.error(`eval: could not record the result of question ${q.id}`, writeErr);
       }
     }
     await repo.finishRun(runId, aggregateResults(forAgg));

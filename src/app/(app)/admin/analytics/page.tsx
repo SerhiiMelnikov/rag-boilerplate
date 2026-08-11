@@ -5,7 +5,7 @@ import {
   getDocumentQuality,
   getSatisfactionTrend,
 } from "@/lib/analytics/feedback";
-import { PageHeader, PageBody } from "@/components/ui/page-header";
+import { Page } from "@/components/ui/page";
 import { Card } from "@/components/ui/card";
 import { StatTiles } from "@/components/admin/analytics/stat-tiles";
 import { NegativeList } from "@/components/admin/analytics/negative-list";
@@ -21,24 +21,22 @@ export default async function AnalyticsPage() {
     getSatisfactionTrend(),
   ]);
   return (
-    <>
-      <PageHeader
-        className="mx-auto w-full max-w-6xl"
-        title="Answer feedback"
-        description="What people thought of the answers, and which documents produced them."
-      />
-      <PageBody className="mx-auto w-full max-w-6xl space-y-8">
-        <StatTiles summary={summary} />
-        <Card title="Satisfaction (last 30 days)">
-          <TrendBars points={trend} />
-        </Card>
-        <Card title="Recent 👎 answers">
-          <NegativeList items={negatives} />
-        </Card>
-        <Card title="Document quality">
-          <DocumentQualityTable rows={docs} />
-        </Card>
-      </PageBody>
-    </>
+    <Page
+      width="wide"
+      title="Answer feedback"
+      description="What people thought of the answers, and which documents produced them."
+      contentClassName="space-y-8"
+    >
+      <StatTiles summary={summary} />
+      <Card title="Satisfaction (last 30 days)">
+        <TrendBars points={trend} />
+      </Card>
+      <Card title="Recent 👎 answers">
+        <NegativeList items={negatives} />
+      </Card>
+      <Card title="Document quality">
+        <DocumentQualityTable rows={docs} />
+      </Card>
+    </Page>
   );
 }

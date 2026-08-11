@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Trash2, Plus, Save, Users, Pencil, FolderOpen } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeader, PageBody } from "@/components/ui/page-header";
+import { Page } from "@/components/ui/page";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Button, FOCUS_RING } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -171,221 +171,218 @@ export function WorkspacesManager() {
     }
   }
 
-  const header = (
-    <PageHeader
-      className="mx-auto w-full max-w-6xl"
+  const frame = (body: React.ReactNode) => (
+    <Page
+      width="wide"
       title="Workspaces"
       description="Groups of files. Each conversation asks questions of exactly one workspace."
-    />
+      contentClassName="space-y-4"
+    >
+      {body}
+    </Page>
   );
 
   const paged = paginate(rows ?? [], page, pageSize);
 
   // The frame first, the data into it — same note as users-manager.
-  if (!rows) {
-    return (
-      <>
-        {header}
-        <PageBody className="mx-auto w-full max-w-6xl"><Loading label="Loading workspaces" /></PageBody>
-      </>
-    );
-  }
+  if (!rows) return frame(<Loading label="Loading workspaces" />);
 
   return (
     <>
-      {header}
-      <PageBody className="mx-auto w-full max-w-6xl space-y-4">
-        {error && <Alert tone="danger">{error}</Alert>}
+      {frame(
+        <>
+          {error && <Alert tone="danger">{error}</Alert>}
 
-        {/* A card rather than two loose inputs above a table: this is an action, and
-            the note about the default workspace is something the page header's own
-            description does not say. */}
-        <Card
-          title="New workspace"
-          description="Group documents and images. Everyone always has access to the default workspace."
-        >
-          {/* A form, so Enter submits — the fields sat outside one, and typing a name
-              then pressing Enter did nothing at all. */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!busy && newName.trim()) void create();
-            }}
-            className="flex flex-wrap items-center gap-2"
+          {/* A card rather than two loose inputs above a table: this is an action, and
+              the note about the default workspace is something the page header's own
+              description does not say. */}
+          <Card
+            title="New workspace"
+            description="Group documents and images. Everyone always has access to the default workspace."
           >
-            <Input
-              aria-label="New workspace name"
-              placeholder="Name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="w-full sm:w-56"
-            />
-            <Input
-              aria-label="New workspace description"
-              placeholder="Description (optional)"
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              className="w-full sm:min-w-0 sm:flex-1"
-            />
-            <Button type="submit" variant="secondary" disabled={busy || !newName.trim()}>
-              <Plus className="h-4 w-4" /> Create
-            </Button>
-          </form>
-        </Card>
+            {/* A form, so Enter submits — the fields sat outside one, and typing a name
+                then pressing Enter did nothing at all. */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!busy && newName.trim()) void create();
+              }}
+              className="flex flex-wrap items-center gap-2"
+            >
+              <Input
+                aria-label="New workspace name"
+                placeholder="Name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="w-full sm:w-56"
+              />
+              <Input
+                aria-label="New workspace description"
+                placeholder="Description (optional)"
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                className="w-full sm:min-w-0 sm:flex-1"
+              />
+              <Button type="submit" variant="secondary" disabled={busy || !newName.trim()}>
+                <Plus className="h-4 w-4" /> Create
+              </Button>
+            </form>
+          </Card>
 
-        {rows.length === 0 ? (
-          // The default workspace always exists (it is seeded at install), so an
-          // empty list here means the fetch returned nothing, not "no matches" —
-          // there is no filter on this screen to have produced that instead.
-          <EmptyState
-            icon={FolderOpen}
-            title="No workspaces"
-            description="Every install has a default workspace. If this list is empty, the seed step has not run."
-          />
-        ) : (
-          <Table>
-            <THead>
-              <TR>
-                <TH>Name</TH>
-                <TH>Description</TH>
-                <TH>Users</TH>
-                <TH />
-              </TR>
-            </THead>
-            <TBody>
-              {paged.rows.map((w) => {
-                const isEditing = editingId === w.id;
-                const d = draft[w.id] ?? { name: w.name, description: w.description ?? "" };
-                // Escape sets cancelled.current before unmounting the input; Enter and
-                // blur both call commit() directly. settled/cancelled decide what
-                // actually happens — see their declarations and editIntent above.
-                const onFieldKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void commit(w);
-                  } else if (e.key === "Escape") {
-                    cancelled.current = true;
-                    setEditingId(null);
-                  }
-                };
-                return (
-                  <TR
-                    key={w.id}
-                    // Only the row currently being edited gets this handler. Every row's
-                    // Edit/Access/Delete buttons are focusable regardless of edit state,
-                    // so an unconditional handler would also fire while tabbing out of a
-                    // row that isn't being edited (e.g. tabbing from this row's own
-                    // buttons into the next row while a different row is mid-edit) and
-                    // call commit() for the wrong row — poisoning the shared `settled`
-                    // ref for the edit that is actually in progress.
-                    onBlur={
-                      isEditing
-                        ? (e) => {
-                            // React's onBlur maps to the native focusout, which bubbles,
-                            // so one handler on the row sees focus leaving either field.
-                            // relatedTarget is where focus went: still inside this row
-                            // means the admin is moving from the name to the description,
-                            // which is not the end of the edit. A null relatedTarget —
-                            // clicking dead space, or the row unmounting — still commits:
-                            // contains(null) is false.
-                            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-                            void commit(w);
-                          }
-                        : undefined
+          {rows.length === 0 ? (
+            // The default workspace always exists (it is seeded at install), so an
+            // empty list here means the fetch returned nothing, not "no matches" —
+            // there is no filter on this screen to have produced that instead.
+            <EmptyState
+              icon={FolderOpen}
+              title="No workspaces"
+              description="Every install has a default workspace. If this list is empty, the seed step has not run."
+            />
+          ) : (
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Name</TH>
+                  <TH>Description</TH>
+                  <TH>Users</TH>
+                  <TH />
+                </TR>
+              </THead>
+              <TBody>
+                {paged.rows.map((w) => {
+                  const isEditing = editingId === w.id;
+                  const d = draft[w.id] ?? { name: w.name, description: w.description ?? "" };
+                  // Escape sets cancelled.current before unmounting the input; Enter and
+                  // blur both call commit() directly. settled/cancelled decide what
+                  // actually happens — see their declarations and editIntent above.
+                  const onFieldKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void commit(w);
+                    } else if (e.key === "Escape") {
+                      cancelled.current = true;
+                      setEditingId(null);
                     }
-                  >
-                    <TD>
-                      {w.isDefault ? (
-                        <span className="flex items-center gap-2 font-medium">
-                          {w.name}
-                          <Badge>default</Badge>
-                        </span>
-                      ) : isEditing ? (
-                        <Input
-                          compact
-                          aria-label={`Name of ${w.name}`}
-                          autoFocus
-                          value={d.name}
-                          onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, name: e.target.value } }))}
-                          onKeyDown={onFieldKeyDown}
-                        />
-                      ) : (
-                        <span>{w.name}</span>
-                      )}
-                    </TD>
-                    <TD>
-                      {isEditing ? (
-                        <Input
-                          compact
-                          aria-label={`Description of ${w.name}`}
-                          placeholder="Description"
-                          // The default workspace has no name input (its name is immutable —
-                          // see the span above), so this is the only field in its row. Without
-                          // this, opening it focuses nothing: the Edit button that had focus
-                          // just unmounted, and a keyboard user is dropped to <body>.
-                          autoFocus={w.isDefault}
-                          value={d.description}
-                          onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, description: e.target.value } }))}
-                          onKeyDown={onFieldKeyDown}
-                        />
-                      ) : (
-                        <span className={cn(!w.description && "text-ink-muted")}>{w.description || "—"}</span>
-                      )}
-                    </TD>
-                    <TD>{w.userCount}</TD>
-                    <TD className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {isEditing ? (
-                          <Button variant="secondary" size="sm" aria-label={`Save ${d.name}`} onClick={() => void commit(w)} disabled={busy}>
-                            <Save className="h-4 w-4" /> Save
-                          </Button>
+                  };
+                  return (
+                    <TR
+                      key={w.id}
+                      // Only the row currently being edited gets this handler. Every row's
+                      // Edit/Access/Delete buttons are focusable regardless of edit state,
+                      // so an unconditional handler would also fire while tabbing out of a
+                      // row that isn't being edited (e.g. tabbing from this row's own
+                      // buttons into the next row while a different row is mid-edit) and
+                      // call commit() for the wrong row — poisoning the shared `settled`
+                      // ref for the edit that is actually in progress.
+                      onBlur={
+                        isEditing
+                          ? (e) => {
+                              // React's onBlur maps to the native focusout, which bubbles,
+                              // so one handler on the row sees focus leaving either field.
+                              // relatedTarget is where focus went: still inside this row
+                              // means the admin is moving from the name to the description,
+                              // which is not the end of the edit. A null relatedTarget —
+                              // clicking dead space, or the row unmounting — still commits:
+                              // contains(null) is false.
+                              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                              void commit(w);
+                            }
+                          : undefined
+                      }
+                    >
+                      <TD>
+                        {w.isDefault ? (
+                          <span className="flex items-center gap-2 font-medium">
+                            {w.name}
+                            <Badge>default</Badge>
+                          </span>
+                        ) : isEditing ? (
+                          <Input
+                            compact
+                            aria-label={`Name of ${w.name}`}
+                            autoFocus
+                            value={d.name}
+                            onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, name: e.target.value } }))}
+                            onKeyDown={onFieldKeyDown}
+                          />
                         ) : (
-                          <button
-                            type="button"
-                            aria-label={`Edit ${w.name}`}
-                            title="Edit"
-                            onClick={() => startEdit(w)}
-                            className={cn("text-ink-subtle transition-colors hover:text-ink", FOCUS_RING)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
+                          <span>{w.name}</span>
                         )}
-                        <Button variant="secondary" size="sm" aria-label={`Manage access to ${w.name}`} onClick={() => setAccessFor(w)}>
-                          <Users className="h-4 w-4" /> Access
-                        </Button>
-                        {!w.isDefault && (
-                          <button
-                            type="button"
-                            aria-label={`Delete ${w.name}`}
-                            title="Delete"
-                            onClick={() => setPendingDelete(w)}
-                            className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                      </TD>
+                      <TD>
+                        {isEditing ? (
+                          <Input
+                            compact
+                            aria-label={`Description of ${w.name}`}
+                            placeholder="Description"
+                            // The default workspace has no name input (its name is immutable —
+                            // see the span above), so this is the only field in its row. Without
+                            // this, opening it focuses nothing: the Edit button that had focus
+                            // just unmounted, and a keyboard user is dropped to <body>.
+                            autoFocus={w.isDefault}
+                            value={d.description}
+                            onChange={(e) => setDraft((p) => ({ ...p, [w.id]: { ...d, description: e.target.value } }))}
+                            onKeyDown={onFieldKeyDown}
+                          />
+                        ) : (
+                          <span className={cn(!w.description && "text-ink-muted")}>{w.description || "—"}</span>
                         )}
-                      </div>
-                    </TD>
-                  </TR>
-                );
-              })}
-            </TBody>
-          </Table>
-        )}
-        {rows.length > PAGE_SIZES[0] && (
-          <Pagination
-            total={rows.length}
-            page={paged.page}
-            pageCount={paged.pageCount}
-            from={paged.from}
-            to={paged.to}
-            pageSize={pageSize}
-            onPage={setPage}
-            onPageSize={setPageSize}
-            noun="workspaces"
-          />
-        )}
-      </PageBody>
+                      </TD>
+                      <TD>{w.userCount}</TD>
+                      <TD className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {isEditing ? (
+                            <Button variant="secondary" size="sm" aria-label={`Save ${d.name}`} onClick={() => void commit(w)} disabled={busy}>
+                              <Save className="h-4 w-4" /> Save
+                            </Button>
+                          ) : (
+                            <button
+                              type="button"
+                              aria-label={`Edit ${w.name}`}
+                              title="Edit"
+                              onClick={() => startEdit(w)}
+                              className={cn("text-ink-subtle transition-colors hover:text-ink", FOCUS_RING)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          )}
+                          <Button variant="secondary" size="sm" aria-label={`Manage access to ${w.name}`} onClick={() => setAccessFor(w)}>
+                            <Users className="h-4 w-4" /> Access
+                          </Button>
+                          {!w.isDefault && (
+                            <button
+                              type="button"
+                              aria-label={`Delete ${w.name}`}
+                              title="Delete"
+                              onClick={() => setPendingDelete(w)}
+                              className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </TD>
+                    </TR>
+                  );
+                })}
+              </TBody>
+            </Table>
+          )}
+          {rows.length > PAGE_SIZES[0] && (
+            <Pagination
+              total={rows.length}
+              page={paged.page}
+              pageCount={paged.pageCount}
+              from={paged.from}
+              to={paged.to}
+              pageSize={pageSize}
+              onPage={setPage}
+              onPageSize={setPageSize}
+              noun="workspaces"
+            />
+          )}
+        </>,
+      )}
 
       <ConfirmDialog
         open={pendingDelete !== null}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PageHeader, PageBody } from "@/components/ui/page-header";
+import { Page } from "@/components/ui/page";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,30 +16,21 @@ export function AccessForm() {
   // is submitted only when the admin types something.
   const [smtpPasswordInput, setSmtpPasswordInput] = useState("");
 
-  const header = (
-    <PageHeader
-      className="mx-auto max-w-2xl"
+  // One frame, one width, three bodies. The `const header` and its three
+  // near-identical returns existed only because the width had to be repeated
+  // alongside each body.
+  const frame = (body: React.ReactNode) => (
+    <Page
+      width="form"
       title="Access & email"
       description="Who may register, and the mailbox that sends them their verification link."
-    />
+    >
+      {body}
+    </Page>
   );
 
-  if (loadError) {
-    return (
-      <>
-        {header}
-        <PageBody className="mx-auto max-w-2xl"><Alert tone="danger">{loadError}</Alert></PageBody>
-      </>
-    );
-  }
-  if (!settings) {
-    return (
-      <>
-        {header}
-        <PageBody className="mx-auto max-w-2xl"><Loading label="Loading settings" /></PageBody>
-      </>
-    );
-  }
+  if (loadError) return frame(<Alert tone="danger">{loadError}</Alert>);
+  if (!settings) return frame(<Loading label="Loading settings" />);
 
   const s = settings;
   const num = (key: keyof AdminSettings) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -60,61 +51,56 @@ export function AccessForm() {
     if (ok) setSmtpPasswordInput("");
   }
 
-  return (
-    <>
-      {header}
-      <PageBody className="mx-auto max-w-2xl">
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <Card title="Registration">
-            <Field
-              label="Allowed email domains"
-              description="Comma-separated. Empty means nobody can register."
-            >
-              {(control) => (
-                <Input
-                  {...control}
-                  value={s.allowedEmailDomains}
-                  onChange={(e) => patch({ allowedEmailDomains: e.target.value })}
-                />
-              )}
-            </Field>
-          </Card>
+  return frame(
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <Card title="Registration">
+        <Field
+          label="Allowed email domains"
+          description="Comma-separated. Empty means nobody can register."
+        >
+          {(control) => (
+            <Input
+              {...control}
+              value={s.allowedEmailDomains}
+              onChange={(e) => patch({ allowedEmailDomains: e.target.value })}
+            />
+          )}
+        </Field>
+      </Card>
 
-          <Card title="SMTP" description="Registration returns 503 until this is filled in — there is no mailer to send the link with.">
-            <div className="flex flex-col gap-4">
-              <Field label="SMTP host">
-                {(control) => <Input {...control} value={s.smtpHost} onChange={(e) => patch({ smtpHost: e.target.value })} />}
-              </Field>
-              <Field label="SMTP port">
-                {(control) => <Input {...control} type="number" value={s.smtpPort} onChange={num("smtpPort")} />}
-              </Field>
-              <Field label="SMTP user">
-                {(control) => <Input {...control} value={s.smtpUser} onChange={(e) => patch({ smtpUser: e.target.value })} />}
-              </Field>
-              <Field label="SMTP from">
-                {(control) => <Input {...control} value={s.smtpFrom} onChange={(e) => patch({ smtpFrom: e.target.value })} />}
-              </Field>
-              <Field label="SMTP password">
-                {(control) => (
-                  <Input
-                    {...control}
-                    type="password"
-                    placeholder={s.smtpPassword.set ? `••••${s.smtpPassword.last4 ?? ""}` : "not set"}
-                    value={smtpPasswordInput}
-                    onChange={(e) => setSmtpPasswordInput(e.target.value)}
-                  />
-                )}
-              </Field>
-            </div>
-          </Card>
+      <Card title="SMTP" description="Registration returns 503 until this is filled in — there is no mailer to send the link with.">
+        <div className="flex flex-col gap-4">
+          <Field label="SMTP host">
+            {(control) => <Input {...control} value={s.smtpHost} onChange={(e) => patch({ smtpHost: e.target.value })} />}
+          </Field>
+          <Field label="SMTP port">
+            {(control) => <Input {...control} type="number" value={s.smtpPort} onChange={num("smtpPort")} />}
+          </Field>
+          <Field label="SMTP user">
+            {(control) => <Input {...control} value={s.smtpUser} onChange={(e) => patch({ smtpUser: e.target.value })} />}
+          </Field>
+          <Field label="SMTP from">
+            {(control) => <Input {...control} value={s.smtpFrom} onChange={(e) => patch({ smtpFrom: e.target.value })} />}
+          </Field>
+          <Field label="SMTP password">
+            {(control) => (
+              <Input
+                {...control}
+                type="password"
+                placeholder={s.smtpPassword.set ? `••••${s.smtpPassword.last4 ?? ""}` : "not set"}
+                value={smtpPasswordInput}
+                onChange={(e) => setSmtpPasswordInput(e.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+      </Card>
 
-          {saveError && <Alert tone="danger">{saveError}</Alert>}
-          <div className="flex items-center gap-3">
-            <Button type="submit" loading={saving}>Save</Button>
-            {saved && !dirty && <span className="text-sm text-success">Saved</span>}
-          </div>
-        </form>
-      </PageBody>
-    </>
+      {saveError && <Alert tone="danger">{saveError}</Alert>}
+      <div className="flex items-center gap-3">
+        <Button type="submit" loading={saving}>Save</Button>
+        {saved && !dirty && <span className="text-sm text-success">Saved</span>}
+      </div>
+    </form>,
   );
 }

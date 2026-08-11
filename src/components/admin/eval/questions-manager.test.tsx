@@ -135,7 +135,7 @@ describe("QuestionsManager", () => {
 
   // The page owns the frame now. Two components each rendering their own
   // `mx-auto max-w-3xl` container inside one `min-h-0 flex-1 flex-col` layout gave
-  // the route two independent scroll contexts: PageBody is the scroller, and
+  // the route two independent scroll contexts: Page's body is the scroller, and
   // RunsPanel sat outside it as a sibling with no way to scroll its own overflow.
   it("renders no page chrome of its own", async () => {
     const { container } = render(<QuestionsManager />);

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { Shield, ShieldOff, Lock, LockOpen, Users, SearchX } from "lucide-react";
-import { PageHeader, PageBody } from "@/components/ui/page-header";
+import { Page } from "@/components/ui/page";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Button, FOCUS_RING } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,25 +56,16 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
     if (!searchable && query !== "") setQuery("");
   }, [searchable, query]);
 
-  const header = (
-    <PageHeader
-      className="mx-auto w-full max-w-6xl"
-      title="Users"
-      description="Who can sign in, and what they are allowed to do."
-    />
+  const frame = (body: React.ReactNode) => (
+    <Page width="wide" title="Users" description="Who can sign in, and what they are allowed to do.">
+      {body}
+    </Page>
   );
 
   // The frame first, the data into it. This used to return a bare "Loading..."
   // *instead of* the header, so the title arrived only with the fetch and the
   // whole page visibly jumped.
-  if (!rows) {
-    return (
-      <>
-        {header}
-        <PageBody className="mx-auto w-full max-w-6xl"><Loading label="Loading accounts" /></PageBody>
-      </>
-    );
-  }
+  if (!rows) return frame(<Loading label="Loading accounts" />);
 
   const visible = searchable && query.trim() !== ""
     ? rows.filter((u) => u.email.toLowerCase().includes(query.trim().toLowerCase()))
@@ -83,113 +74,114 @@ export function UsersManager({ currentUserId }: { currentUserId: string }) {
 
   return (
     <>
-      {header}
-      <PageBody className="mx-auto w-full max-w-6xl">
-        {error && <Alert tone="danger">{error}</Alert>}
-        {searchable && (
-          <Input
-            aria-label="Search accounts"
-            placeholder="Search by email"
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setPage(1); }}
-            className="mb-3 max-w-xs"
-          />
-        )}
-        {visible.length === 0 ? (
-          rows.length === 0 ? (
-            <EmptyState
-              icon={Users}
-              title="No accounts yet"
-              description="People appear here once they register at an allowed domain and confirm their email."
+      {frame(
+        <>
+          {error && <Alert tone="danger">{error}</Alert>}
+          {searchable && (
+            <Input
+              aria-label="Search accounts"
+              placeholder="Search by email"
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+              className="mb-3 max-w-xs"
             />
+          )}
+          {visible.length === 0 ? (
+            rows.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No accounts yet"
+                description="People appear here once they register at an allowed domain and confirm their email."
+              />
+            ) : (
+              <EmptyState
+                icon={SearchX}
+                title="No accounts match"
+                description="No email contains that text."
+                action={<Button variant="secondary" size="sm" onClick={() => setQuery("")}>Clear search</Button>}
+              />
+            )
           ) : (
-            <EmptyState
-              icon={SearchX}
-              title="No accounts match"
-              description="No email contains that text."
-              action={<Button variant="secondary" size="sm" onClick={() => setQuery("")}>Clear search</Button>}
-            />
-          )
-        ) : (
-          <Table>
-            <THead>
-              <TR>
-                <TH>Email</TH>
-                <TH>Role</TH>
-                <TH />
-              </TR>
-            </THead>
-            <TBody>
-              {paged.rows.map((u) => {
-                const locked = u.isSuperAdmin || u.id === currentUserId; // no actions on super-admin or self
-                return (
-                  <TR key={u.id}>
-                    <TD>
-                      <span className="flex items-center gap-2">
-                        {u.email}
-                        {u.isSuperAdmin && <Badge>super-admin</Badge>}
-                      </span>
-                    </TD>
-                    <TD>
-                      <span className="flex items-center gap-2">
-                        <Badge tone={u.role === "admin" ? "accent" : "neutral"}>{u.role}</Badge>
-                        {u.blockedAt && <Badge tone="danger">Blocked</Badge>}
-                      </span>
-                    </TD>
-                    <TD className="text-right">
-                      {locked ? (
-                        // The row was already action-less; saying which kind of locked
-                        // it is turns an apparent bug into a deliberate rule.
-                        <Badge dashed>{u.id === currentUserId ? "you" : "protected"}</Badge>
-                      ) : (
-                        <div className="flex items-center justify-end gap-3">
-                          {/* `title` as well as `aria-label`: the label names the row for a
-                              screen reader ("Make bob@corp.com an admin"), but a sighted user
-                              hovering a bare shield has nothing to read. The short form is the
-                              right one to hover — the row is already in front of them. */}
-                          <button
-                            type="button"
-                            aria-label={u.role === "admin" ? `Make ${u.email} a user` : `Make ${u.email} an admin`}
-                            title={u.role === "admin" ? "Make user" : "Make admin"}
-                            onClick={() => void patch(u.id, { role: u.role === "admin" ? "user" : "admin" })}
-                            className={cn("text-ink-subtle transition-colors hover:text-ink", FOCUS_RING)}
-                          >
-                            {u.role === "admin" ? <ShieldOff className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={u.blockedAt ? `Unblock ${u.email}` : `Block ${u.email}`}
-                            title={u.blockedAt ? "Unblock" : "Block"}
-                            onClick={() => (u.blockedAt ? void patch(u.id, { blocked: false }) : setPendingBlock(u))}
-                            className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
-                          >
-                            {u.blockedAt ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                          </button>
-                        </div>
-                      )}
-                    </TD>
-                  </TR>
-                );
-              })}
-            </TBody>
-          </Table>
-        )}
-        {visible.length > PAGE_SIZES[0] && (
-          <div className="mt-3">
-            <Pagination
-              total={visible.length}
-              page={paged.page}
-              pageCount={paged.pageCount}
-              from={paged.from}
-              to={paged.to}
-              pageSize={pageSize}
-              onPage={setPage}
-              onPageSize={setPageSize}
-              noun="accounts"
-            />
-          </div>
-        )}
-      </PageBody>
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Email</TH>
+                  <TH>Role</TH>
+                  <TH />
+                </TR>
+              </THead>
+              <TBody>
+                {paged.rows.map((u) => {
+                  const locked = u.isSuperAdmin || u.id === currentUserId; // no actions on super-admin or self
+                  return (
+                    <TR key={u.id}>
+                      <TD>
+                        <span className="flex items-center gap-2">
+                          {u.email}
+                          {u.isSuperAdmin && <Badge>super-admin</Badge>}
+                        </span>
+                      </TD>
+                      <TD>
+                        <span className="flex items-center gap-2">
+                          <Badge tone={u.role === "admin" ? "accent" : "neutral"}>{u.role}</Badge>
+                          {u.blockedAt && <Badge tone="danger">Blocked</Badge>}
+                        </span>
+                      </TD>
+                      <TD className="text-right">
+                        {locked ? (
+                          // The row was already action-less; saying which kind of locked
+                          // it is turns an apparent bug into a deliberate rule.
+                          <Badge dashed>{u.id === currentUserId ? "you" : "protected"}</Badge>
+                        ) : (
+                          <div className="flex items-center justify-end gap-3">
+                            {/* `title` as well as `aria-label`: the label names the row for a
+                                screen reader ("Make bob@corp.com an admin"), but a sighted user
+                                hovering a bare shield has nothing to read. The short form is the
+                                right one to hover — the row is already in front of them. */}
+                            <button
+                              type="button"
+                              aria-label={u.role === "admin" ? `Make ${u.email} a user` : `Make ${u.email} an admin`}
+                              title={u.role === "admin" ? "Make user" : "Make admin"}
+                              onClick={() => void patch(u.id, { role: u.role === "admin" ? "user" : "admin" })}
+                              className={cn("text-ink-subtle transition-colors hover:text-ink", FOCUS_RING)}
+                            >
+                              {u.role === "admin" ? <ShieldOff className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={u.blockedAt ? `Unblock ${u.email}` : `Block ${u.email}`}
+                              title={u.blockedAt ? "Unblock" : "Block"}
+                              onClick={() => (u.blockedAt ? void patch(u.id, { blocked: false }) : setPendingBlock(u))}
+                              className={cn("text-ink-subtle transition-colors hover:text-danger", FOCUS_RING)}
+                            >
+                              {u.blockedAt ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        )}
+                      </TD>
+                    </TR>
+                  );
+                })}
+              </TBody>
+            </Table>
+          )}
+          {visible.length > PAGE_SIZES[0] && (
+            <div className="mt-3">
+              <Pagination
+                total={visible.length}
+                page={paged.page}
+                pageCount={paged.pageCount}
+                from={paged.from}
+                to={paged.to}
+                pageSize={pageSize}
+                onPage={setPage}
+                onPageSize={setPageSize}
+                noun="accounts"
+              />
+            </div>
+          )}
+        </>,
+      )}
       <ConfirmDialog
         open={pendingBlock !== null}
         title={pendingBlock ? `Block ${pendingBlock.email}?` : ""}

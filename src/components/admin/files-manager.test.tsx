@@ -262,7 +262,7 @@ describe("FilesManager", () => {
   });
 
   // Before the actions row learned to wrap (see the "wraps instead of
-  // overflowing" test below and PageHeader itself), a toolbar wide enough to
+  // overflowing" test below and Page itself), a toolbar wide enough to
   // include the URL form pushed the header past the viewport and scrolled the
   // whole page sideways on mobile. Wrapping fixed the overflow, but the URL
   // form still belongs in its own row: it is a second, independent way to add
@@ -293,8 +293,8 @@ describe("FilesManager", () => {
     render(<FilesManager />);
     const upload = await screen.findByLabelText("Upload file");
     // The actual flex-wrap container is this inner div (the one FilesManager
-    // passes as PageHeader's `actions`), not page-actions itself -- see
-    // files-manager.tsx and the comment on PageHeader's own wrapper.
+    // passes as Page's `actions`), not page-actions itself -- see
+    // files-manager.tsx and the comment on Page's own wrapper.
     const actionsRow = upload.closest("div.flex.items-center.gap-2")!;
     expect(actionsRow.className).toContain("flex-wrap");
     expect(actionsRow.className).toContain("justify-end");

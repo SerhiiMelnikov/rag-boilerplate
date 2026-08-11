@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PageHeader, PageBody } from "@/components/ui/page-header";
+import { Page } from "@/components/ui/page";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,30 +100,21 @@ export function ModelsForm() {
   const [pendingClear, setPendingClear] = useState<KeyedProvider | null>(null);
   const [clearing, setClearing] = useState(false);
 
-  const header = (
-    <PageHeader
-      className="mx-auto max-w-2xl"
+  // One frame, one width, three bodies. The `const header` and its three
+  // near-identical returns existed only because the width had to be repeated
+  // alongside each body.
+  const frame = (body: React.ReactNode) => (
+    <Page
+      width="form"
       title="Models"
       description="Which model answers each task, and the keys it authenticates with."
-    />
+    >
+      {body}
+    </Page>
   );
 
-  if (loadError) {
-    return (
-      <>
-        {header}
-        <PageBody className="mx-auto max-w-2xl"><Alert tone="danger">{loadError}</Alert></PageBody>
-      </>
-    );
-  }
-  if (!settings) {
-    return (
-      <>
-        {header}
-        <PageBody className="mx-auto max-w-2xl"><Loading label="Loading settings" /></PageBody>
-      </>
-    );
-  }
+  if (loadError) return frame(<Alert tone="danger">{loadError}</Alert>);
+  if (!settings) return frame(<Loading label="Loading settings" />);
 
   const s = settings;
   // `saved` comes from the hook, which only knows about edits routed through `patch`.
@@ -181,8 +172,7 @@ export function ModelsForm() {
 
   return (
     <>
-      {header}
-      <PageBody className="mx-auto max-w-2xl">
+      {frame(
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <Card title="Models">
             <div className="flex flex-col gap-4">
@@ -283,8 +273,8 @@ export function ModelsForm() {
             <Button type="submit" loading={saving}>Save</Button>
             {saved && !dirty && <span className="text-sm text-success">Saved</span>}
           </div>
-        </form>
-      </PageBody>
+        </form>,
+      )}
 
       <ConfirmDialog
         open={pendingClear !== null}

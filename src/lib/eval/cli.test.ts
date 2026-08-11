@@ -61,7 +61,7 @@ describe("runEvalCli", () => {
     });
     expect(await runEvalCli(["--json"], deps)).toBe(1);
     expect(out).toHaveLength(1);
-    expect(JSON.parse(out[0])).toEqual({ status: "error", error: "embed failed" });
+    expect(JSON.parse(out[0])).toEqual({ runId: "run-1", status: "error", error: "embed failed" });
   });
 
   it("--json emits a parseable error object when the run throws", async () => {
@@ -143,6 +143,20 @@ describe("runEvalCli", () => {
     expect(h.err.join("\n")).toMatch(/question/i);
   });
 
+  // Same contract as the "run finishes with status error" and "run throws" cases
+  // above: a pipeline reading --json must be able to tell a crashed/empty run from
+  // silence, on every failure path, not just some of them.
+  it("--json emits a parseable error object when there are no golden questions", async () => {
+    const h = harness({ listQuestions: vi.fn(async () => []) });
+    const code = await runEvalCli(["--json"], h.deps);
+    expect(code).toBe(1);
+    expect(h.err.join("\n")).toMatch(/question/i);
+    expect(h.out).toHaveLength(1);
+    const parsed = JSON.parse(h.out[0]);
+    expect(parsed.status).toBe("error");
+    expect(parsed.error).toMatch(/question/i);
+  });
+
   it("exits 1 when the run itself errored", async () => {
     const h = harness({
       getRun: vi.fn(async () => ({ id: "run-1", status: "error", settingsSnapshot: SETTINGS, aggregate: null, error: "provider exploded", createdAt: new Date(0) })),
@@ -150,6 +164,25 @@ describe("runEvalCli", () => {
     const code = await runEvalCli([], h.deps);
     expect(code).toBe(1);
     expect(h.err.join("\n")).toContain("provider exploded");
+  });
+
+  it("exits 1 when the run disappears while executing", async () => {
+    const h = harness({ getRun: vi.fn(async () => null) });
+    const code = await runEvalCli([], h.deps);
+    expect(code).toBe(1);
+    expect(h.err.join("\n")).toContain("disappeared");
+    expect(h.out).toEqual([]);
+  });
+
+  it("--json emits a parseable error object when the run disappears while executing", async () => {
+    const h = harness({ getRun: vi.fn(async () => null) });
+    const code = await runEvalCli(["--json"], h.deps);
+    expect(code).toBe(1);
+    expect(h.err.join("\n")).toContain("disappeared");
+    expect(h.out).toHaveLength(1);
+    const parsed = JSON.parse(h.out[0]);
+    expect(parsed.status).toBe("error");
+    expect(parsed.error).toContain("disappeared");
   });
 
   it("rejects a non-numeric or blank threshold instead of ignoring it", async () => {

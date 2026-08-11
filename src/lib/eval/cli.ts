@@ -14,7 +14,7 @@ export interface EvalCliDeps {
 
 interface ParsedArgs { json: boolean; minJudge: number | null; minRecall: number | null; help: boolean }
 
-const USAGE = "Usage: npm run eval -- [--json] [--min-judge <0-5>] [--min-recall <0-1>]";
+const USAGE = "Usage: npm run eval -- [--json] [--min-judge <0-5>] [--min-recall <0-1>] [--help|-h]";
 
 // Returns the parsed flags, or a message explaining what was wrong with them.
 function parseArgs(argv: string[]): ParsedArgs | { error: string } {
@@ -72,6 +72,11 @@ export async function runEvalCli(argv: string[], deps: EvalCliDeps): Promise<num
   const runEval = deps.runEval ?? runEvaluation;
 
   const args = parseArgs(argv);
+  // No --json error line here, deliberately: parseArgs failed before producing a
+  // usable ParsedArgs, so at this point the code does not yet know whether --json
+  // was requested. Reaching into the raw argv to guess would duplicate parseArgs'
+  // own flag-detection logic and could disagree with it. The stderr diagnostic
+  // plus exit code 1 are the contract for this one path.
   if ("error" in args) { deps.err(args.error); return 1; }
   if (args.help) { deps.out(USAGE); return 0; }
 
@@ -83,7 +88,9 @@ export async function runEvalCli(argv: string[], deps: EvalCliDeps): Promise<num
     const questions = await repo.listQuestions();
     if (questions.length === 0) {
       // An evaluation gate that passes green with zero questions is a trap.
-      deps.err("No golden questions defined — add some in the admin panel (or via POST /api/admin/evaluation/questions) before running an evaluation.");
+      const message = "No golden questions defined — add some in the admin panel (or via POST /api/admin/evaluation/questions) before running an evaluation.";
+      deps.err(message);
+      if (args.json) deps.out(JSON.stringify({ status: "error", error: message }));
       return 1;
     }
 
@@ -94,11 +101,16 @@ export async function runEvalCli(argv: string[], deps: EvalCliDeps): Promise<num
     await runEval(id, settings, { questions });
 
     const run = await repo.getRun(id);
-    if (!run) { deps.err(`Run ${id} disappeared while it was executing.`); return 1; }
+    if (!run) {
+      const message = `Run ${id} disappeared while it was executing.`;
+      deps.err(message);
+      if (args.json) deps.out(JSON.stringify({ status: "error", error: message }));
+      return 1;
+    }
     if (run.status === "error") {
       const message = run.error ?? "unknown error";
       deps.err(`Run failed: ${message}`);
-      if (args.json) deps.out(JSON.stringify({ status: "error", error: message }));
+      if (args.json) deps.out(JSON.stringify({ runId: id, status: "error", error: message }));
       return 1;
     }
     const results = await repo.getResults(id);

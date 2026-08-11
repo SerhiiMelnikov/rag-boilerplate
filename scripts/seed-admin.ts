@@ -2,7 +2,7 @@ import "dotenv/config";
 import { eq } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
-import { createUser, getUserByEmail } from "@/lib/auth/users";
+import { createUser, getUserByEmail, normalizeEmail } from "@/lib/auth/users";
 import { hashPassword } from "@/lib/auth/password";
 import { ensureDefaultWorkspace } from "@/lib/workspaces/ensure-default";
 import { domainOf } from "@/lib/auth/seed-domains";
@@ -40,7 +40,7 @@ export interface EnsureAdminDeps {
 // The same trap catches an ordinary admin who registers, forgets to click the
 // link, and runs this script to "fix" it.
 export async function ensureAdminUser(
-  email: string,
+  rawEmail: string,
   password: string,
   deps: EnsureAdminDeps = {},
 ): Promise<"updated" | "created"> {
@@ -48,6 +48,18 @@ export async function ensureAdminUser(
   const getUserByEmailFn = deps.getUserByEmailFn ?? getUserByEmail;
   const createUserFn = deps.createUserFn ?? createUser;
   const hashPasswordFn = deps.hashPasswordFn ?? hashPassword;
+
+  // The only path that reaches the database without passing z.string().email(),
+  // which rejects a padded address. Normalise here so the stored value matches
+  // what every runtime lookup will search for.
+  //
+  // This also closes the only reachable case of a known divergence: migration
+  // 0020 canonicalises with SQL trim(), which is btrim(x, ' ') — spaces only —
+  // while normalizeEmail's JS .trim() also strips tabs, NBSP and BOM. A repair
+  // migration was rejected deliberately: .trim() cannot be reproduced faithfully
+  // in SQL (NBSP, BOM), so it would approximate while looking complete. With
+  // this line a padded address can no longer be written in the first place.
+  const email = normalizeEmail(rawEmail);
 
   const existing = await getUserByEmailFn(email, database);
   if (existing) {

@@ -143,6 +143,44 @@ describe("ensureAdminUser", () => {
     await expect(verifyPassword("the-real-admin-password", row.passwordHash)).resolves.toBe(true);
   });
 
+  // scripts/seed-admin.ts is the only path that puts an address in the database
+  // without passing z.string().email(), which rejects padded input in every
+  // form (verified: "\ta@b.com", " a@b.com" and "a@b.com " are all rejected).
+  // A tab or NBSP in a .env would otherwise be stored verbatim and then be
+  // unfindable by every runtime lookup, all of which normalise.
+  it("normalises a padded, mixed-case ADMIN_EMAIL before looking it up or writing it", async () => {
+    // Seed the row under the NORMALISED address; pass the padded, mixed-case
+    // form in. The injected lookup below is an EXACT match (no trim/lowercase
+    // of its own), modelling what happens if ensureAdminUser forwards the raw
+    // address unnormalised: the lookup misses and nothing is written.
+    const { db, getCurrent } = fakeDbWithRow({
+      id: "u1",
+      email: "boss@corp.com",
+      passwordHash: await hashPassword("old-password"),
+      role: "user",
+      isSuperAdmin: false,
+      emailVerifiedAt: null,
+    });
+
+    const outcome = await ensureAdminUser("\tBoss@Corp.com ", "the-real-admin-password", {
+      database: db,
+      getUserByEmailFn: async (email: string) => {
+        const row = getCurrent();
+        return row.email === email ? { ...row } : null;
+      },
+      createUserFn: async () => {
+        throw new Error("must not create a new row — the row already existed");
+      },
+    });
+
+    expect(outcome).toBe("updated");
+    const row = getCurrent();
+    expect(row.role).toBe("admin");
+    expect(row.isSuperAdmin).toBe(true);
+    expect(row.emailVerifiedAt).not.toBeNull();
+    await expect(verifyPassword("the-real-admin-password", row.passwordHash)).resolves.toBe(true);
+  });
+
   it("creates a fresh verified super-admin when no row exists yet", async () => {
     const updates: Array<{ patch: unknown }> = [];
     const db = {

@@ -274,16 +274,20 @@ describe("preface stripping (google branch)", () => {
 
   it("keeps a transcript whose own first sentence ends in a colon", async () => {
     // A real utterance can contain a colon, and this one's arrives at character 36 --
-    // EARLIER than "Sure, here's the transcript" at 27 is long. Any rule that sorts
-    // on length alone truncates this sentence. The keyword is what saves it.
+    // not meaningfully later than "Sure, here's the transcript" (27) is long, so a
+    // length cap alone could not separate the two either way. What actually saves
+    // this sentence is that its lead does not OPEN with an acknowledgement phrase
+    // ("I need the following...") -- see the opener-anchor tests below for the
+    // condition that is really doing the work here.
     const spoken = "I need the following from the report: revenue, headcount and the churn number";
     await expect(transcribeWithGoogleReplying(spoken)).resolves.toBe(spoken);
   });
 
   it("keeps a preface that never mentions a transcript", async () => {
-    // Deliberate non-goal, not a gap: "Sure, here you go:" is left alone. Catching it
-    // would mean dropping the vocabulary test, which is the only thing standing
-    // between this guard and the real sentence in the case above.
+    // Deliberate non-goal, not a gap: "Sure, here you go:" opens with a recognised
+    // acknowledgement but never names the vocabulary word, so it is left alone.
+    // Catching it would mean dropping the vocabulary condition, which is what
+    // keeps the guard from reaching ordinary "sure, ..." sentences generally.
     const reply = "Sure, here you go: where is the invoice";
     await expect(transcribeWithGoogleReplying(reply)).resolves.toBe(reply);
   });
@@ -296,24 +300,100 @@ describe("preface stripping (google branch)", () => {
     await expect(transcribeWithGoogleReplying(only)).resolves.toBe(only);
   });
 
-  it("keeps a multi-line transcript that merely happens to contain a colon", async () => {
+  it("keeps a short real utterance with a colon and no transcript vocabulary", async () => {
+    // Deliberately exercises the same "no keyword" condition as the "never
+    // mentions a transcript" case above, but on an ordinary dictated note rather
+    // than a reply shaped like a machine preamble -- pinned separately because the
+    // two literal shapes are different enough that a regression in one would not
+    // necessarily be caught by the other.
     const spoken = "note to self: buy milk";
     await expect(transcribeWithGoogleReplying(spoken)).resolves.toBe(spoken);
   });
 
-  // Added beyond the brief's five cases: falsifying PREFACE_MAX_LEN against only
-  // those five produces no failure, because the one case that pairs a colon with
-  // the word "transcript" (the full-instruction echo below) is also an echo, and
-  // survives on that path even if stripPreface mangles it first. That result does
-  // not mean the length bound is unexercised in principle -- this case is the one
-  // it actually exists for: a long, genuine question that names "transcript" once
-  // in its lead, is not an echo of the instruction, and so has no other matcher in
-  // this file to fall back on. Without the cap this reply is wrongly truncated to
-  // its tail; with it, the lead is recognised as too long to be a preamble at all.
-  it("keeps a long real question that names the word transcript but is not a preamble", async () => {
+  // Falsifying PREFACE_MAX_LEN against the five cases above alone produces no
+  // failure: opener-anchoring already rules every one of them out before length
+  // is even checked. That does not make the length bound decorative -- this is
+  // the case it actually exists for. A spoken message can plausibly open with an
+  // acknowledgement, ramble for a while, and only then reach its real point: this
+  // one opens with "Sure" and names "transcript" (both conditions the opener/
+  // vocabulary anchors alone would accept), but its lead runs to 113 normalised
+  // characters, well past PREFACE_MAX_LEN (58) -- without the cap this is wrongly
+  // truncated down to its tail, discarding the real content in between.
+  it("keeps a rambling real reply that opens with an acknowledgement and names the transcript, but is too long to be one", async () => {
     const reply =
-      "I have been asking about your transcript feature for weeks now because our team needs " +
-      "this automated: can you tell me if it also handles stereo audio files correctly?";
+      "Sure, so basically what happened was we were going over the transcript from yesterday's " +
+      "call and there's an issue: can you check the timestamp around minute five";
+    await expect(transcribeWithGoogleReplying(reply)).resolves.toBe(reply);
+  });
+
+  // --- The "damage table": sentences a vocabulary search with no start-anchor
+  // would have wrongly treated as preambles, because in speech a colon
+  // overwhelmingly introduces a timestamp or a ratio, and the sentence carrying
+  // it is exactly where a user of a transcription feature says "transcript" out
+  // loud. None of these opens with a recognised acknowledgement phrase, so the
+  // opener anchor leaves all of them alone regardless of what they contain.
+  it.each([
+    "Show me the part of the transcript at 12:45",
+    "Find where the transcript mentions a ratio of 3:1",
+    "Can you find the transcript from the meeting at 3:30 yesterday",
+    "Read me the transcript line starting at 00:15",
+    "Send me the transcript: I need it by Friday",
+    "Question about the transcription: does it support Ukrainian",
+    "About the transcript: where do I download it",
+    'The transcript says: "hello world"',
+  ])("keeps the real question %j untouched", async (spoken) => {
+    await expect(transcribeWithGoogleReplying(spoken)).resolves.toBe(spoken);
+  });
+
+  // --- Regression coverage for the NO_SPEECH-escape fix. These two replies are
+  // the ones the earlier, pre-opener-anchor version of this guard was shown to
+  // wrongly strip (its lead names "transcript" and sits under the length cap,
+  // and that version had no opener requirement to stop it). With the opener
+  // anchor in place, neither lead opens with a PREFACE_OPENERS phrase
+  // ("no speech..." isn't one), so stripPreface leaves both untouched and the
+  // pre-existing sentinel matcher (unaffected by this task) catches them, same
+  // as before this guard existed at all.
+  it("drops a self-explaining NO_SPEECH reply that names the transcript before its colon", async () => {
+    await expect(transcribeWithGoogleReplying("No speech detected in this transcript: only background noise."))
+      .resolves.toBe("");
+  });
+
+  it("drops a second phrasing of a self-explaining NO_SPEECH reply", async () => {
+    await expect(transcribeWithGoogleReplying("No speech in the transcript: the audio is silent."))
+      .resolves.toBe("");
+  });
+
+  it("drops an echo that inserts a colon where the instruction's own text continues", async () => {
+    // The lead here ("Transcribe this audio verbatim. Output only the
+    // transcript") does not open with any PREFACE_OPENERS phrase, so
+    // stripPreface never touches it -- deprefaced equals trimmed, and
+    // looksLikeEcho's own character-for-character prefix match against
+    // ECHO_ANCHOR is what drops it, same as the pre-existing echo tests above.
+    // Pinned separately to confirm splicing a colon into the middle of the
+    // echoed instruction does not accidentally open a path through stripPreface.
+    await expect(
+      transcribeWithGoogleReplying("Transcribe this audio verbatim. Output only the transcript: where is the invoice"),
+    ).resolves.toBe("");
+  });
+
+  it("drops the sentinel when it is hidden behind a benign acknowledgement", async () => {
+    // This is the one case in the file where checking trimmed alone would NOT be
+    // enough: "here is the transcript..." does not start like the sentinel or
+    // the instruction, so only the DE-PREFACED text ("NO_SPEECH", once the
+    // acknowledgement is stripped) is recognisable as fabricated. Checking
+    // deprefaced is what catches this; see the comment above stripPreface's call
+    // site for why checking trimmed as well is currently just insurance, not
+    // load-bearing for this particular case.
+    await expect(transcribeWithGoogleReplying("Here is the transcript: NO_SPEECH")).resolves.toBe("");
+  });
+
+  it("leaves a Ukrainian preamble of the identical shape untouched, by decision", async () => {
+    // Documents a known, deliberate limit rather than a defect: PREFACE_OPENERS
+    // and PREFACE_KEYWORD are English-only, so a Ukrainian preamble of the exact
+    // shape this guard targets is not recognised. Passing it through unchanged is
+    // the safe direction for this guard to be wrong in -- the same default every
+    // other case above falls back to.
+    const reply = "Звичайно, ось транскрипт: де рахунок";
     await expect(transcribeWithGoogleReplying(reply)).resolves.toBe(reply);
   });
 });

@@ -155,48 +155,84 @@ function isWhisperSilenceArtifact(text: string): boolean {
   return WHISPER_SILENCE_HALLUCINATIONS.has(normalize(text).replace(/[.!]$/, "").trim());
 }
 
-// A chat model told "no preamble" mostly obeys, and when it does not, the shape is
-// always the same: a short lead-in ending in a colon, then the transcript.
-// looksLikeEcho cannot see this -- it is not the instruction repeated back -- and
-// the sentinel matcher cannot either.
+// A chat model told "no preamble" mostly obeys. On the rare occasion it does
+// not, a plausible shape is a short lead-in ending in a colon, then the
+// transcript: "Sure, here's the transcript: <the real transcript>". THIS
+// EXACT SHAPE HAS NOT BEEN OBSERVED IN THIS PRODUCT -- the guard below is a
+// precaution taken after being told that, not a fix for something seen in
+// production, and it stays narrow for that reason. looksLikeEcho cannot see
+// this shape -- it is not the instruction repeated back -- and the sentinel
+// matcher cannot either.
 //
 // UNLIKE every other matcher in this file, this one errs toward NOT acting. The
 // others accept a false positive because dropping one real utterance beats posting
 // a fabrication as the user's own message. Here the cost is inverted: a false
 // positive deletes the opening words of a genuine transcript and hands the user a
-// quietly truncated version of what they said. So: only a preamble SHORTER than the
-// cap, only before the first colon, and only when something follows it.
+// quietly truncated version of what they said. So stripping requires three
+// independent conditions, not one: an opening that reads as an acknowledgement,
+// vocabulary that names what was acknowledged, and a preamble no longer than the
+// cap -- all before the first colon, and only when something follows it.
 //
-// A LENGTH CAP ALONE CANNOT DO THIS, and the obvious version gets it backwards.
-// "I need the following from the report: revenue, headcount and the churn number"
-// puts its colon at character 36 -- shorter than any cap generous enough to admit
-// "Sure, here's the transcript" (27). Sorting on length would truncate that real
-// sentence to "revenue, headcount and the churn number" and hand the user a
-// quietly mangled version of what they said.
+// A LENGTH CAP ALONE CANNOT DO THIS. "I need the following from the report:
+// revenue, headcount and the churn number" puts its colon at character 36, which
+// is not meaningfully longer than "Sure, here's the transcript" (27) is. Any cap
+// wide enough to admit the acknowledgement phrase (27 chars) comfortably admits
+// this real sentence's lead too (36 chars) -- the two are too close in length for
+// a cap to tell apart, whatever the cap's value.
 //
-// The discriminator is VOCABULARY, not size: a preamble of this kind is the model
-// acknowledging the instruction, so it names the thing it was told to produce. The
-// keyword is taken from ECHO_ANCHOR_TEXT ("...Output only the transcript") rather
-// than written as its own literal, in the discipline ECHO_FIRST_SENTENCE_LEN and
-// NO_SPEECH_MAX_LEN already follow -- reword the prompt and this moves with it.
+// AN UNANCHORED VOCABULARY SEARCH ALONE CANNOT DO THIS EITHER, and gets it
+// backwards more often than the length cap does: in speech a colon overwhelmingly
+// introduces a timestamp or a ratio ("...transcript at 12:45", "...transcript
+// mentions a ratio of 3:1"), and the sentence carrying that colon is exactly
+// where a user of a transcription feature is likeliest to say the word
+// "transcript" out loud -- the two co-occur by construction, not coincidence.
+// A bare includes() check over the whole lead treats every one of these as a
+// preamble and deletes the user's real question (see the "damage table"
+// regression tests below for the specific sentences this was verified against).
 //
-// The length bound stays as a second condition, not the first: a preamble may be
-// no longer than the instruction clause it is acknowledging. It is not redundant
-// with the vocabulary check -- a long, genuine question that merely names
-// "transcript" once before a colon (e.g. "I've been asking about your transcript
-// feature for weeks now ... this automated: can you tell me if it also handles
-// stereo audio files?") has no echo/sentinel wording for looksLikeEcho to catch,
-// so without this bound it is truncated down to its tail. See the matching test
-// below for the falsification that confirmed it.
-const PREFACE_KEYWORD = "transcript";
+// So the vocabulary match is additionally ANCHORED AT THE START of the lead, the
+// same discipline looksLikeEcho already applies to the instruction itself
+// (startsWith, never a bare substring test over the whole reply): the lead must
+// OPEN with one of a short, closed list of acknowledgement phrases a model
+// plausibly uses to preface a reply, AND separately contain the vocabulary word.
+// None of the timestamp/ratio sentences above open with any of these phrases, so
+// none of them qualify regardless of what the rest of the lead contains.
+//
+// PREFACE_KEYWORD is derived as the LAST WORD of ECHO_ANCHOR_TEXT ("...Output
+// only the transcript"), in the discipline ECHO_FIRST_SENTENCE_LEN and
+// NO_SPEECH_MAX_LEN already follow: reword the prompt's closing noun and this
+// moves with it, rather than silently drifting out of sync with a prompt edit
+// that does not also touch this file.
+//
+// The length bound is a third, independent condition, not a second: a preamble
+// may be no longer than the instruction clause it is acknowledging. It is not
+// redundant with the opener-anchored vocabulary check above -- a spoken message
+// can plausibly open with an acknowledgement, ramble for a while, and only then
+// reach its real point: "Sure, so basically what happened was we were going over
+// the transcript from yesterday's call and there's an issue: can you check the
+// timestamp around minute five" opens with "Sure" and names "transcript", but
+// deleting everything before its colon would still discard real content the
+// user said. See the matching test below for the falsification that confirmed
+// this bound is independently necessary, not decorative.
+//
+// DELIBERATELY ENGLISH-ONLY: "Звичайно, ось транскрипт: де рахунок" (a Ukrainian
+// preamble of the identical shape) is not recognised and passes through
+// unchanged. That is a scope decision, not an oversight -- this product's chat
+// is used in Ukrainian, but extending PREFACE_OPENERS and PREFACE_KEYWORD to
+// another language was decided against for now. Passing text through unchanged
+// is the safe direction to be wrong in here, same as every other case this
+// guard declines to act on.
+const PREFACE_OPENERS = ["here is", "here's", "sure", "okay", "of course", "below is"];
+const PREFACE_KEYWORD = normalize(ECHO_ANCHOR_TEXT.split(" ").at(-1) ?? "");
 const PREFACE_MAX_LEN = normalize(ECHO_ANCHOR_TEXT).length;
 
 function stripPreface(text: string): string {
   const colon = text.indexOf(":");
   if (colon === -1) return text;
-  const lead = text.slice(0, colon);
-  if (normalize(lead).length > PREFACE_MAX_LEN) return text;
-  if (!normalize(lead).includes(PREFACE_KEYWORD)) return text;
+  const lead = normalize(text.slice(0, colon));
+  if (lead.length > PREFACE_MAX_LEN) return text;
+  if (!PREFACE_OPENERS.some((opener) => lead.startsWith(opener))) return text;
+  if (!lead.includes(PREFACE_KEYWORD)) return text;
   const rest = text.slice(colon + 1).trim();
   // Nothing after the colon means there is no transcript to recover; leave the reply
   // alone and let the existing empty/echo handling decide what it is.
@@ -260,12 +296,6 @@ export async function transcribe(
         ],
       });
       const trimmed = text.trim();
-      // stripPreface runs first, on the raw trimmed reply, so a conversational
-      // lead-in ("Sure, here's the transcript: ...") is peeled off before the
-      // echo check sees the text. This ordering does not make an echo that
-      // also carries a colon harder to catch: PREFACE_MAX_LEN keeps stripPreface
-      // from touching a lead as long as the full instruction, so the echo
-      // reaches looksLikeEcho unchanged and is still recognised there.
       const deprefaced = stripPreface(trimmed);
       // The echo backstop applies only here: Whisper (the openai branch above)
       // never sees TRANSCRIBE_PROMPT and so cannot echo it. Whisper's own
@@ -273,7 +303,28 @@ export async function transcribe(
       // echo, which is why it gets its own, different backstop above. Neither
       // is the real fix — the caller's speech-detection gate is, for both
       // providers; these two catch what clears it.
-      return looksLikeEcho(deprefaced) ? "" : deprefaced;
+      //
+      // looksLikeEcho runs on BOTH trimmed and deprefaced. Checking deprefaced
+      // is what does the real work today: it is what recognises a bare sentinel
+      // sitting behind a benign acknowledgement ("Here is the transcript:
+      // NO_SPEECH" -> stripped to "NO_SPEECH", which trimmed alone would miss
+      // entirely, since "here is the transcript..." doesn't start like the
+      // sentinel or the instruction).
+      //
+      // Checking trimmed as well is deliberate belt-and-braces, not currently
+      // load-bearing: PREFACE_OPENERS (below) requires a lead to open with an
+      // acknowledgement phrase before stripPreface will touch it at all, and
+      // none of those phrases share a prefix with "no speech"/"no_speech" or
+      // "transcribe this audio verbatim" -- so whenever stripPreface actually
+      // changes the text, trimmed cannot simultaneously satisfy looksLikeEcho,
+      // and whenever it does not change the text, deprefaced equals trimmed and
+      // checking deprefaced already covers it. Falsifying the trimmed half
+      // alone currently produces no test failure. It stays anyway: it is one
+      // string comparison, and it is the difference between "safe by proof, as
+      // long as no one edits PREFACE_OPENERS without re-checking this" and
+      // "safe outright" if that list ever grows to include a phrase that starts
+      // with "no" or "transcribe".
+      return looksLikeEcho(trimmed) || looksLikeEcho(deprefaced) ? "" : deprefaced;
     }
   } catch (err) {
     throw toProviderError(err, task, provider);

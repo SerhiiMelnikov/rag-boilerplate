@@ -22,6 +22,7 @@ interface Row {
   description: string | null;
   isDefault: boolean;
   createdAt: string;
+  userCount: number;
 }
 
 export type EditIntent =
@@ -247,6 +248,7 @@ export function WorkspacesManager() {
               <TR>
                 <TH>Name</TH>
                 <TH>Description</TH>
+                <TH>Users</TH>
                 <TH />
               </TR>
             </THead>
@@ -330,6 +332,7 @@ export function WorkspacesManager() {
                         <span className={cn(!w.description && "text-ink-muted")}>{w.description || "—"}</span>
                       )}
                     </TD>
+                    <TD>{w.userCount}</TD>
                     <TD className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         {isEditing ? (

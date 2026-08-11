@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import { workspaces, userWorkspaces, users, conversations } from "@/lib/db/schema";
 import { selectDefaultId } from "./repo";
@@ -19,6 +19,7 @@ export interface WorkspaceRow {
   description: string | null;
   isDefault: boolean;
   createdAt: Date;
+  userCount: number;
 }
 
 const COLUMNS = {
@@ -29,9 +30,27 @@ const COLUMNS = {
   createdAt: workspaces.createdAt,
 };
 
-// General first, then alphabetical.
+// loadWorkspace (below) only ever needs the target's identity/isDefault flag for
+// its guards, not the aggregate — that column is listWorkspaces-only, and
+// computing it on every rename/delete/grant check would be pure waste.
+type WorkspaceTarget = Omit<WorkspaceRow, "userCount">;
+
+// General first, then alphabetical. userCount follows the rule settled in the
+// spec, which mirrors listWorkspaceUsers' `granted` flag below: the default
+// workspace's access is implicit for every user, so its count is every row in
+// `users` — unfiltered, including blocked accounts, exactly what
+// listWorkspaceUsers counts — while every other workspace's count is its
+// explicit grants in user_workspaces. One query, one aggregate: the total-users
+// figure is a scalar subquery the planner evaluates once per group, not a
+// second round trip, so this stays N+1-free.
 export async function listWorkspaces(database = defaultDb): Promise<WorkspaceRow[]> {
-  return database.select(COLUMNS).from(workspaces).orderBy(desc(workspaces.isDefault), asc(workspaces.name));
+  const userCount = sql<number>`case when ${workspaces.isDefault} then (select count(*)::int from ${users}) else count(${userWorkspaces.userId})::int end`;
+  return database
+    .select({ ...COLUMNS, userCount })
+    .from(workspaces)
+    .leftJoin(userWorkspaces, eq(userWorkspaces.workspaceId, workspaces.id))
+    .groupBy(workspaces.id)
+    .orderBy(desc(workspaces.isDefault), asc(workspaces.name));
 }
 
 // Race-safe uniqueness: the unique index decides. No returned row = name taken.
@@ -49,7 +68,7 @@ export async function createWorkspace(
 }
 
 // Shared guard: load the target or 404.
-async function loadWorkspace(id: string, database: typeof defaultDb): Promise<WorkspaceRow> {
+async function loadWorkspace(id: string, database: typeof defaultDb): Promise<WorkspaceTarget> {
   const [row] = await database.select(COLUMNS).from(workspaces).where(eq(workspaces.id, id)).limit(1);
   if (!row) throw new WorkspaceNotFoundError();
   return row;

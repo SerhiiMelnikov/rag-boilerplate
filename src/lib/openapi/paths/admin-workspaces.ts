@@ -11,6 +11,9 @@ const AdminWorkspaceRow = z.object({
   description: z.string().nullable(),
   isDefault: z.boolean(),
   createdAt: z.string().datetime(),
+  // Total users for the default workspace (access there is implicit for
+  // everyone); explicit grant count for every other workspace.
+  userCount: z.number().int().nonnegative(),
 });
 
 // Mirrors WorkspaceUserRow (src/lib/workspaces/admin.ts: listWorkspaceUsers()).

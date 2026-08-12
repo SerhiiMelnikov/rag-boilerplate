@@ -127,13 +127,13 @@ describe("useMicrophone", () => {
 
   it("tells the user why nothing was sent when the transcript comes back empty", async () => {
     // An empty transcript is reachable even after the client-side speech gate
-    // passes: a server-side guard (the echo backstop, the no-speech sentinel)
-    // can still catch what the energy floor let through. Without feedback here,
-    // the user pressed the button, spoke, and the UI did nothing at all with no
-    // explanation — indistinguishable from a broken button. This is a DIFFERENT
-    // assertion from "does not send an empty transcript" above, which does not
-    // check `error`; falsifying the branch that sets it must fail this test
-    // while leaving that one green.
+    // passes: a server-side guard (hasSpeech: false, the echo backstop, or the
+    // Whisper stock-phrase filter) can still catch what the energy floor let
+    // through. Without feedback here, the user pressed the button, spoke, and
+    // the UI did nothing at all with no explanation — indistinguishable from a
+    // broken button. This is a DIFFERENT assertion from "does not send an
+    // empty transcript" above, which does not check `error`; falsifying the
+    // branch that sets it must fail this test while leaving that one green.
     const rec = fakeRecorder();
     const onTranscript = vi.fn();
     const transcribeFn = vi.fn(async () => "");
@@ -147,9 +147,10 @@ describe("useMicrophone", () => {
 
   it("does not transcribe a recording with no speech in it", async () => {
     // The user pressed the button, said nothing, and pressed it again. Sending
-    // that costs money and, worse, gets a confident answer back: handed silence,
-    // Gemini echoes the instruction and Whisper hallucinates. Neither is empty,
-    // so no downstream string check can catch it — the request must not happen.
+    // that costs money and, on the OpenAI path, gets a confident answer back:
+    // handed silence, Whisper hallucinates a stock phrase rather than
+    // returning empty, and no downstream string check can catch it — the
+    // request must not happen.
     const rec = fakeRecorder();
     const onTranscript = vi.fn();
     const transcribeFn = vi.fn(async () => "should never be called");

@@ -75,8 +75,10 @@ const ECHO_ANCHOR = normalize(ECHO_ANCHOR_TEXT);
 // not a coincidence a real, unrelated utterance would produce.
 const ECHO_FIRST_SENTENCE_LEN = normalize(ECHO_ANCHOR_TEXT.slice(0, ECHO_ANCHOR_TEXT.indexOf(".") + 1)).length;
 
-// An echo must be impossible, not just unlikely. This is matched on a PREFIX
-// of the normalised instruction, never on a keyword: a prefix match can only
+// A verbatim echo of the instruction's own opening — the shape that actually
+// shipped to a real user (see the file header above) — must be impossible,
+// not just unlikely; that narrower claim is what an opening-anchored PREFIX
+// match can actually deliver, never a keyword match: a prefix match can only
 // fire on text that begins the way the instruction begins, so a genuine
 // question that merely mentions "transcript" — e.g. "How do I transcribe an
 // audio file with this app?" — or that merely quotes the instruction
@@ -84,7 +86,12 @@ const ECHO_FIRST_SENTENCE_LEN = normalize(ECHO_ANCHOR_TEXT.slice(0, ECHO_ANCHOR_
 // cannot start with "transcribe this audio verbatim..." and is left alone.
 // Both directions below use startsWith, never includes, for exactly that
 // reason: a substring match would also catch that second example, which an
-// opening-anchored prefix match cannot.
+// opening-anchored prefix match cannot. It is not a guarantee against every
+// echo shape: a reply prefixed with anything of the model's own choosing
+// (e.g. "Sure: Transcribe this audio verbatim...") no longer starts with the
+// instruction's own wording and passes straight through — consistent with
+// the file header above, which calls this a backstop for one specific
+// failure shape, not a guarantee against off-contract content in general.
 //
 // Two directions are checked because an echo can end two different ways:
 //   - direction 1: a short echo that cuts off partway through, e.g.
@@ -198,10 +205,6 @@ export async function transcribe(
           },
         ],
       });
-      // Deliberately no fallback to generateText. If a model cannot honour the
-      // schema, the honest outcome is a failure the user sees -- a fallback would
-      // restore the free-text path this change exists to remove, and leave two
-      // sets of guarantees to keep in step.
       if (!object.hasSpeech) return "";
       const trimmed = object.transcript.trim();
       // The echo backstop still applies, now to the FIELD: nothing prevents a model
@@ -211,6 +214,11 @@ export async function transcribe(
       return looksLikeEcho(trimmed) ? "" : trimmed;
     }
   } catch (err) {
+    // Deliberately no fallback to an unstructured, free-text call here --
+    // whatever throws, including the google branch's model not honouring its
+    // schema, the honest outcome is a failure the user sees. A fallback would
+    // restore the whole free-text matching problem this change exists to
+    // remove, and leave two sets of guarantees to keep in step.
     throw toProviderError(err, task, provider);
   }
 

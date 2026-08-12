@@ -45,7 +45,7 @@ describe("transcribe", () => {
     const arg = transcribeSpy.mock.calls[0][0] as { model: { key: string; model: string }; audio: Uint8Array };
     expect(arg.model).toEqual({ key: "o-key", model: "gpt-4o-mini-transcribe" });
     expect(arg.audio).toBe(AUDIO);
-    expect(generateTextSpy).not.toHaveBeenCalled();
+    expect(generateObjectSpy).not.toHaveBeenCalled();
   });
 
   it("passes the recorded mime type through rather than a fixed one", async () => {

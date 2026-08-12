@@ -209,12 +209,21 @@ describe("generateReadme guidance", () => {
   });
 
   // drizzle/0012 backfills the limit columns onto the existing settings row, so an
-  // already-deployed, previously-unlimited app starts throttling the instant the
-  // migration runs — a power user could get 429s with zero warning otherwise.
-  it("warns that the limits take effect immediately on migration", () => {
-    const out = generateReadme(opts());
-    expect(out).toMatch(/take effect immediately/);
-    expect(out).toMatch(/db:migrate/);
+  // already-deployed, previously-unlimited pgvector app starts throttling the instant
+  // the migration runs — a power user could get 429s with zero warning otherwise. This
+  // is a pgvector-only story: scaffold() deletes drizzle/ for every other store, so
+  // their first migration is generated fresh from the current schema and there is no
+  // earlier, unlimited deployment for anything to backfill. Both branches are asserted
+  // here so a regression that un-gates the paragraph (making it fire for every store)
+  // fails this test, not just the pgvector half of it.
+  it("warns that the limits take effect immediately on migration, only for pgvector", () => {
+    const pgvector = generateReadme(opts({ vectorStore: "pgvector" }));
+    expect(pgvector).toMatch(/take effect immediately/);
+    expect(pgvector).toMatch(/db:migrate/);
+
+    const qdrant = generateReadme(opts({ vectorStore: "qdrant" }));
+    expect(qdrant).not.toContain("take effect immediately");
+    expect(qdrant).toMatch(/no earlier,\nunlimited deployment/);
   });
 });
 

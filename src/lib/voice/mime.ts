@@ -5,7 +5,10 @@
 //
 // Order is by preference, not by popularity. Opus in WebM is what Chrome and
 // Firefox give, is small, and is verified end to end against Gemini; audio/mp4
-// is Safari's only offer and is NOT verified against a provider.
+// is Safari's only offer — a container POSTed to this app's own
+// /api/chat/transcribe (so it also cleared ALLOWED_AUDIO_MIME) was accepted
+// and decoded by Gemini, but Safari's own recorder producing that container
+// has not itself been run on this machine.
 export const MIME_PREFERENCE = [
   "audio/webm;codecs=opus",
   "audio/webm",

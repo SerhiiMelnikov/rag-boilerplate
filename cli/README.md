@@ -86,7 +86,7 @@ the selected providers.
 Example:
 
 ```bash
-npx rag-boilerplate my-app --providers openai,anthropic --default-provider openai --vector-store qdrant
+npx rag-boilerplate my-app --providers openai,anthropic --default-provider openai --vector-store qdrant --yes
 ```
 
 ## After scaffolding
@@ -126,7 +126,7 @@ above: no Next.js, no React, no admin UI — just a standalone Hono server
 your own frontend and only want the engine behind it.
 
 ```bash
-npx rag-boilerplate my-api --app-kind api --providers google --default-provider google --vector-store pgvector
+npx rag-boilerplate my-api --app-kind api --providers google --default-provider google --vector-store pgvector --yes
 ```
 
 - **Auth** — there is no session-cookie sign-in page here; call

@@ -120,11 +120,14 @@ export function useMicrophone({
     try {
       const audio = await active.stop();
       // Silence recorded by accident must not spend a model request. This has
-      // to happen HERE rather than on the result: handed a silent clip, Gemini
-      // echoes the instruction it was given and Whisper hallucinates a stock
-      // phrase, so what comes back is confidently wrong rather than empty and
-      // no check on the returned string can tell it from a real transcript.
-      // vad.current is reset per recording in toggle()'s start branch.
+      // to happen HERE rather than on the result: on the OpenAI path — the
+      // default for a --providers openai scaffold — Whisper hallucinates a
+      // stock phrase from a silent clip rather than returning empty, so what
+      // comes back is confidently wrong and no check on the returned string
+      // can tell it from a real transcript. Gating on measured speech energy
+      // before the request also saves that request outright, on every
+      // provider, regardless of how reliably it reports "no speech" on its
+      // own. vad.current is reset per recording in toggle()'s start branch.
       if (vad.current.spokeMs < VAD_DEFAULTS.minSpeechMs) {
         setError(NO_SPEECH);
         return;

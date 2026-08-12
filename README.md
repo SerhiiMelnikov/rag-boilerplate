@@ -24,6 +24,8 @@ Run without a project name and you'll be prompted for one, along with:
 - **Default provider** — which of the selected providers chat + document
   parsing use by default (changeable later in Admin → Settings → Models)
 - **Vector store** — where document chunks + embeddings are stored
+- **App kind** — a full Next.js app (UI + API) or an API-only, standalone
+  Hono server with no frontend
 - Whether to run `git init` and install dependencies afterwards
 
 ### Non-interactive flags
@@ -34,6 +36,7 @@ Run without a project name and you'll be prompted for one, along with:
 | `--providers <list>` | Comma-separated AI providers: `google`, `openai`, `anthropic`, `ollama`. |
 | `--default-provider <id>` | Which selected provider is used by default. |
 | `--vector-store <id>` | `pgvector`, `qdrant`, `chroma`, `weaviate`, or `pinecone`. |
+| `--app-kind <id>` | `full` (Next.js UI + API) or `api` (standalone Hono server, no frontend). |
 | `--no-install` | Skip the package-manager install step. |
 | `--no-git` | Skip `git init`. |
 | `-y`, `--yes` | Accept defaults for anything not passed on the command line (no prompts). |
@@ -73,8 +76,10 @@ The generated app includes:
   OpenAI — Anthropic and Ollama have no speech API at all — chosen under
   **Admin → Settings → Models**, with its own rate limit under **Answering**.
   The button is absent entirely when no capable provider is configured, and on
-  a browser that cannot record. Verified in Chrome; Safari records a container
-  no provider documents support for audio.
+  a browser that cannot record. Verified in Chrome; Safari's container
+  (`audio/mp4`) was POSTed to this app's own `/api/chat/transcribe` — clearing
+  `ALLOWED_AUDIO_MIME` — and Gemini accepted and transcribed it, but Safari's
+  own recorder has not been run against this endpoint.
 - Workspaces: group documents and images, grant users access, and scope the
   assistant's answers to the active workspace plus the always-available General
   one (a file can belong to several workspaces)

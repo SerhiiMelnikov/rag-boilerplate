@@ -59,10 +59,10 @@ describe("pruneTranscriptionAdapter", () => {
     expect(text).not.toContain('if (provider === "openai")');
     expect(text).toContain('if (provider === "google")');
     expect(text).toContain("googleChat");
-    // experimental_transcribe is openai-only; generateText still serves the
+    // experimental_transcribe is openai-only; generateObject still serves the
     // surviving google branch and must not be swept out with it.
     expect(text).not.toContain("experimental_transcribe");
-    expect(text).toContain("generateText");
+    expect(text).toContain("generateObject");
   });
 
   it("removes the google branch and its now-dead import, leaving the openai branch intact", () => {
@@ -74,7 +74,7 @@ describe("pruneTranscriptionAdapter", () => {
     expect(text).not.toContain('if (provider === "google")');
     expect(text).toContain('if (provider === "openai")');
     expect(text).toContain("openaiTranscription");
-    expect(text).not.toContain("generateText");
+    expect(text).not.toContain("generateObject");
     expect(text).toContain("experimental_transcribe");
   });
 

@@ -1,4 +1,5 @@
-import { experimental_transcribe, generateText } from "ai";
+import { experimental_transcribe, generateObject } from "ai";
+import { z } from "zod";
 import type { RuntimeSettings } from "@/lib/config/settings-service";
 import { SPEECH_PROVIDER_IDS, keyNameOf } from "@/lib/providers/catalog";
 import { MissingProviderKeyError, toProviderError } from "./types";
@@ -6,26 +7,35 @@ import { openaiTranscription } from "./openai";
 import { googleChat } from "./google";
 
 // Gemini has no transcription model, so it is asked to transcribe through the
-// ordinary chat model. Two clauses are load-bearing. The first forbids
-// answering: the audio is a question, and a chat model's first instinct is to
-// reply to it. The second gives it something to say when there is nothing to
-// transcribe — without an escape hatch, a model handed silence and told
-// "output only the transcript" has no valid output and echoes the instruction
-// back instead, which is exactly what shipped to a real user.
+// ordinary chat model. Unlike the openai branch, that means the reply is whatever
+// a chat model decides to say — which is why this path asks for a STRUCTURED
+// result rather than prose. `hasSpeech` is where "there was nothing to
+// transcribe" goes, so a refusal no longer arrives as a sentence that has to be
+// recognised. Before this, silence produced "I'm sorry, but I cannot fulfill
+// this request…" and it posted to the chat as the user's own question.
 //
-// ECHO_ANCHOR_TEXT and NO_SPEECH_CLAUSE are the two clauses this file matches
-// replies against, held out as their own constants and spliced INTO the prompt
-// below (rather than the prompt's wording being duplicated separately as
-// anchors) so the wording and the matchers can truly never drift apart: there
-// is only one place that spells out how the instruction begins, and only one
-// that spells out the escape hatch.
-const NO_SPEECH_SENTINEL = "NO_SPEECH";
+// ECHO_ANCHOR_TEXT is still spliced INTO the prompt rather than duplicated beside
+// it, so the wording and the echo matcher below can never drift apart: there is
+// one place that spells out how the instruction begins.
+//
+// The timestamp and speaker-label clauses are load-bearing and were added from a
+// measurement, not a guess: a 440 Hz tone reproducibly came back as
+// "00:00:00:000 --> 00:00:02:000\nHello." A structured field will accept that
+// text just as happily as free prose would, so the prompt has to forbid it.
 const ECHO_ANCHOR_TEXT = "Transcribe this audio verbatim. Output only the transcript";
-const NO_SPEECH_CLAUSE =
-  `If the audio contains no discernible speech, reply with exactly: ${NO_SPEECH_SENTINEL}`;
 const TRANSCRIBE_PROMPT =
-  `${ECHO_ANCHOR_TEXT}, with no preamble, ` +
-  `commentary or translation. ${NO_SPEECH_CLAUSE}`;
+  `${ECHO_ANCHOR_TEXT}, with no preamble, commentary, translation, timestamps or ` +
+  `speaker labels. Set hasSpeech to false when the audio contains no human speech — ` +
+  `silence, a tone, music, background noise, a cough or a door slam all count as no ` +
+  `speech — and leave transcript empty.`;
+
+// What the model must return. The point is not validation for its own sake: a
+// non-transcript has nowhere to go except hasSpeech, so the shapes this file used
+// to match with regexes become unrepresentable rather than merely unlikely.
+const TranscriptionResult = z.object({
+  hasSpeech: z.boolean(),
+  transcript: z.string(),
+});
 
 function speechKey(s: RuntimeSettings): string | null {
   const name = keyNameOf(s.speechProvider);
@@ -43,60 +53,22 @@ const ECHO_ANCHOR = normalize(ECHO_ANCHOR_TEXT);
 // The floor for direction 1 below, derived from ECHO_ANCHOR_TEXT rather than
 // written as its own literal: the length of just its first sentence,
 // "Transcribe this audio verbatim." — the shortest fragment of the
-// instruction that is a complete clause on its own (per the file-level
-// comment, the one that forbids answering). Below this length a match is a
-// coincidental handful of shared words, not identifiably an echo; at or above
-// it, matching the instruction's own wording character-for-character is not
-// a coincidence a real, unrelated utterance would produce.
+// instruction that is a complete clause on its own. Below this length a match
+// is a coincidental handful of shared words, not identifiably an echo; at or
+// above it, matching the instruction's own wording character-for-character is
+// not a coincidence a real, unrelated utterance would produce.
 const ECHO_FIRST_SENTENCE_LEN = normalize(ECHO_ANCHOR_TEXT.slice(0, ECHO_ANCHOR_TEXT.indexOf(".") + 1)).length;
 
-// A model asked to emit the sentinel can still fence it, punctuate it,
-// paraphrase it as the two plain words, or — just as often — emit it and then
-// explain itself: "NO_SPEECH — the audio contains only background noise", "No
-// speech was detected in the recording." An exact string match is not enough,
-// and neither is a match anchored at BOTH ends, which is what this used to be:
-// every one of those explanatory forms slipped past it AND past both echo
-// directions (which are anchored on the instruction's opening, not on the
-// sentinel), and posted to the chat as the user's own question. That is the
-// shipped bug's exact shape.
-//
-// So the pattern is anchored at the OPENING only, exactly like the echo
-// matcher below, and narrowed by a length cap instead of by an end anchor. It
-// accepts, case/space-insensitively: the sentinel ("NO_SPEECH") or its
-// natural-language form ("no speech"), optionally opened with a backtick, as
-// the START of a reply no longer than NO_SPEECH_MAX_LEN. `\b` is what keeps
-// "no speechwriter" out; the cap is what keeps a real, longer utterance out.
-//
-// The cap is derived, not chosen: it is the length of NO_SPEECH_CLAUSE, the
-// instruction's own escape hatch — the sentence the model is paraphrasing when
-// it explains itself. A reply no longer than the clause it was told to obey is
-// still that clause; past that length it is prose the model wrote for its own
-// reasons, and a transcript is the likelier reading. Deriving it from the
-// clause rather than writing a literal is the same discipline
-// ECHO_FIRST_SENTENCE_LEN follows, and for the same reason: reword the prompt
-// and the bound moves with it.
-//
-// This deliberately also drops a genuine short user message that OPENS with
-// the two words "no speech" (e.g. "No speech." in answer to "was there any
-// speech?"). That is the acceptable side to err on, for exactly the reason
-// direction 1's comment below gives for the echo matcher: the alternative is a
-// repeat of the bug this file exists to prevent, a fabricated non-transcript
-// posted as the user's own message.
-const NO_SPEECH_PATTERN = /^`?no[_ ]speech\b/;
-const NO_SPEECH_MAX_LEN = normalize(NO_SPEECH_CLAUSE).length;
-
-// The sentinel makes an echo less likely but not impossible (a model can
-// still ignore the escape hatch and repeat the instruction instead), and what
-// shipped to a real user must be impossible, not just less likely. This is
-// matched on a PREFIX of the normalised instruction, never on a keyword: a
-// prefix match can only fire on text that begins the way the instruction
-// begins, so a genuine question that merely mentions "transcript" — e.g. "How
-// do I transcribe an audio file with this app?" — or that merely quotes the
-// instruction mid-sentence — e.g. "I need you to transcribe this audio
-// verbatim..." — cannot start with "transcribe this audio verbatim..." and is
-// left alone. Both directions below use startsWith, never includes, for
-// exactly that reason: a substring match would also catch that second
-// example, which an opening-anchored prefix match cannot.
+// An echo must be impossible, not just unlikely. This is matched on a PREFIX
+// of the normalised instruction, never on a keyword: a prefix match can only
+// fire on text that begins the way the instruction begins, so a genuine
+// question that merely mentions "transcript" — e.g. "How do I transcribe an
+// audio file with this app?" — or that merely quotes the instruction
+// mid-sentence — e.g. "I need you to transcribe this audio verbatim..." —
+// cannot start with "transcribe this audio verbatim..." and is left alone.
+// Both directions below use startsWith, never includes, for exactly that
+// reason: a substring match would also catch that second example, which an
+// opening-anchored prefix match cannot.
 //
 // Two directions are checked because an echo can end two different ways:
 //   - direction 1: a short echo that cuts off partway through, e.g.
@@ -117,7 +89,6 @@ const NO_SPEECH_MAX_LEN = normalize(NO_SPEECH_CLAUSE).length;
 function looksLikeEcho(reply: string): boolean {
   const normalized = normalize(reply);
   if (normalized === "") return false;
-  if (normalized.length <= NO_SPEECH_MAX_LEN && NO_SPEECH_PATTERN.test(normalized)) return true;
   const instruction = normalize(TRANSCRIBE_PROMPT);
   return (
     (normalized.length >= ECHO_FIRST_SENTENCE_LEN && instruction.startsWith(normalized)) ||
@@ -135,9 +106,9 @@ function looksLikeEcho(reply: string): boolean {
 //
 // Deliberately an EXACT-match list, and deliberately five entries long. A fuzzy
 // filter here would eat real one-word and one-phrase answers; these are matched
-// whole, after the same normalization and the same single trailing "." or "!"
-// the sentinel pattern already tolerates (Whisper punctuates its own
-// hallucinations inconsistently). Entries are stored without that punctuation.
+// whole, after normalization and after a single trailing "." or "!" is stripped
+// (Whisper punctuates its own hallucinations inconsistently). Entries are
+// stored without that punctuation.
 //
 // The cost of a false positive is one dropped real utterance whose ENTIRE
 // content is "thank you" or "you" — no question worth asking a document
@@ -198,8 +169,9 @@ export async function transcribe(
       return isWhisperSilenceArtifact(trimmed) ? "" : trimmed;
     }
     if (provider === "google") {
-      const { text } = await generateText({
+      const { object } = await generateObject({
         model: googleChat(key, s.speechModel),
+        schema: TranscriptionResult,
         messages: [
           {
             role: "user",
@@ -210,13 +182,16 @@ export async function transcribe(
           },
         ],
       });
-      const trimmed = text.trim();
-      // The echo backstop applies only here: Whisper (the openai branch above)
-      // never sees TRANSCRIBE_PROMPT and so cannot echo it. Whisper's own
-      // failure mode on silence is a hallucinated stock phrase rather than an
-      // echo, which is why it gets its own, different backstop above. Neither
-      // is the real fix — the caller's speech-detection gate is, for both
-      // providers; these two catch what clears it.
+      // Deliberately no fallback to generateText. If a model cannot honour the
+      // schema, the honest outcome is a failure the user sees -- a fallback would
+      // restore the free-text path this change exists to remove, and leave two
+      // sets of guarantees to keep in step.
+      if (!object.hasSpeech) return "";
+      const trimmed = object.transcript.trim();
+      // The echo backstop still applies, now to the FIELD: nothing prevents a model
+      // writing the instruction into the string it was asked to fill. Whisper (the
+      // openai branch above) never sees TRANSCRIBE_PROMPT and so cannot echo it,
+      // which is why it keeps its own, different backstop.
       return looksLikeEcho(trimmed) ? "" : trimmed;
     }
   } catch (err) {

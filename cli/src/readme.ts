@@ -112,9 +112,12 @@ function oauthSection(o: InstallOptions): string[] {
     lines.push("Set both variables of a pair and that provider becomes available. This build");
     lines.push("serves no pages, so there are no buttons — see **Headless sign-in** below for");
     lines.push("how a sign-in begins. Set neither and OAuth is simply off — nothing to");
-    lines.push("configure. Setting only one half of a pair fails on the first `/api/auth/*`");
-    lines.push("request, naming the missing variable, rather than failing later on the");
-    lines.push("provider's own consent screen.");
+    lines.push("configure. Setting only one half of a pair fails the first time something");
+    lines.push("reaches OAuth config — the headless start endpoint below, or Auth.js's own");
+    lines.push("`/api/auth/*` catch-all — naming the missing variable, rather than failing");
+    lines.push("later on the provider's own consent screen. The other `/api/auth/*` routes");
+    lines.push("(login, verify, password reset and change, and the OAuth handoff/exchange");
+    lines.push("pair) never touch OAuth config, so they keep working regardless.");
   } else {
     lines.push("Set both variables of a pair and that provider's button appears on the");
     lines.push("sign-in and registration screens. Set neither and OAuth is simply off —");
@@ -289,12 +292,31 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("");
 
   lines.push("## Rate limits", "");
-  lines.push("These are on by default and take effect immediately: the migration that adds");
-  lines.push("them backfills the existing settings row, so if this app was already deployed");
-  lines.push("unlimited, it starts enforcing 20 chat requests/minute and 200/day per user the");
-  lines.push("moment you run `db:migrate` — a user who was sending 250 messages a day will");
-  lines.push("start getting 429s with no warning. Set either to `0` under **Settings →");
-  lines.push("Answering** to disable it.", "");
+  // The backfill/"already deployed unlimited" story is only true for pgvector:
+  // it describes an EXISTING pgvector deployment upgrading across the migration
+  // (drizzle/0012) that ALTERs the settings table and backfills these columns
+  // onto its already-live row. A non-pgvector project has no such history to
+  // upgrade from — scaffold() deletes drizzle/ for every other store (see
+  // hostMigrationSteps above), and `npm run db:generate` builds that project's
+  // very first migration fresh from the current schema, which already includes
+  // these columns. There is no earlier, unlimited version of it to catch up
+  // with, so promising that surprise would be dishonest — same reasoning as
+  // the migration-0020 paragraph further down.
+  if (o.vectorStore === "pgvector") {
+    lines.push("These are on by default and take effect immediately: the migration that adds");
+    lines.push("them backfills the existing settings row, so if this app was already deployed");
+    lines.push("unlimited, it starts enforcing 20 chat requests/minute and 200/day per user the");
+    lines.push("moment you run `db:migrate` — a user who was sending 250 messages a day will");
+    lines.push("start getting 429s with no warning. Set either to `0` under **Settings →");
+    lines.push("Answering** to disable it.", "");
+  } else {
+    lines.push("These are on by default: 20 chat requests/minute and 200/day per user. Unlike");
+    lines.push("an upgraded pgvector install, this project's migrations are generated fresh");
+    lines.push("from the current schema (see **Getting started** above), so there is no earlier,");
+    lines.push("unlimited deployment for them to catch up with — they are simply there from");
+    lines.push("your first `db:migrate`. Set either to `0` under **Settings → Answering** to");
+    lines.push("disable it.", "");
+  }
   lines.push("Voice transcriptions are capped separately, and default to 10/minute and 100/day");
   lines.push("per user under the same **Settings → Answering** page. They are a second budget,");
   lines.push("not a share of the chat one: a spoken question spends a transcription request");

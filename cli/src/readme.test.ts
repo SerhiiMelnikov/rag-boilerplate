@@ -645,18 +645,27 @@ describe("OAuth documentation", () => {
 
   // WHERE a half-configured pair surfaces differs by build, and getting it wrong
   // sends the reader to the wrong logs. The full app calls oauthConfig() while
-  // src/auth.ts is still loading, so it cannot start; api-only calls it inside the
-  // /api/auth/* route closure, so it boots fine and throws on the first request
-  // that reaches Auth.js. The negative halves are what stop the shared "fails at
-  // startup" wording coming back for api-only.
+  // src/auth.ts is still loading, so it cannot start. The api-only build only
+  // reaches OAuth config from two routes — the headless start endpoint and
+  // Auth.js's own `/api/auth/*` catch-all (src/server/routes.ts registers both
+  // after every other /api/auth/* route, and Hono matches in registration
+  // order) — so login, verify, password reset/change and the OAuth
+  // handoff/exchange pair are never affected by it. An earlier version of this
+  // sentence claimed ANY `/api/auth/*` request fails, which is not true of
+  // those five routes; the negative assertions below are what stop both that
+  // over-broad wording and the full app's "fails at startup" wording from
+  // coming back in the wrong build.
   it("says when a half-configured pair fails, per build mode", () => {
     const full = generateReadme(opts({ appKind: "full" }));
     expect(full).toContain("fails at\nstartup, naming the missing variable");
     expect(full).not.toContain("first `/api/auth/*`\nrequest");
 
     const api = generateReadme(opts({ appKind: "api" }));
-    expect(api).toContain("fails on the first `/api/auth/*`\nrequest, naming the missing variable");
+    expect(api).toContain("fails the first time something\nreaches OAuth config");
+    expect(api).toContain("naming the missing variable");
+    expect(api).toContain("never touch OAuth config, so they keep working regardless");
     expect(api).not.toContain("fails at\nstartup");
+    expect(api).not.toContain("fails on the first `/api/auth/*`\nrequest");
   });
 
   // The allowlist governs OAuth too — a reader must not assume it is a bypass. Pinned

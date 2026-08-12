@@ -73,8 +73,10 @@ The generated app includes:
   OpenAI — Anthropic and Ollama have no speech API at all — chosen under
   **Admin → Settings → Models**, with its own rate limit under **Answering**.
   The button is absent entirely when no capable provider is configured, and on
-  a browser that cannot record. Verified in Chrome; Safari records a container
-  no provider documents support for audio.
+  a browser that cannot record. Verified end to end in Chrome; Safari's
+  container (`audio/mp4`) has been sent to Gemini directly and comes back
+  transcribed, but Safari's own recorder has not been run against this
+  endpoint.
 - Workspaces: group documents and images, grant users access, and scope the
   assistant's answers to the active workspace plus the always-available General
   one (a file can belong to several workspaces)

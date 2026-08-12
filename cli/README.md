@@ -86,7 +86,7 @@ the selected providers.
 Example:
 
 ```bash
-npx rag-boilerplate my-app --providers openai,anthropic --default-provider openai --vector-store qdrant
+npx rag-boilerplate my-app --providers openai,anthropic --default-provider openai --vector-store qdrant --yes
 ```
 
 ## After scaffolding

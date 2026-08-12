@@ -17,7 +17,7 @@ vi.mock("ai", () => ({
 vi.mock("./openai", () => ({ openaiTranscription: (key: string, model: string) => ({ key, model }) }));
 vi.mock("./google", () => ({ googleChat: (key: string, model: string) => ({ key, model }) }));
 
-const { transcribe, isTranscribeConfigured } = await import("./transcription");
+const { transcribe, isTranscribeConfigured, TRANSCRIBE_PROMPT } = await import("./transcription");
 
 const AUDIO = new Uint8Array([1, 2, 3]);
 
@@ -79,21 +79,44 @@ describe("google returns a structured result", () => {
 
     const arg = generateObjectSpy.mock.calls[0][0] as {
       model: { key: string; model: string };
-      schema: unknown;
+      schema: { shape: Record<string, unknown> };
       messages: Array<{ role: string; content: Array<Record<string, unknown>> }>;
     };
     expect(arg.model).toEqual({ key: "g-key", model: "gemini-2.5-flash" });
-    expect(arg.schema).toBeDefined();
+    // Tighter than toBeDefined(), which z.object({}) would also satisfy: pins
+    // the actual field NAMES asked of the model. The mock fixtures elsewhere in
+    // this file supply hasSpeech/transcript regardless of what the real schema
+    // requires, so only this check can catch a field being renamed.
+    expect(Object.keys(arg.schema.shape).sort()).toEqual(["hasSpeech", "transcript"]);
     const parts = arg.messages[0].content;
     // The file part must come first and carry both the data and the mime type
     // through unaltered: Gemini reads it as inlineData.mimeType, and that is
     // the whole reason audio/webm works at all.
     expect(parts[0]).toEqual({ type: "file", data: AUDIO, mimeType: "audio/webm" });
+    expect(parts[1]).toEqual({ type: "text", text: TRANSCRIBE_PROMPT });
+    // The equality check above pins the exact text sent, but TRANSCRIBE_PROMPT
+    // is the very constant it is composed from -- editing a clause OUT of that
+    // constant would not be caught by comparing it to itself, since both sides
+    // would silently agree on the same, weakened text. The timestamp and
+    // speaker-label clauses are called out as load-bearing in the file-level
+    // comment (measured from a 440 Hz tone coming back as a WebVTT-shaped
+    // reply), so they are pinned here as their own literal checks too.
+    const promptText = String((parts[1] as { text: string }).text);
+    expect(promptText).toMatch(/verbatim/i);
+    expect(promptText).toMatch(/no preamble/i);
+    expect(promptText).toMatch(/timestamps/i);
+    expect(promptText).toMatch(/speaker labels/i);
   });
 
   it("returns nothing when the model reports no speech", async () => {
-    // This is the whole point of the schema: a refusal has nowhere to go except
-    // this boolean, so it can no longer arrive as prose that must be matched.
+    // A model that honours the schema now has a correct place for a refusal
+    // (hasSpeech: false) instead of prose this file has to pattern-match. That
+    // is conditional on compliance: nothing stops a model setting hasSpeech:
+    // true and writing this exact sentence into transcript instead, and
+    // looksLikeEcho does not catch it (it only matches the instruction being
+    // echoed back, not an unrelated refusal) -- see "still catches an
+    // instruction echo placed INSIDE the transcript field" below for what
+    // looksLikeEcho actually does catch.
     generateObjectSpy.mockResolvedValue({
       object: { hasSpeech: false, transcript: "I'm sorry, but I cannot fulfill this request." },
     });

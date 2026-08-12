@@ -9,10 +9,16 @@ import { googleChat } from "./google";
 // Gemini has no transcription model, so it is asked to transcribe through the
 // ordinary chat model. Unlike the openai branch, that means the reply is whatever
 // a chat model decides to say — which is why this path asks for a STRUCTURED
-// result rather than prose. `hasSpeech` is where "there was nothing to
-// transcribe" goes, so a refusal no longer arrives as a sentence that has to be
-// recognised. Before this, silence produced "I'm sorry, but I cannot fulfill
-// this request…" and it posted to the chat as the user's own question.
+// result rather than prose. `hasSpeech` gives a model that honours the schema a
+// correct place to put "there was nothing to transcribe", and for such a model
+// removes the free-text sentinel-matching path entirely: before this, silence
+// produced "I'm sorry, but I cannot fulfill this request…" and it posted to the
+// chat as the user's own question. The schema is a contract, not a guarantee,
+// though: nothing stops a model setting hasSpeech: true and writing refusal
+// prose — or the measured WebVTT case below — into transcript anyway. The
+// prompt's own wording is the only remaining mitigation for that; looksLikeEcho
+// (below) only catches the model echoing this INSTRUCTION back, not an
+// unrelated refusal or a mistaken transcript shape.
 //
 // ECHO_ANCHOR_TEXT is still spliced INTO the prompt rather than duplicated beside
 // it, so the wording and the echo matcher below can never drift apart: there is
@@ -21,17 +27,27 @@ import { googleChat } from "./google";
 // The timestamp and speaker-label clauses are load-bearing and were added from a
 // measurement, not a guess: a 440 Hz tone reproducibly came back as
 // "00:00:00:000 --> 00:00:02:000\nHello." A structured field will accept that
-// text just as happily as free prose would, so the prompt has to forbid it.
+// text just as happily as free prose would, so the prompt has to forbid it —
+// and that prohibition, not a code-level check, is what stands between a
+// non-compliant reply and the chat.
 const ECHO_ANCHOR_TEXT = "Transcribe this audio verbatim. Output only the transcript";
-const TRANSCRIBE_PROMPT =
+// Exported so the routing test can pin the exact text sent, not just that some
+// text was sent — see that test for why an equality check on this constant is
+// combined with, and not a substitute for, independent checks on its clauses.
+export const TRANSCRIBE_PROMPT =
   `${ECHO_ANCHOR_TEXT}, with no preamble, commentary, translation, timestamps or ` +
   `speaker labels. Set hasSpeech to false when the audio contains no human speech — ` +
   `silence, a tone, music, background noise, a cough or a door slam all count as no ` +
   `speech — and leave transcript empty.`;
 
-// What the model must return. The point is not validation for its own sake: a
-// non-transcript has nowhere to go except hasSpeech, so the shapes this file used
-// to match with regexes become unrepresentable rather than merely unlikely.
+// What the model must return. A model that honours this schema now has a
+// dedicated place for "no speech" (hasSpeech) instead of a sentence this file
+// used to match with regexes — but the schema only constrains the TYPES, not
+// the CONTENT: a model can still set hasSpeech: true and write refusal prose, a
+// timestamped transcript, or an echo of the instruction into `transcript`.
+// Those shapes are off-contract, not unrepresentable; the prompt's wording
+// above, and looksLikeEcho below for the echo case specifically, are what is
+// left to catch them.
 const TranscriptionResult = z.object({
   hasSpeech: z.boolean(),
   transcript: z.string(),

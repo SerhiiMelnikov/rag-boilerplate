@@ -1,5 +1,5 @@
 import { parseDocument } from "./parse";
-import { chunkText } from "./chunk";
+import { chunkText, chunkMarkdown } from "./chunk";
 import { hashContent } from "./hash";
 import { embedDocuments } from "./embeddings";
 import type { RuntimeSettings } from "@/lib/config/settings-service";
@@ -43,7 +43,9 @@ export interface IngestResult {
 // this path and it would compile fine, then throw UnsupportedFileTypeError the
 // first time it actually ran. Making the two shapes mutually exclusive means the
 // compiler — not a caller's discipline — keeps that from happening.
-export type IngestExistingInput = { filename: string; data: Buffer } | { filename: string; text: string };
+export type IngestExistingInput =
+  | { filename: string; data: Buffer; baseDir?: string; boundary?: string }
+  | { filename: string; text: string };
 
 // Processes an already-created document row: parse -> chunk -> hash/dedupe ->
 // embed -> store, tracking status. Split out from createDocument so callers can
@@ -55,7 +57,6 @@ export async function ingestExistingDocument(
   deps: IngestDeps,
 ): Promise<IngestResult> {
   const parseFn = deps.parse ?? parseDocument;
-  const chunk = deps.chunk ?? chunkText;
   const embed = deps.embed ?? ((texts: string[]) => embedDocuments(texts, deps.settings));
   const { documentRepo, vectorStore } = deps;
 
@@ -63,7 +64,11 @@ export async function ingestExistingDocument(
     await documentRepo.setStatus(documentId, "processing");
     // When `text` is already extracted, skip `parse` entirely rather than calling
     // it with an absent buffer — see IngestExistingInput's comment for why.
-    const text = "text" in input ? input.text : await parseFn(input.filename, input.data, deps.settings);
+    const isMarkdown = !("text" in input) && /\.(md|markdown)$/i.test(input.filename);
+    const chunk = deps.chunk ?? (isMarkdown ? chunkMarkdown : chunkText);
+    const text = "text" in input
+      ? input.text
+      : await parseFn(input.filename, input.data, deps.settings, undefined, { baseDir: input.baseDir, boundary: input.boundary });
     const pieces = chunk(text);
 
     const existing = await vectorStore.existingHashes(documentId);
@@ -102,7 +107,7 @@ export async function ingestExistingDocument(
 // creates the row, writes its chosen membership, and calls
 // ingestExistingDocument in the background.
 export async function ingestDocument(
-  input: { filename: string; data: Buffer },
+  input: { filename: string; data: Buffer; baseDir?: string; boundary?: string },
   deps: IngestDocumentDeps,
 ): Promise<IngestResult> {
   const { id: documentId, created } = await deps.documentRepo.createDocument(input.filename);

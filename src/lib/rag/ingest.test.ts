@@ -95,6 +95,21 @@ describe("ingestDocument", () => {
     expect(documentRepo.setStatus).toHaveBeenLastCalledWith("doc-existing", "ready");
   });
 
+  it("uses chunkMarkdown for .md and threads baseDir into parse", async () => {
+    const documentRepo = makeDocumentRepo();
+    const vectorStore = makeVectorStore();
+    const parse = vi.fn(async () => "# H\nbody");
+    const chunkMd = vi.fn(() => ["# H\nbody"]);
+    const embed = vi.fn(async (t: string[]) => t.map(() => [0.1]));
+    await ingestExistingDocument(
+      "doc-1",
+      { filename: "a.md", data: Buffer.from("x"), baseDir: "/docs/a", boundary: "/docs" },
+      { parse: parse as never, chunk: chunkMd as never, embed, documentRepo, vectorStore, settings },
+    );
+    // parse received the loc object
+    expect(parse).toHaveBeenCalledWith("a.md", expect.any(Buffer), settings, undefined, { baseDir: "/docs/a", boundary: "/docs" });
+  });
+
   it("marks the document as error when parsing throws", async () => {
     const documentRepo = makeDocumentRepo();
     const vectorStore = makeVectorStore();

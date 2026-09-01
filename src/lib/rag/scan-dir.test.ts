@@ -28,4 +28,13 @@ describe("scanDirs", () => {
     expect(files.map((f) => f.path)).toEqual([join(good, "a.md")]);
     expect(errors.length).toBe(1);
   });
+
+  it("does not skip a dir named after an inherited Object property", async () => {
+    const root = mkdtempSync(join(tmpdir(), "scan-proto-"));
+    mkdirSync(join(root, "constructor"));
+    writeFileSync(join(root, "constructor", "c.md"), "gamma");
+    const { files, errors } = await scanDirs([root]);
+    expect(errors).toEqual([]);
+    expect(files.map((f) => f.path)).toEqual([join(root, "constructor", "c.md")]);
+  });
 });

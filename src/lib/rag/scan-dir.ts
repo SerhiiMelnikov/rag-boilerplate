@@ -19,7 +19,7 @@ async function walk(path: string, root: string, out: ScannedFile[], errors: stri
   let entries: string[];
   try { entries = await readdir(path); } catch (err) { errors.push(`${path}: ${String(err)}`); return; }
   for (const e of entries) {
-    if (e.startsWith(".") || SKIP_DIRS[e]) continue;
+    if (e.startsWith(".") || Object.hasOwn(SKIP_DIRS, e)) continue;
     await walk(join(path, e), root, out, errors);
   }
 }

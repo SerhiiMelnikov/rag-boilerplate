@@ -13,3 +13,4 @@ cli/dist/
 graphify-out/
 
 .worktrees/
+cli/node_modules

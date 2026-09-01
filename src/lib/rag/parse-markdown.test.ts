@@ -71,4 +71,10 @@ describe("parseMarkdown", () => {
     expect(captionImage).toHaveBeenCalledTimes(1);
     expect(out).toContain("[Image: nested diagram]");
   });
+
+  it("keeps inline formatting on one line (no stray newlines)", async () => {
+    const out = await parseMarkdown(Buffer.from("Some **bold `code`** and [a **b** c](u)."), settings);
+    expect(out).toContain("Some bold code and a b c");
+    expect(out).not.toMatch(/bold\s*\n\s*code/);
+  });
 });

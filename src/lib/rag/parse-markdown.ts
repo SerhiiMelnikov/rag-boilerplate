@@ -58,22 +58,35 @@ function resolveLocalImage(src: string, baseDir: string, boundary: string): stri
   return abs;
 }
 
+// Block-level container nodes whose children are separate blocks and must be
+// joined with a newline. Inline containers (strong, emphasis, link, ...) are NOT
+// listed here: their children are concatenated with no separator so formatting
+// never injects stray newlines mid-sentence.
+const BLOCK_CONTAINERS: Record<string, true> = {
+  root: true, list: true, listItem: true, blockquote: true,
+  table: true, tableRow: true, tableCell: true, footnoteDefinition: true,
+};
+
 // Serialize an mdast node subtree to clean text. Headings are re-emitted with
-// their `#` prefix so chunkMarkdown can still find section boundaries.
+// their `#` prefix so chunkMarkdown can still find section boundaries; image
+// captions are honored at any depth.
 function renderNode(node: RootContent, imageText: Map<Image, string>): string {
   if (node.type === "image") return imageText.get(node) ?? node.alt ?? "";
   if (node.type === "heading") return `${"#".repeat(node.depth)} ${mdastToString(node)}`;
   if (node.type === "paragraph") {
     return node.children.map((c) => renderNode(c as RootContent, imageText)).join("").trim();
   }
-  // Any other container (list, listItem, blockquote, table, tableRow, tableCell,
-  // ...): recurse so an image caption nested inside it is honored rather than
-  // discarded in favor of alt text. Leaf inline nodes fall through to mdastToString.
-  if ("children" in node && Array.isArray(node.children)) {
+  if (node.type in BLOCK_CONTAINERS && "children" in node && Array.isArray(node.children)) {
     return node.children
       .map((c) => renderNode(c as RootContent, imageText))
       .filter((s) => s.trim().length > 0)
       .join("\n");
+  }
+  // Inline container (strong, emphasis, delete, link, linkReference, ...):
+  // concatenate children so an image caption nested inside survives without
+  // breaking the surrounding sentence onto multiple lines.
+  if ("children" in node && Array.isArray(node.children)) {
+    return node.children.map((c) => renderNode(c as RootContent, imageText)).join("");
   }
   return mdastToString(node);
 }

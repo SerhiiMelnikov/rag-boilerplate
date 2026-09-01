@@ -32,3 +32,31 @@ export function chunkText(text: string, opts: ChunkOptions = {}): string[] {
   }
   return chunks.filter((c) => c.length > 0);
 }
+
+// Split Markdown into one chunk per heading section (heading line kept with its
+// body), so retrieval returns semantically whole passages instead of arbitrary
+// character windows. Any section longer than the window falls back to chunkText,
+// so a huge section under one heading is still bounded.
+export function chunkMarkdown(text: string, opts: ChunkOptions = {}): string[] {
+  const chunkSize = opts.chunkSize ?? 1000;
+  const lines = text.split("\n");
+  const sections: string[] = [];
+  let current: string[] = [];
+  const flush = () => {
+    const joined = current.join("\n").trim();
+    if (joined.length > 0) sections.push(joined);
+    current = [];
+  };
+  for (const line of lines) {
+    if (/^#{1,6}\s/.test(line)) flush();
+    current.push(line);
+  }
+  flush();
+
+  const out: string[] = [];
+  for (const section of sections) {
+    if (section.length <= chunkSize) out.push(section);
+    else out.push(...chunkText(section, opts));
+  }
+  return out;
+}

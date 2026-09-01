@@ -139,7 +139,7 @@ export async function scaffold(o: InstallOptions, opts: { templateDir: string; t
   }
 
   // 8. Generate .env with fresh secrets.
-  await writeFile(join(opts.targetDir, ".env"), generateEnv({ vectorStore: o.vectorStore }, { authSecret: generateSecret(), encryptionKey: generateSecret() }));
+  await writeFile(join(opts.targetDir, ".env"), generateEnv({ vectorStore: o.vectorStore, documentsDirs: o.documentsDirs }, { authSecret: generateSecret(), encryptionKey: generateSecret() }));
 
   // 8b. appKind branch: api-only prunes the Next.js/React frontend down to a
   // standalone Hono server (src/server/, already shipped in the template);

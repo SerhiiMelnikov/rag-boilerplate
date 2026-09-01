@@ -136,7 +136,7 @@ export function generateSecret(bytes = 32): string {
 
 // Build the generated project's .env. DATABASE_URL/ADMIN_* mirror .env.example
 // defaults; secrets are freshly generated; store-specific vars are appended.
-export function generateEnv(o: { vectorStore: VectorStoreId }, secrets: { authSecret: string; encryptionKey: string }): string {
+export function generateEnv(o: { vectorStore: VectorStoreId; documentsDirs?: string }, secrets: { authSecret: string; encryptionKey: string }): string {
   const lines = [
     "DATABASE_URL=postgres://rag:rag@localhost:5432/rag",
     "ADMIN_EMAIL=admin@example.com",
@@ -172,5 +172,8 @@ export function generateEnv(o: { vectorStore: VectorStoreId }, secrets: { authSe
     pinecone: ["PINECONE_API_KEY=", "PINECONE_CLOUD=aws", "PINECONE_REGION=us-east-1"],
   };
   lines.push(...store[o.vectorStore]);
+  // Comma-encoded because a single .env value cannot hold newlines cleanly; the
+  // admin seed splits DEFAULT_DOCUMENTS_DIRS on comma OR newline.
+  lines.push(`DEFAULT_DOCUMENTS_DIRS=${(o.documentsDirs ?? "").split("\n").map((s) => s.trim()).filter(Boolean).join(",")}`);
   return lines.join("\n") + "\n";
 }

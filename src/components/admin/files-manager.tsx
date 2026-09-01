@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Trash2, ArrowUpDown, Layers, Link2, SearchX } from "lucide-react";
+import { Upload, Trash2, ArrowUpDown, Layers, Link2, SearchX, FolderSync } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -20,6 +20,7 @@ import { cn } from "@/lib/cn";
 import { ImageModal } from "./image-modal";
 import { FileWorkspacesModal } from "./file-workspaces-modal";
 import { ChunksModal } from "./chunks-modal";
+import { SyncDialog } from "./sync-dialog";
 
 interface FileRow {
   id: string;
@@ -74,6 +75,10 @@ export function FilesManager() {
   const [urlBusy, setUrlBusy] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // documentsDirs (a runtime setting) gates the "Sync from directory" action:
+  // the button only exists once at least one directory is configured.
+  const [documentsDirs, setDocumentsDirs] = useState("");
+  const [syncOpen, setSyncOpen] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/files");
@@ -95,6 +100,15 @@ export function FilesManager() {
       const def = list.find((w) => w.isDefault);
       if (def) setUploadWorkspaceIds([def.id]);
       setWorkspacesLoaded(true);
+    })();
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      const res = await fetch("/api/admin/settings");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (typeof data?.documentsDirs === "string") setDocumentsDirs(data.documentsDirs);
     })();
   }, []);
 
@@ -232,6 +246,12 @@ export function FilesManager() {
         // so this is where they can drop onto separate lines on a narrow
         // viewport instead of forcing the header to overflow sideways.
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {documentsDirs.trim() !== "" && (
+            <Button variant="secondary" onClick={() => setSyncOpen(true)}>
+              <FolderSync className="h-4 w-4" />
+              Sync from directory
+            </Button>
+          )}
           <label
             className={cn(
               "inline-flex cursor-pointer items-center gap-2 rounded border border-border-strong px-3 py-2 text-sm transition-colors hover:bg-surface-2",
@@ -488,6 +508,7 @@ export function FilesManager() {
           onClose={() => setChunksFor(null)}
         />
       )}
+      <SyncDialog open={syncOpen} onClose={() => setSyncOpen(false)} onApplied={() => void load()} />
     </>
   );
 }

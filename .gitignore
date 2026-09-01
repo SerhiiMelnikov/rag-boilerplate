@@ -11,3 +11,5 @@ cli/dist/
 
 # graphify generated artifacts
 graphify-out/
+
+.worktrees/

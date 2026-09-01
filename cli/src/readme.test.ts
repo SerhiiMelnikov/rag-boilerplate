@@ -259,10 +259,11 @@ describe("generateReadme navigation", () => {
 describe("the admin section describes the real navigation", () => {
   const readme = () => generateReadme(opts());
 
-  it("names the three Settings pages", () => {
+  it("names the four Settings pages", () => {
     const text = readme();
     expect(text).toContain("**Models**");
     expect(text).toContain("**Answering**");
+    expect(text).toContain("**Documents**");
     expect(text).toContain("**Access & email**");
   });
 
@@ -293,15 +294,31 @@ describe("the admin section describes the real navigation", () => {
 
   // Not `not.toContain("/admin/keys")` — the README never printed URL paths, so
   // that assertion would pass whether or not this task did anything. Pin the
-  // Settings section's real content instead: the three bullets, in order.
-  it("lists exactly the three Settings pages, in nav order", () => {
+  // Settings section's real content instead: the four bullets, in nav order
+  // (Models, Answering, Documents, Access & email — see nav-config.ts).
+  it("lists exactly the four Settings pages, in nav order", () => {
     const section = readme().split("### Settings")[1].split("### People")[0];
     const bullets = section.split("\n").filter((l) => l.startsWith("- **"));
     expect(bullets.map((l) => l.slice(4, l.indexOf("**", 4)))).toEqual([
       "Models",
       "Answering",
+      "Documents",
       "Access & email",
     ]);
+  });
+
+  // Directory sync is a full-app admin capability: a Documents settings page names
+  // the server-side directories, and the Files page reconciles them with a
+  // "Sync from directory" button (add new / update changed / delete removed, behind
+  // a delete-confirmation preview). This generator is the only docs a scaffolded
+  // project gets, so both halves have to be pinned here.
+  it("documents the Documents settings page and the Files directory-sync button", () => {
+    const text = readme();
+    expect(text).toContain("### Settings");
+    expect(text).toMatch(/- \*\*Documents\*\* —/);      // the settings page that holds the directories
+    expect(text).toContain("Sync from directory");       // the Files action that reconciles them
+    expect(text).toMatch(/reconcile/i);                  // add new / update changed / delete removed
+    expect(text).toMatch(/confirm the deletions/i);      // the delete-confirmation preview
   });
 });
 

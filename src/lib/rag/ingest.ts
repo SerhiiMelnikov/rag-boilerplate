@@ -107,10 +107,10 @@ export async function ingestExistingDocument(
 // creates the row, writes its chosen membership, and calls
 // ingestExistingDocument in the background.
 export async function ingestDocument(
-  input: { filename: string; data: Buffer; baseDir?: string; boundary?: string },
+  input: { filename: string; data: Buffer; baseDir?: string; boundary?: string; source?: "upload" | "url" | "directory"; contentHash?: string | null },
   deps: IngestDocumentDeps,
 ): Promise<IngestResult> {
-  const { id: documentId, created } = await deps.documentRepo.createDocument(input.filename);
+  const { id: documentId, created } = await deps.documentRepo.createDocument(input.filename, { source: input.source, contentHash: input.contentHash });
   // Membership is decided once, at creation. A new document must join the
   // default workspace, or retrieval will never see it. Re-ingesting an
   // existing document (createDocument found it, didn't insert it) must never

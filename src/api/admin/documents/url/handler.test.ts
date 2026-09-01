@@ -30,7 +30,7 @@ describe("ingestUrlResponse", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ documentId: "doc-1", status: "processing" });
     expect(deps.extract).toHaveBeenCalledWith("https://example.com/a");
-    expect(deps.documentRepo.createDocument).toHaveBeenCalledWith("https://example.com/a");
+    expect(deps.documentRepo.createDocument).toHaveBeenCalledWith("https://example.com/a", { source: "url" });
     expect(deps.setDocumentWorkspacesFn).toHaveBeenCalledWith("doc-1", ["ws-general"]);
     expect(deps.ingest).toHaveBeenCalledWith(
       "doc-1",

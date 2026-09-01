@@ -36,6 +36,12 @@ export const documents = pgTable("documents", {
   filename: text("filename").notNull().unique(),
   status: docStatusEnum("status").notNull().default("pending"),
   error: text("error"),
+  // 'upload' (admin file upload), 'url' (Readability ingest), or 'directory'
+  // (folder Sync). Only 'directory' rows are ever reconciled/deleted by Sync.
+  source: text("source").notNull().default("upload"),
+  // sha256 of the source file bytes, set for 'directory' rows so Sync can detect
+  // a changed file without re-embedding. Null for upload/url and pre-existing rows.
+  contentHash: text("content_hash"),
   uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -137,6 +143,8 @@ export const settings = pgTable("settings", {
   // registration. seed:admin seeds it from ADMIN_EMAIL's domain so a fresh install
   // is not a dead end.
   allowedEmailDomains: text("allowed_email_domains").notNull().default(""),
+  // Newline-separated list of directories Sync ingests from. Empty = feature off.
+  documentsDirs: text("documents_dirs").notNull().default(""),
   smtpHost: text("smtp_host").notNull().default(""),
   smtpPort: integer("smtp_port").notNull().default(587),
   smtpUser: text("smtp_user").notNull().default(""),

@@ -51,3 +51,16 @@ describe("workspaces schema", () => {
     expect(Object.keys(schema.messages)).toEqual(expect.arrayContaining(["workspaceId"]));
   });
 });
+
+import { documents, settings } from "./schema";
+
+describe("document origin and directory sync schema", () => {
+  it("documents table carries source and content_hash", () => {
+    const cols = Object.keys(documents);
+    expect(cols).toEqual(expect.arrayContaining(["source", "contentHash"]));
+  });
+  it("settings table carries documentsDirs", () => {
+    const cols = Object.keys(settings);
+    expect(cols).toContain("documentsDirs");
+  });
+});

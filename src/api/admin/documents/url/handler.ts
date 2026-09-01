@@ -87,7 +87,7 @@ export async function ingestUrlResponse(request: Request, deps: IngestUrlDeps = 
   // filename = the URL itself. documents.filename is unique, so re-posting the same
   // URL updates that document (createDocument reports created: false) instead of
   // creating a duplicate — intended, so an admin can refresh a page's ingested copy.
-  const { id: documentId } = await documentRepo.createDocument(url);
+  const { id: documentId } = await documentRepo.createDocument(url, { source: "url" });
   await documentRepo.setStatus(documentId, "processing");
   // Mirrors uploadDocument: always (re-)assign the admin's chosen workspaces,
   // whether the row is new or already existed — posting a URL is an explicit

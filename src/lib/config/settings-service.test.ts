@@ -133,6 +133,11 @@ describe("settings service", () => {
     expect(settingsPatchSchema.safeParse({ embeddingProvider: "anthropic" }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ chatProvider: "openai" }).success).toBe(true);
   });
+
+  it("round-trips documentsDirs through the patch schema", () => {
+    const parsed = settingsPatchSchema.parse({ documentsDirs: "/a\n/b" });
+    expect(parsed.documentsDirs).toBe("/a\n/b");
+  });
 });
 
 // Pulls the literal values out of a `.partial()`-wrapped z.enum field (the shape

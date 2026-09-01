@@ -37,6 +37,7 @@ interface BaseSettings {
   transcribeRateLimitPerMinute: number;
   transcribeRateLimitPerDay: number;
   allowedEmailDomains: string;
+  documentsDirs: string;
   smtpHost: string;
   smtpPort: number;
   smtpUser: string;
@@ -79,6 +80,7 @@ const BASE_COLUMNS = {
   transcribeRateLimitPerMinute: settings.transcribeRateLimitPerMinute,
   transcribeRateLimitPerDay: settings.transcribeRateLimitPerDay,
   allowedEmailDomains: settings.allowedEmailDomains,
+  documentsDirs: settings.documentsDirs,
   smtpHost: settings.smtpHost,
   smtpPort: settings.smtpPort,
   smtpUser: settings.smtpUser,
@@ -126,6 +128,7 @@ export const settingsPatchSchema = z
     transcribeRateLimitPerMinute: z.number().int().min(0).max(100000),
     transcribeRateLimitPerDay: z.number().int().min(0).max(1000000),
     allowedEmailDomains: z.string(),
+    documentsDirs: z.string(),
     smtpHost: z.string(),
     smtpPort: z.number().int().min(1).max(65535),
     smtpUser: z.string(),

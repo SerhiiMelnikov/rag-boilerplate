@@ -20,6 +20,7 @@ export interface AdminSettings {
   chatRateLimitPerMinute: number; chatRateLimitPerDay: number;
   transcribeRateLimitPerMinute: number; transcribeRateLimitPerDay: number;
   allowedEmailDomains: string;
+  documentsDirs: string;
   smtpHost: string; smtpPort: number; smtpUser: string; smtpFrom: string;
   keys: Record<string, KeyStatus>;
   smtpPassword: KeyStatus;

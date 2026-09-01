@@ -105,14 +105,21 @@ export async function applySync(
   };
 
   for (const path of inAdd) ingestOne(path);
+  // Update = delete-then-readd. Only act when the file's scanned meta still
+  // exists at apply time; if it vanished between plan and apply, deleting the
+  // old row would leave nothing re-ingested (data loss), so skip it entirely
+  // and do not count it as updated.
+  let updated = 0;
   for (const path of inUpdate) {
+    if (!index.has(path)) continue;
     const prev = existing.get(path);
     if (prev) await deleteDocumentFn(prev.id, { vectorStore });
     ingestOne(path);
+    updated++;
   }
   for (const path of inDelete) {
     const prev = existing.get(path);
     if (prev) await deleteDocumentFn(prev.id, { vectorStore });
   }
-  return { added: inAdd.length, updated: inUpdate.length, deleted: inDelete.length };
+  return { added: inAdd.length, updated, deleted: inDelete.length };
 }

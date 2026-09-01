@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
+import type { RuntimeSettings } from "@/lib/config/settings-service";
 import { planSync, applySync } from "./sync";
 
-const settings = {} as never;
+const settings = {} as unknown as RuntimeSettings;
 
 function scanned(files: Array<{ path: string; hash: string }>) {
   return async () => ({ files: files.map((f) => ({ ...f, baseDir: "/d", root: "/d" })), errors: [] });
@@ -85,5 +86,33 @@ describe("applySync", () => {
       },
     );
     expect(del).not.toHaveBeenCalled();
+  });
+
+  it("skips an update whose file vanished from the scan index at apply time", async () => {
+    const del = vi.fn(async () => true);
+    const createDocument = vi.fn(async () => ({ id: "n", created: true }));
+    const result = await applySync(
+      { add: [], update: ["/d/changed.md"], delete: [] },
+      {
+        // fresh plan still lists the update, but the file is gone from the scan index
+        plan: async () => ({ add: [], update: ["/d/changed.md"], delete: [], dirs: ["/d"], errors: [] }),
+        scanIndex: async () => new Map(),
+        listExisting: async () => [
+          { id: "2", filename: "/d/changed.md", contentHash: "h-1" },
+        ],
+        getSettings: async () => settings,
+        documentRepo: { createDocument, setStatus: vi.fn() } as never,
+        vectorStore: {} as never,
+        deleteDocumentFn: del,
+        ingest: vi.fn(),
+        readFileFn: async () => Buffer.from("x"),
+        assignDefaultWorkspace: async () => {},
+        schedule: (fn) => { void fn(); },
+      },
+    );
+    // Old doc must survive and the update must not be counted.
+    expect(del).not.toHaveBeenCalled();
+    expect(createDocument).not.toHaveBeenCalled();
+    expect(result).toEqual({ added: 0, updated: 0, deleted: 0 });
   });
 });

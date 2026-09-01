@@ -29,6 +29,12 @@ async function walk(path: string, root: string, out: ScannedFile[], errors: stri
 export async function scanDirs(dirs: string[]): Promise<{ files: ScannedFile[]; errors: string[] }> {
   const files: ScannedFile[] = [];
   const errors: string[] = [];
-  for (const dir of dirs) await walk(dir, dir, files, errors);
+  for (const dir of dirs) {
+    let s;
+    try { s = await stat(dir); } catch (err) { errors.push(`${dir}: ${String(err)}`); continue; }
+    // For a file target, its directory is the boundary; for a directory target
+    // the configured dir is the boundary (root === baseDir at each file).
+    await walk(dir, s.isFile() ? dirname(dir) : dir, files, errors);
+  }
   return { files, errors };
 }

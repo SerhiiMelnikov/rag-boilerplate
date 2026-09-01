@@ -27,6 +27,10 @@ export async function syncApplyResponse(request: Request, deps: SyncApplyDeps = 
   if (!b || !isStringArray(b.add) || !isStringArray(b.update) || !isStringArray(b.delete)) {
     return Response.json({ error: "add, update and delete must be arrays of strings" }, { status: 400 });
   }
-  const result = await apply({ add: b.add, update: b.update, delete: b.delete }, deps.schedule ? { schedule: deps.schedule } : {});
-  return Response.json(result);
+  try {
+    const result = await apply({ add: b.add, update: b.update, delete: b.delete }, deps.schedule ? { schedule: deps.schedule } : {});
+    return Response.json(result);
+  } catch (err) {
+    return Response.json({ error: err instanceof Error ? err.message : "Sync apply failed" }, { status: 409 });
+  }
 }

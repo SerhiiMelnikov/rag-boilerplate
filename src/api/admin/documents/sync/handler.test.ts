@@ -40,4 +40,10 @@ describe("syncApplyResponse", () => {
     const res = await syncApplyResponse(applyReq({ add: "nope" }), { getAdmin: admin as never, apply: vi.fn() as never });
     expect(res.status).toBe(400);
   });
+  it("409s when apply throws (e.g. no directories configured)", async () => {
+    const apply = vi.fn(async () => { throw new Error("No documents directories are configured."); });
+    const res = await syncApplyResponse(applyReq({ add: [], update: [], delete: [] }), { getAdmin: admin as never, apply: apply as never });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "No documents directories are configured." });
+  });
 });

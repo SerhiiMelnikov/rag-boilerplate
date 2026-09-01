@@ -64,7 +64,7 @@ function resolveLocalImage(src: string, baseDir: string, boundary: string): stri
 // never injects stray newlines mid-sentence.
 const BLOCK_CONTAINERS: Record<string, true> = {
   root: true, list: true, listItem: true, blockquote: true,
-  table: true, tableRow: true, tableCell: true, footnoteDefinition: true,
+  table: true, footnoteDefinition: true,
 };
 
 // Serialize an mdast node subtree to clean text. Headings are re-emitted with
@@ -73,6 +73,9 @@ const BLOCK_CONTAINERS: Record<string, true> = {
 function renderNode(node: RootContent, imageText: Map<Image, string>): string {
   if (node.type === "image") return imageText.get(node) ?? node.alt ?? "";
   if (node.type === "heading") return `${"#".repeat(node.depth)} ${mdastToString(node)}`;
+  if (node.type === "tableRow" && "children" in node && Array.isArray(node.children)) {
+    return node.children.map((c) => renderNode(c as RootContent, imageText)).join(" | ");
+  }
   if (node.type === "paragraph") {
     return node.children.map((c) => renderNode(c as RootContent, imageText)).join("").trim();
   }

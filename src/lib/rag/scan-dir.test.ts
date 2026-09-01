@@ -37,4 +37,18 @@ describe("scanDirs", () => {
     expect(errors).toEqual([]);
     expect(files.map((f) => f.path)).toEqual([join(root, "constructor", "c.md")]);
   });
+
+  it("uses a single-file target's directory as root and baseDir", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "scan-file-"));
+    const file = join(dir, "a.md");
+    writeFileSync(file, "alpha");
+    const { files, errors } = await scanDirs([file]);
+    expect(errors).toEqual([]);
+    expect(files).toHaveLength(1);
+    const f = files[0]!;
+    expect(f.path).toBe(file);
+    expect(f.root).toBe(dir);
+    expect(f.baseDir).toBe(dir);
+    expect(f.root).toBe(f.baseDir);
+  });
 });

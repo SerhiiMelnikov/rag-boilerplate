@@ -77,4 +77,10 @@ describe("parseMarkdown", () => {
     expect(out).toContain("Some bold code and a b c");
     expect(out).not.toMatch(/bold\s*\n\s*code/);
   });
+
+  it("keeps a GFM table cell's inline content on one line", async () => {
+    const out = await parseMarkdown(Buffer.from("| col |\n| --- |\n| **a** b |"), settings);
+    expect(out).toContain("a b");
+    expect(out).not.toMatch(/a\s*\n\s*b/);
+  });
 });

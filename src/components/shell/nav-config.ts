@@ -72,6 +72,7 @@ export const NAV: NavGroup[] = [
       // Nested under /admin/settings rather than a top-level route: the panel is
       // the navigation here, the same way it already is for Knowledge and Insights.
       { label: "Answering", href: "/admin/settings/answering" },
+      { label: "Documents", href: "/admin/settings/documents" },
       { label: "Access & email", href: "/admin/settings/access" },
     ],
   },

@@ -87,6 +87,15 @@ describe("buildOpenApiDocument", () => {
     expect(urlPost?.responses?.[403]).toBeTruthy();
   });
 
+  it("documents the sync endpoints as guarded", () => {
+    for (const p of ["/api/admin/documents/sync/preview", "/api/admin/documents/sync/apply"]) {
+      const op = (doc.paths?.[p] as Record<string, { responses: Record<string, unknown>; security?: unknown }>).post;
+      expect(op.security).toBeTruthy();
+      expect(op.responses["401"]).toBeTruthy();
+      expect(op.responses["403"]).toBeTruthy();
+    }
+  });
+
   it("documents the evaluation endpoints as guarded, with 401 + 403 responses", () => {
     for (const [path, method] of [
       ["/api/admin/evaluation/questions", "get"],

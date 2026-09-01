@@ -15,6 +15,7 @@ import "./paths/images";
 import "./paths/openapi";
 import "./paths/admin-documents";
 import "./paths/admin-documents-url";
+import "./paths/admin-documents-sync";
 import "./paths/admin-chunks";
 import "./paths/admin-files";
 import "./paths/admin-images";

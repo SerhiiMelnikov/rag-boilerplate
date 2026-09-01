@@ -62,4 +62,13 @@ describe("parseMarkdown", () => {
     // caption failed -> that image keeps alt, rest still parses; ingestion never throws
     expect(out).toContain("alt");
   });
+
+  it("captions a local image nested in a list item", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "md-"));
+    writeFileSync(join(dir, "d.png"), Buffer.from([1, 2, 3]));
+    const captionImage = vi.fn(async () => "nested diagram");
+    const out = await parseMarkdown(Buffer.from("- item ![alt](d.png)"), settings, { baseDir: dir, captionImage });
+    expect(captionImage).toHaveBeenCalledTimes(1);
+    expect(out).toContain("[Image: nested diagram]");
+  });
 });

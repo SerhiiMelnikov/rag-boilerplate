@@ -61,10 +61,19 @@ function resolveLocalImage(src: string, baseDir: string, boundary: string): stri
 // Serialize an mdast node subtree to clean text. Headings are re-emitted with
 // their `#` prefix so chunkMarkdown can still find section boundaries.
 function renderNode(node: RootContent, imageText: Map<Image, string>): string {
-  if (node.type === "heading") return `${"#".repeat(node.depth)} ${mdastToString(node)}`;
   if (node.type === "image") return imageText.get(node) ?? node.alt ?? "";
+  if (node.type === "heading") return `${"#".repeat(node.depth)} ${mdastToString(node)}`;
   if (node.type === "paragraph") {
-    return node.children.map((c) => (c.type === "image" ? (imageText.get(c) ?? c.alt ?? "") : mdastToString(c))).join("").trim();
+    return node.children.map((c) => renderNode(c as RootContent, imageText)).join("").trim();
+  }
+  // Any other container (list, listItem, blockquote, table, tableRow, tableCell,
+  // ...): recurse so an image caption nested inside it is honored rather than
+  // discarded in favor of alt text. Leaf inline nodes fall through to mdastToString.
+  if ("children" in node && Array.isArray(node.children)) {
+    return node.children
+      .map((c) => renderNode(c as RootContent, imageText))
+      .filter((s) => s.trim().length > 0)
+      .join("\n");
   }
   return mdastToString(node);
 }

@@ -4,7 +4,7 @@ import type { InstallOptions } from "./options.js";
 
 const o = (over: Partial<InstallOptions> = {}): InstallOptions => ({
   projectName: "app", providers: ["google"], defaultProvider: "google", vectorStore: "qdrant",
-  appKind: "full", git: true, install: true, packageManager: "pnpm", yes: true, ...over,
+  appKind: "full", git: true, install: true, packageManager: "pnpm", yes: true, documentsDirs: "", ...over,
 });
 
 describe("installCommand", () => {

@@ -24,6 +24,10 @@ const clackPrompter: Prompter = {
     return (await p.select({ message: "App kind", options: APP_KIND_IDS.map((id) => ({ value: id, label: labels[id] })), initialValue: "full" as AppKind })) as AppKind;
   },
   askPostActions: async () => ({ git: Boolean(await p.confirm({ message: "Initialize a git repo?" })), install: Boolean(await p.confirm({ message: "Install dependencies?" })) }),
+  askDocumentsDirs: async () => {
+    const v = await p.text({ message: "Documents directories to sync (optional, comma-separated)", defaultValue: "", placeholder: "/data/docs" });
+    return String(v).split(",").map((s) => s.trim()).filter(Boolean).join("\n");
+  },
 };
 
 async function main() {

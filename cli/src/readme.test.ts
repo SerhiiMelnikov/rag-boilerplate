@@ -4,7 +4,7 @@ import type { InstallOptions } from "./options.js";
 
 const opts = (over: Partial<InstallOptions> = {}): InstallOptions => ({
   projectName: "my-rag-app", providers: ["google"], defaultProvider: "google", vectorStore: "pgvector",
-  appKind: "full", git: false, install: false, packageManager: "npm", yes: true, ...over,
+  appKind: "full", git: false, install: false, packageManager: "npm", yes: true, documentsDirs: "", ...over,
 });
 
 // --- Markdown table structure ----------------------------------------------

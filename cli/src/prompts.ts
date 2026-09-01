@@ -8,6 +8,7 @@ export interface Prompter {
   askVectorStore(): Promise<VectorStoreId>;
   askAppKind(): Promise<AppKind>;
   askPostActions(): Promise<{ git: boolean; install: boolean }>;
+  askDocumentsDirs(): Promise<string>;
 }
 
 // Merge CLI flags with prompted answers into a validated InstallOptions.
@@ -20,10 +21,11 @@ export async function resolveOptions(cli: Partial<InstallOptions> & { yes: boole
   const defaultProvider = cli.defaultProvider ?? (providers.length === 1 ? providers[0] : cli.yes ? providers[0] : await ask.askDefaultProvider(providers));
   const appKind = cli.appKind ?? (cli.yes ? ("full" as AppKind) : await ask.askAppKind());
   const post = cli.yes ? { git: cli.git ?? true, install: cli.install ?? true } : await ask.askPostActions();
+  const documentsDirs = cli.documentsDirs ?? (cli.yes ? "" : await ask.askDocumentsDirs());
   const packageManager: PackageManager = cli.packageManager ?? detectPackageManager(process.env.npm_config_user_agent);
 
   const errors = validateSelection({ providers, defaultProvider, vectorStore, appKind });
   if (errors.length) throw new Error(errors.join(" "));
 
-  return { projectName, providers, defaultProvider, vectorStore, appKind, git: cli.git ?? post.git, install: cli.install ?? post.install, packageManager, yes: cli.yes };
+  return { projectName, providers, defaultProvider, vectorStore, appKind, git: cli.git ?? post.git, install: cli.install ?? post.install, packageManager, yes: cli.yes, documentsDirs };
 }

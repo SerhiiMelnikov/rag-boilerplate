@@ -36,6 +36,10 @@ describe("parseArgs", () => {
     expect(parseArgs(["app", "--app-kind=api"]).appKind).toBe("api");
     expect(parseArgs(["app", "--app-kind=full"]).appKind).toBe("full");
   });
+  it("parses --documents-dir as a comma list into newline-separated", () => {
+    const out = parseArgs(["app", "--documents-dir", "/a, /b"]);
+    expect(out.documentsDirs).toBe("/a\n/b");
+  });
 });
 
 describe("validateSelection", () => {

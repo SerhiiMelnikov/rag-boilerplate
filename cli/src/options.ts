@@ -17,6 +17,7 @@ export interface InstallOptions {
   install: boolean;
   packageManager: PackageManager;
   yes: boolean;
+  documentsDirs: string;
 }
 
 export const PROVIDER_IDS: ProviderId[] = ["google", "openai", "anthropic", "ollama"];
@@ -40,6 +41,7 @@ export function parseArgs(argv: string[]): Partial<InstallOptions> & { yes: bool
       git: { type: "boolean" },
       "no-git": { type: "boolean" },
       yes: { type: "boolean", short: "y" },
+      "documents-dir": { type: "string" },
     },
   });
   const out: Partial<InstallOptions> & { yes: boolean } = { yes: Boolean(values.yes) };
@@ -50,6 +52,9 @@ export function parseArgs(argv: string[]): Partial<InstallOptions> & { yes: bool
   if (typeof values["vector-store"] === "string") out.vectorStore = values["vector-store"] as VectorStoreId;
   if (typeof values["default-provider"] === "string") out.defaultProvider = values["default-provider"] as ProviderId;
   if (typeof values["app-kind"] === "string") out.appKind = values["app-kind"] as AppKind;
+  if (typeof values["documents-dir"] === "string") {
+    out.documentsDirs = values["documents-dir"].split(",").map((s) => s.trim()).filter(Boolean).join("\n");
+  }
   if (values["no-install"]) out.install = false;
   else if (values.install) out.install = true;
   if (values["no-git"]) out.git = false;

@@ -11,6 +11,13 @@ export async function listDocuments(database = defaultDb) {
     .orderBy(desc(documents.createdAt));
 }
 
+export async function listDirectoryDocuments(database = defaultDb) {
+  return database
+    .select({ id: documents.id, filename: documents.filename, contentHash: documents.contentHash })
+    .from(documents)
+    .where(eq(documents.source, "directory"));
+}
+
 export async function deleteDocument(id: string, deps: { database?: typeof defaultDb; vectorStore?: VectorStore } = {}) {
   const database = deps.database ?? defaultDb;
   const vectorStore = deps.vectorStore ?? getVectorStore();

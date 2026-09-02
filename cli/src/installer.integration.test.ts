@@ -137,7 +137,7 @@ describe.runIf(RUN)("installer (integration): appKind", () => {
   it("api-only: prunes Next.js/React entirely, keeps src/server, and never imports @/auth", async () => {
     const parent = await mkdtemp(join(tmpdir(), "it-api-"));
     const target = join(parent, "app");
-    const o: InstallOptions = { projectName: "app", providers: ["google"], defaultProvider: "google", vectorStore: "pgvector", appKind: "api", git: false, install: false, packageManager: "npm", yes: true };
+    const o: InstallOptions = { projectName: "app", providers: ["google"], defaultProvider: "google", vectorStore: "pgvector", appKind: "api", git: false, install: false, packageManager: "npm", yes: true, documentsDirs: "" };
     await scaffold(o, { templateDir, targetDir: target });
 
     // scaffold.ts reconciles the lockfile after the appKind branch prunes

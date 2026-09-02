@@ -28,7 +28,7 @@ describe("uploadDocument", () => {
     const deps = baseDeps();
     const res = await uploadDocument(form(new File(["hi"], "a.md", { type: "text/markdown" })), deps as never);
     expect(res.status).toBe(200);
-    expect(deps.documentRepo.createDocument).toHaveBeenCalledWith("a.md");
+    expect(deps.documentRepo.createDocument).toHaveBeenCalledWith("a.md", { source: "upload" });
     expect(deps.setDocumentWorkspacesFn).toHaveBeenCalledWith("doc-1", ["ws-general"]);
   });
 

@@ -37,6 +37,7 @@ const settings = {
   chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200,
   transcribeRateLimitPerMinute: 10, transcribeRateLimitPerDay: 100,
   allowedEmailDomains: "",
+  documentsDirs: "",
   smtpHost: "", smtpPort: 587, smtpUser: "", smtpFrom: "",
   keys: { google: "gk", openai: null, anthropic: null },
   smtpPassword: null,

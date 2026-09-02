@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Column, Param } from "drizzle-orm";
 import { verifyPassword, hashPassword } from "@/lib/auth/password";
-import { ensureAdminUser } from "./seed-admin";
+import { ensureAdminUser, seedDocumentsDirs } from "./seed-admin";
 
 // Models `where` the way real drizzle `eq()` actually builds it (an `SQL`
 // object holding `queryChunks`), not a plain object the fake could apply
@@ -207,5 +207,23 @@ describe("ensureAdminUser", () => {
 
     expect(outcome).toBe("created");
     expect(updates).toEqual([{ patch: { isSuperAdmin: true, emailVerifiedAt: expect.any(Date) } }]);
+  });
+});
+
+describe("seedDocumentsDirs", () => {
+  it("seeds documentsDirs from env when empty, newline-separated", async () => {
+    const update = vi.fn(async () => ({}) as never);
+    await seedDocumentsDirs("/a, /b", async () => ({ documentsDirs: "" }) as never, update);
+    expect(update).toHaveBeenCalledWith({ documentsDirs: "/a\n/b" });
+  });
+  it("never clobbers an existing documentsDirs", async () => {
+    const update = vi.fn(async () => ({}) as never);
+    await seedDocumentsDirs("/a", async () => ({ documentsDirs: "/existing" }) as never, update);
+    expect(update).not.toHaveBeenCalled();
+  });
+  it("does nothing when env is empty", async () => {
+    const update = vi.fn(async () => ({}) as never);
+    await seedDocumentsDirs("", async () => ({ documentsDirs: "" }) as never, update);
+    expect(update).not.toHaveBeenCalled();
   });
 });

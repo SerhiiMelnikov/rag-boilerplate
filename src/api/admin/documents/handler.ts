@@ -75,7 +75,7 @@ export async function uploadDocument(request: Request, deps: UploadDocumentDeps 
   // admin's explicitly chosen workspaces, whether the row was new or already
   // existed (re-uploading the same filename is an explicit admin action, not an
   // unattended batch re-run).
-  const { id: documentId } = await documentRepo.createDocument(file.name);
+  const { id: documentId } = await documentRepo.createDocument(file.name, { source: "upload" });
   await documentRepo.setStatus(documentId, "processing");
   await setDocumentWorkspacesFn(documentId, await resolveUploadWorkspaceIds(form, workspaceRepo));
 

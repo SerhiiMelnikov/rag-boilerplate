@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chunkText } from "@/lib/rag/chunk";
+import { chunkText, chunkMarkdown } from "@/lib/rag/chunk";
 
 describe("chunkText", () => {
   it("returns one chunk when text is shorter than chunkSize", () => {
@@ -22,5 +22,34 @@ describe("chunkText", () => {
 
   it("ignores empty/whitespace-only input", () => {
     expect(chunkText("   \n  ")).toEqual([]);
+  });
+});
+
+describe("chunkMarkdown", () => {
+  it("splits into one chunk per heading section, heading kept with its body", () => {
+    const md = "# A\nalpha text\n\n## B\nbeta text";
+    const out = chunkMarkdown(md);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toContain("# A");
+    expect(out[0]).toContain("alpha text");
+    expect(out[1]).toContain("## B");
+    expect(out[1]).toContain("beta text");
+  });
+
+  it("keeps preamble before the first heading as its own chunk", () => {
+    const out = chunkMarkdown("intro line\n\n# H\nbody");
+    expect(out[0]).toContain("intro line");
+    expect(out[0]).not.toContain("# H");
+  });
+
+  it("delegates an oversized section to chunkText", () => {
+    const big = "x".repeat(2500);
+    const out = chunkMarkdown(`# H\n${big}`, { chunkSize: 1000, overlap: 100 });
+    expect(out.length).toBeGreaterThan(1);
+    expect(out.length).toBe(chunkText(`# H\n${big}`, { chunkSize: 1000, overlap: 100 }).length);
+  });
+
+  it("returns [] for blank input", () => {
+    expect(chunkMarkdown("   \n  ")).toEqual([]);
   });
 });

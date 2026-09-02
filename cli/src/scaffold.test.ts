@@ -65,7 +65,7 @@ afterEach(async () => { await rm(templateDir, { recursive: true, force: true });
 
 const opts = (over: Partial<InstallOptions> = {}): InstallOptions => ({
   projectName: "app", providers: ["google"], defaultProvider: "google", vectorStore: "qdrant",
-  appKind: "full", git: false, install: false, packageManager: "npm", yes: true, ...over,
+  appKind: "full", git: false, install: false, packageManager: "npm", yes: true, documentsDirs: "", ...over,
 });
 
 describe("settingsDefaultsFor", () => {

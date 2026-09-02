@@ -19,6 +19,7 @@ const settings = {
   chatRateLimitPerMinute: 20, chatRateLimitPerDay: 200,
   transcribeRateLimitPerMinute: 10, transcribeRateLimitPerDay: 100,
   allowedEmailDomains: "",
+  documentsDirs: "",
   smtpHost: "", smtpPort: 587, smtpUser: "", smtpFrom: "",
   keys: { google: "gk", openai: null, anthropic: null },
   smtpPassword: null,
@@ -28,6 +29,22 @@ describe("parseDocument", () => {
   it("parses markdown", async () => {
     const text = await parseDocument("sample.md", await fixture("sample.md"), settings);
     expect(text).toContain("Hello world from markdown");
+  });
+
+  it("captions local images in markdown when baseDir is provided", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "pm-"));
+    writeFileSync(join(dir, "pic.png"), Buffer.from([1, 2, 3]));
+    const text = await parseDocument(
+      "note.md",
+      Buffer.from("# Note\n\n![alt](pic.png)"),
+      settings,
+      { /* ParseDeps unused */ },
+      { baseDir: dir, boundary: dir, captionImage: async () => "captioned" } as never,
+    );
+    expect(text).toContain("[Image: captioned]");
   });
 
   it("parses plain text", async () => {

@@ -240,6 +240,17 @@ describe("generateEnv S3", () => {
   });
 });
 
+describe("generateEnv DEFAULT_DOCUMENTS_DIRS", () => {
+  it("writes DEFAULT_DOCUMENTS_DIRS from the selection", () => {
+    const env = generateEnv({ vectorStore: "pgvector", documentsDirs: "/a\n/b" } as never, { authSecret: "s", encryptionKey: "k" });
+    expect(env).toContain("DEFAULT_DOCUMENTS_DIRS=/a,/b");
+  });
+  it("writes an empty DEFAULT_DOCUMENTS_DIRS when none selected", () => {
+    const env = generateEnv({ vectorStore: "pgvector", documentsDirs: "" } as never, { authSecret: "s", encryptionKey: "k" });
+    expect(env).toContain("DEFAULT_DOCUMENTS_DIRS=");
+  });
+});
+
 describe("setDbImage", () => {
   it("rewrites the db service image and leaves other services intact", () => {
     const out = setDbImage(COMPOSE, "postgres:16");

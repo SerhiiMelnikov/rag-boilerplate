@@ -83,19 +83,22 @@ export const VECTOR_STORES: Record<VectorStoreId, VectorStoreModule> = {
 // (plain `tailwindcss` + `postcss` + `autoprefixer`); an absent name is a
 // silent no-op in prunePackageJson, never an error.
 //
-// react-markdown/remark-gfm/rehype-highlight/highlight.js and
-// @scalar/api-reference-react are not React/Next.js packages by name, but are
-// exclusively consumed by pruned frontend files — src/components/chat/
-// message-content.tsx (the first three + highlight.js's CSS theme, imported
-// from the also-pruned src/app/globals.css) and src/app/docs/page.tsx (the
-// last one; the api-only build's own /docs route uses @scalar/hono-api-reference
-// instead) — so they would otherwise sit in the api-only package.json as pure
-// dead weight.
+// react-markdown/rehype-highlight/highlight.js and @scalar/api-reference-react
+// are not React/Next.js packages by name, but are exclusively consumed by
+// pruned frontend files — src/components/chat/message-content.tsx (the first
+// two + highlight.js's CSS theme, imported from the also-pruned
+// src/app/globals.css) and src/app/docs/page.tsx (the last one; the api-only
+// build's own /docs route uses @scalar/hono-api-reference instead) — so they
+// would otherwise sit in the api-only package.json as pure dead weight.
+// remark-gfm is deliberately NOT pruned: src/lib/rag/parse-markdown.ts (a
+// backend file that ships in the api-only build too) imports it alongside
+// unified, remark-parse and mdast-util-to-string, so the api-only project
+// still needs it.
 export const API_ONLY_REMOVE_DEPS: string[] = [
   "next", "react", "react-dom", "@types/react", "@types/react-dom",
   "next-auth", "next-themes", "@ai-sdk/react", "@headlessui/react", "lucide-react",
   "tailwindcss", "@tailwindcss/postcss", "postcss", "autoprefixer",
-  "rehype-highlight", "remark-gfm", "react-markdown", "highlight.js", "@scalar/api-reference-react",
+  "rehype-highlight", "react-markdown", "highlight.js", "@scalar/api-reference-react",
 ];
 
 // Dependencies dropped when appKind === "full": src/server/ (the standalone

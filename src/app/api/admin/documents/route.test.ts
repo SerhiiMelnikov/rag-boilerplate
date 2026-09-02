@@ -66,7 +66,7 @@ describe("POST /api/admin/documents", () => {
     const res = await POST(uploadReq());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ documentId: "d1", status: "processing" });
-    expect(documentRepo.createDocument).toHaveBeenCalledWith("a.md");
+    expect(documentRepo.createDocument).toHaveBeenCalledWith("a.md", { source: "upload" });
     expect(documentRepo.setStatus).toHaveBeenCalledWith("d1", "processing");
     expect(setDocumentWorkspaces).toHaveBeenCalledWith("d1", ["ws-general"]);
     expect(ingestExistingDocument).toHaveBeenCalledWith(

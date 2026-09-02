@@ -5,6 +5,7 @@ import type { LanguageModel } from "ai";
 import type { RuntimeSettings } from "@/lib/config/settings-service";
 import { getVisionModel } from "@/lib/providers";
 import { MissingProviderKeyError } from "@/lib/providers/types";
+import { parseMarkdown, type ParseMarkdownDeps } from "./parse-markdown";
 
 export class UnsupportedFileTypeError extends Error {
   constructor(ext: string) {
@@ -150,11 +151,13 @@ export async function parseDocument(
   data: Buffer,
   settings: RuntimeSettings,
   deps: ParseDeps = {},
+  loc: ParseMarkdownDeps = {},
 ): Promise<string> {
   const ext = extOf(filename);
   switch (ext) {
     case ".md":
     case ".markdown":
+      return parseMarkdown(data, settings, loc);
     case ".txt":
       return data.toString("utf-8");
     case ".pdf": {

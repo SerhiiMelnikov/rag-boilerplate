@@ -10,6 +10,7 @@ const fake = (answers: Partial<InstallOptions>) => ({
   askVectorStore: async () => answers.vectorStore ?? "pgvector",
   askAppKind: async () => answers.appKind ?? "full",
   askPostActions: async () => ({ git: answers.git ?? true, install: answers.install ?? true }),
+  askDocumentsDirs: async () => answers.documentsDirs ?? "",
 });
 
 describe("resolveOptions", () => {
@@ -37,5 +38,14 @@ describe("resolveOptions", () => {
   });
   it("re-validates and throws on an impossible flag combo", async () => {
     await expect(resolveOptions({ yes: true, projectName: "x", providers: ["anthropic"] }, fake({}))).rejects.toThrow(/embedding-capable/i);
+  });
+  it("resolveOptions uses askDocumentsDirs when not provided and not --yes", async () => {
+    const ask = fake({ documentsDirs: "/docs" });
+    const opts = await resolveOptions({ projectName: "app", yes: false } as never, ask);
+    expect(opts.documentsDirs).toBe("/docs");
+  });
+  it("leaves documentsDirs empty under --yes", async () => {
+    const opts = await resolveOptions({ projectName: "app", yes: true } as never, fake({}));
+    expect(opts.documentsDirs).toBe("");
   });
 });

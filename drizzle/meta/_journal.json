@@ -169,6 +169,13 @@
       "when": 1786466372202,
       "tag": "0023_eval_run_heartbeat",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788245959667,
+      "tag": "0024_spotty_beast",
+      "breakpoints": true
     }
   ]
 }

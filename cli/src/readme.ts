@@ -256,6 +256,11 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("  page directly from a URL (paste it and click **Ingest URL** — no file, no");
   lines.push("  extension, just the page's readable article text); see status, and set which");
   lines.push("  workspaces each one belongs to.");
+  lines.push("- **Sync from directory** — once you configure one or more server-side");
+  lines.push("  directories under **Settings → Documents**, click **Sync from directory** in");
+  lines.push("  **Files** to reconcile them into the corpus: new files are ingested, changed");
+  lines.push("  files re-ingested, and removed files deleted — after a preview that lists");
+  lines.push("  exactly what will change and makes you confirm the deletions first.");
   lines.push("- **Chunk preview** — open a document's chunk preview (from **Files**) to see");
   lines.push("  each chunk's position and length. Chunks ingested before position tracking");
   lines.push("  was added show as order-unknown rather than being renumbered to hide the gap.");
@@ -278,6 +283,9 @@ function generateFullAppReadme(o: InstallOptions): string {
   lines.push("  per day per user, and voice transcriptions per minute and per day).");
   lines.push("  `0` disables a limit — see **Rate limits** below. The system prompt lives");
   lines.push("  here too.");
+  lines.push("- **Documents** — the server-side directories the **Sync from directory**");
+  lines.push("  button in **Files** ingests from, one path per line. Empty turns the feature");
+  lines.push("  off; the button only appears once a directory is set.");
   lines.push("- **Access & email** — the allowed-domains list and SMTP for registration; see");
   lines.push("  **Registration** below.");
   lines.push("");

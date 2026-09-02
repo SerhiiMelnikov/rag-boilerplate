@@ -26,6 +26,7 @@ import { serveImage } from "@/api/images/[id]/handler";
 
 import { listDocumentsResponse, uploadDocument } from "@/api/admin/documents/handler";
 import { ingestUrlResponse } from "@/api/admin/documents/url/handler";
+import { syncPreviewResponse, syncApplyResponse } from "@/api/admin/documents/sync/handler";
 import { deleteDocumentResponse } from "@/api/admin/documents/[id]/handler";
 import { getDocumentChunksResponse } from "@/api/admin/documents/[id]/chunks/handler";
 import { listFilesResponse } from "@/api/admin/files/handler";
@@ -139,6 +140,8 @@ export function createServer(): Hono {
   app.get("/api/admin/documents", (c) => listDocumentsResponse(c.req.raw));
   app.post("/api/admin/documents", (c) => uploadDocument(c.req.raw, { schedule }));
   app.post("/api/admin/documents/url", (c) => ingestUrlResponse(c.req.raw, { schedule }));
+  app.post("/api/admin/documents/sync/preview", (c) => syncPreviewResponse(c.req.raw));
+  app.post("/api/admin/documents/sync/apply", (c) => syncApplyResponse(c.req.raw, { schedule }));
   app.delete("/api/admin/documents/:id", (c) => deleteDocumentResponse(c.req.param("id"), c.req.raw));
   app.get("/api/admin/documents/:id/chunks", (c) => getDocumentChunksResponse(c.req.param("id"), c.req.raw));
 

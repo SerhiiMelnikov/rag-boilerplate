@@ -47,6 +47,10 @@ ships as a Docker image when you're ready.
 - **Chunk preview** — open a document's chunk preview in **Files** to see each
   chunk's position and character count (`GET /api/admin/documents/{id}/chunks`);
   chunks ingested before position tracking was added show as order-unknown.
+- **Directory sync** — point the app at one or more server-side folders under
+  **Settings → Documents**, then hit **Sync from directory** in **Files** to
+  reconcile them into the corpus (ingest new, re-ingest changed, delete removed —
+  behind a preview that confirms the deletions first).
 - **Evaluation harness** — curate a golden set of questions (each tagged with the
   documents that should answer it), run them through the real retrieval + answer
   pipeline, and score both retrieval (recall/precision/MRR) and the answer (an LLM

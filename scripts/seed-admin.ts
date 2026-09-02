@@ -85,6 +85,22 @@ export async function ensureAdminUser(
   return "created";
 }
 
+// Seed `documentsDirs` once from DEFAULT_DOCUMENTS_DIRS. The CLI writes this env
+// var comma-or-newline separated; the runtime setting is newline-separated. Only
+// seed when the stored value is still empty — never clobber an admin's edit,
+// mirroring the allowlist seed-once idempotency in main().
+export async function seedDocumentsDirs(
+  raw: string,
+  getSettings: typeof getAdminSettings,
+  update: typeof updateSettings,
+): Promise<void> {
+  const dirs = raw.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+  if (dirs.length === 0) return;
+  const current = await getSettings();
+  if (current.documentsDirs.trim() !== "") return;
+  await update({ documentsDirs: dirs.join("\n") });
+}
+
 // Idempotently create the admin user and the default workspace from environment
 // variables. Both are prerequisites for a usable install: every workspace lookup
 // resolves through the default (General) workspace.
@@ -118,6 +134,10 @@ async function main() {
       console.log(`Registration allowlist seeded: ${domain}`);
     }
   }
+
+  // Seed documentsDirs once from DEFAULT_DOCUMENTS_DIRS, mirroring the allowlist
+  // seed-once idempotency above: never clobber an admin's edit.
+  await seedDocumentsDirs(process.env.DEFAULT_DOCUMENTS_DIRS ?? "", getAdminSettings, updateSettings);
 
   const outcome = await ensureAdminUser(email, password);
   console.log(outcome === "updated" ? `Admin ensured super-admin: ${email}.` : `Created super-admin: ${email}`);

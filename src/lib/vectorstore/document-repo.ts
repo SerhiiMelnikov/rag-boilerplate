@@ -6,7 +6,7 @@ import type { DocumentRepo } from "./types";
 // Postgres document-metadata repo. Always Postgres, regardless of VECTOR_STORE.
 export function createDocumentRepo(db = defaultDb): DocumentRepo {
   return {
-    async createDocument(filename) {
+    async createDocument(filename, opts) {
       // Insert if new; ON CONFLICT DO NOTHING means a colliding insert returns no
       // row instead of touching the existing one. Fall back to a select for the
       // existing id. Both racing callers converge on the same id (the unique
@@ -15,7 +15,7 @@ export function createDocumentRepo(db = defaultDb): DocumentRepo {
       // matters for one-time-only side effects like default workspace assignment.
       const [inserted] = await db
         .insert(documents)
-        .values({ filename })
+        .values({ filename, source: opts?.source ?? "upload", contentHash: opts?.contentHash ?? null })
         .onConflictDoNothing({ target: documents.filename })
         .returning({ id: documents.id });
       if (inserted) return { id: inserted.id, created: true };

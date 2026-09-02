@@ -60,6 +60,7 @@ describe("API_ONLY_REMOVE_DEPS", () => {
     expect(API_ONLY_REMOVE_DEPS).not.toContain("@auth/core");
     expect(API_ONLY_REMOVE_DEPS).not.toContain("hono");
     expect(API_ONLY_REMOVE_DEPS).not.toContain("@scalar/hono-api-reference"); // the api build's own /docs page needs this one
+    expect(API_ONLY_REMOVE_DEPS).not.toContain("remark-gfm"); // src/lib/rag/parse-markdown.ts (a backend file) imports it
   });
 });
 
